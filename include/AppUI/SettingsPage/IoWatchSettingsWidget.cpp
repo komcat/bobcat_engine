@@ -36,9 +36,10 @@ constexpr int kColInputPin     = 3;
 constexpr int kColOutputDevice = 4;
 constexpr int kColOutputPin    = 5;
 constexpr int kColTrigger      = 6;
-constexpr int kColDebounce     = 7;
-constexpr int kColRemove       = 8;
-constexpr int kColumnCount     = 9;
+constexpr int kColAction       = 7;
+constexpr int kColDebounce     = 8;
+constexpr int kColRemove       = 9;
+constexpr int kColumnCount     = 10;
 }  // namespace
 
 IoWatchSettingsWidget::IoWatchSettingsWidget(ApplicationContext* context, QWidget* parent)
@@ -93,7 +94,7 @@ void IoWatchSettingsWidget::setupUI()
   headers << "Enabled" << "Name"
           << "Input Device" << "Input Pin"
           << "Output Device" << "Output Pin"
-          << "Trigger" << "Debounce (ms)" << "";
+          << "Trigger" << "Action" << "Debounce (ms)" << "";
   m_table->setHorizontalHeaderLabels(headers);
   m_table->horizontalHeader()->setStretchLastSection(false);
   m_table->horizontalHeader()->setSectionResizeMode(kColName, QHeaderView::Stretch);
@@ -164,12 +165,13 @@ void IoWatchSettingsWidget::loadFromDisk()
                                   ? QString::fromStdString(b["output"].value("pin_name", std::string{}))
                                   : QString{};
         const QString trigger = QString::fromStdString(b.value("trigger", std::string{"rising"}));
+        const QString action  = QString::fromStdString(b.value("action",  std::string{"toggle"}));
         const int debounce    = b.value("debounce_ms", 100);
         const bool enabled    = b.value("enabled", true);
 
         const int row = m_table->rowCount();
         m_table->insertRow(row);
-        populateRow(row, enabled, name, inDev, inPin, outDev, outPin, trigger, debounce);
+        populateRow(row, enabled, name, inDev, inPin, outDev, outPin, trigger, action, debounce);
       }
     }
 
@@ -191,6 +193,7 @@ void IoWatchSettingsWidget::populateRow(int row,
                                         const QString& outputDevice,
                                         const QString& outputPin,
                                         const QString& trigger,
+                                        const QString& action,
                                         int debounceMs)
 {
   // Enabled checkbox (centered via wrapper)
@@ -269,6 +272,16 @@ void IoWatchSettingsWidget::populateRow(int row,
   trigCombo->setCurrentIndex(idx >= 0 ? idx : 0);
   m_table->setCellWidget(row, kColTrigger, trigCombo);
 
+  // Action combo
+  QComboBox* actionCombo = new QComboBox();
+  actionCombo->addItems({"toggle", "follow"});
+  actionCombo->setToolTip(
+    "toggle: flip output on the configured edge.\n"
+    "follow: output mirrors input level (rising=ON, falling=OFF). 'Trigger' is ignored.");
+  const int actIdx = actionCombo->findText(action.toLower());
+  actionCombo->setCurrentIndex(actIdx >= 0 ? actIdx : 0);
+  m_table->setCellWidget(row, kColAction, actionCombo);
+
   // Debounce spin
   QSpinBox* debSpin = new QSpinBox();
   debSpin->setRange(0, 60000);
@@ -327,7 +340,7 @@ void IoWatchSettingsWidget::onAddBinding()
 {
   const int row = m_table->rowCount();
   m_table->insertRow(row);
-  populateRow(row, true, "New Binding", "", "", "", "", "rising", 100);
+  populateRow(row, true, "New Binding", "", "", "", "", "rising", "toggle", 100);
   m_table->scrollToBottom();
 }
 
@@ -356,6 +369,7 @@ bool IoWatchSettingsWidget::saveToLocalJson()
     auto* outDev = qobject_cast<QComboBox*>(m_table->cellWidget(r, kColOutputDevice));
     auto* outPin = qobject_cast<QComboBox*>(m_table->cellWidget(r, kColOutputPin));
     auto* trig   = qobject_cast<QComboBox*>(m_table->cellWidget(r, kColTrigger));
+    auto* act    = qobject_cast<QComboBox*>(m_table->cellWidget(r, kColAction));
     auto* deb    = qobject_cast<QSpinBox*>(m_table->cellWidget(r, kColDebounce));
     QTableWidgetItem* nameItem = m_table->item(r, kColName);
 
@@ -370,6 +384,7 @@ bool IoWatchSettingsWidget::saveToLocalJson()
       {"pin_name", outPin ? outPin->currentText().toStdString() : std::string{}}
     };
     b["trigger"]     = trig ? trig->currentText().toStdString() : std::string{"rising"};
+    b["action"]      = act  ? act->currentText().toStdString()  : std::string{"toggle"};
     b["debounce_ms"] = deb ? deb->value() : 100;
     b["enabled"]     = enCb ? enCb->isChecked() : true;
 

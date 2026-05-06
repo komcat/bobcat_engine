@@ -15,12 +15,15 @@ class LogManager;
 /**
  * @brief Manual-override IO watch layer.
  *
- * Background thread that polls configured input pins and, on a triggering edge,
- * toggles a bound output pin (OFF -> ON, ON -> OFF). Per-binding debounce
- * suppresses switch bounce.
+ * Background thread that polls configured input pins and acts on the bound
+ * output pin per the binding's `action`:
+ *   - TOGGLE: on a qualifying edge, flip the output (OFF -> ON, ON -> OFF).
+ *   - FOLLOW: output mirrors input level — rising edge sets ON, falling
+ *             edge sets OFF (momentary / hold-while-pressed). The `trigger`
+ *             field is ignored in FOLLOW mode (both edges always fire).
  *
- * This is a pure background override — it does not interact with the recipe
- * system or the safety cascade.
+ * Per-binding debounce suppresses switch bounce. This is a pure background
+ * override — it does not interact with the recipe system or the safety cascade.
  */
 class IoWatchManager : public QObject {
   Q_OBJECT
@@ -32,6 +35,11 @@ public:
     BOTH
   };
 
+  enum class Action {
+    TOGGLE,  // flip output on qualifying edge (legacy default)
+    FOLLOW   // output mirrors input level (rising=ON, falling=OFF)
+  };
+
   struct Binding {
     std::string name;
     std::string inputDevice;
@@ -39,6 +47,7 @@ public:
     std::string outputDevice;
     std::string outputPinName;
     TriggerEdge trigger;
+    Action action;
     int debounceMs;
     bool enabled;
   };
@@ -89,9 +98,12 @@ private:
   void PollingThreadFunction();
   bool ShouldTrigger(bool prevState, bool currState, TriggerEdge edge) const;
   void ExecuteToggle(const Binding& binding);
+  void ExecuteSet(const Binding& binding, bool desiredState);
   std::string MakeInputKey(const std::string& deviceName, const std::string& pinName) const;
   void LogEvent(const std::string& message, bool isError = false);
 
   static TriggerEdge ParseTriggerEdge(const std::string& edgeStr);
   static std::string TriggerEdgeToString(TriggerEdge edge);
+  static Action ParseAction(const std::string& actionStr);
+  static std::string ActionToString(Action action);
 };

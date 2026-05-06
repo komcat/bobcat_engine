@@ -73,6 +73,7 @@ bool IoWatchManager::LoadConfig(const std::string& configPath) {
         }
 
         b.trigger = ParseTriggerEdge(bJson.value("trigger", "rising"));
+        b.action = ParseAction(bJson.value("action", "toggle"));
         b.debounceMs = bJson.value("debounce_ms", 100);
         b.enabled = bJson.value("enabled", true);
 
@@ -89,7 +90,8 @@ bool IoWatchManager::LoadConfig(const std::string& configPath) {
         }
 
         m_bindings.push_back(b);
-        LogEvent("Loaded binding: " + b.name + " (trigger=" + TriggerEdgeToString(b.trigger)
+        LogEvent("Loaded binding: " + b.name + " (action=" + ActionToString(b.action)
+                 + ", trigger=" + TriggerEdgeToString(b.trigger)
                  + ", debounce=" + std::to_string(b.debounceMs) + "ms"
                  + ", enabled=" + (b.enabled ? "yes" : "no") + ")");
       }
@@ -241,7 +243,10 @@ void IoWatchManager::PollingThreadFunction() {
 
       if (currentState == prevState) continue;
 
-      if (!ShouldTrigger(prevState, currentState, b.trigger)) continue;
+      // FOLLOW always reacts to both edges; TOGGLE honors the configured edge filter.
+      if (b.action == Action::TOGGLE && !ShouldTrigger(prevState, currentState, b.trigger)) {
+        continue;
+      }
 
       // Debounce: require elapsed time since last trigger exceeds window
       const int64_t now = NowMs();
@@ -260,7 +265,11 @@ void IoWatchManager::PollingThreadFunction() {
         continue;
       }
 
-      ExecuteToggle(b);
+      if (b.action == Action::FOLLOW) {
+        ExecuteSet(b, currentState);
+      } else {
+        ExecuteToggle(b);
+      }
 
       {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -308,6 +317,42 @@ void IoWatchManager::ExecuteToggle(const Binding& b) {
   );
 }
 
+void IoWatchManager::ExecuteSet(const Binding& b, bool desiredState) {
+  bool currentOut = false;
+  if (m_ioManager->GetOutputByName(b.outputDevice, b.outputPinName, currentOut)) {
+    if (currentOut == desiredState) {
+      // Already at desired level — skip the write but still emit so listeners stay in sync.
+      emit bindingTriggered(
+        QString::fromStdString(b.name),
+        QString::fromStdString(b.outputDevice),
+        QString::fromStdString(b.outputPinName),
+        desiredState
+      );
+      return;
+    }
+  }
+
+  const EziIOError setErr = m_ioManager->SetOutputByName(b.outputDevice, b.outputPinName, desiredState);
+  if (setErr != EziIOError::SUCCESS) {
+    const std::string msg = "'" + b.name + "': failed to set output " +
+                            b.outputDevice + ":" + b.outputPinName +
+                            " -> " + (desiredState ? "ON" : "OFF");
+    LogEvent(msg, true);
+    emit watchError(QString::fromStdString(msg));
+    return;
+  }
+
+  LogEvent("FOLLOW '" + b.name + "': " + b.outputDevice + ":" + b.outputPinName +
+           " -> " + (desiredState ? "ON" : "OFF"));
+
+  emit bindingTriggered(
+    QString::fromStdString(b.name),
+    QString::fromStdString(b.outputDevice),
+    QString::fromStdString(b.outputPinName),
+    desiredState
+  );
+}
+
 bool IoWatchManager::ShouldTrigger(bool prevState, bool currState, TriggerEdge edge) const {
   if (prevState == currState) return false;
   switch (edge) {
@@ -343,5 +388,18 @@ std::string IoWatchManager::TriggerEdgeToString(TriggerEdge edge) {
     case TriggerEdge::FALLING: return "falling";
     case TriggerEdge::BOTH:    return "both";
     default:                   return "rising";
+  }
+}
+
+IoWatchManager::Action IoWatchManager::ParseAction(const std::string& actionStr) {
+  if (actionStr == "follow" || actionStr == "FOLLOW") return Action::FOLLOW;
+  return Action::TOGGLE;
+}
+
+std::string IoWatchManager::ActionToString(Action action) {
+  switch (action) {
+    case Action::FOLLOW: return "follow";
+    case Action::TOGGLE: return "toggle";
+    default:             return "toggle";
   }
 }

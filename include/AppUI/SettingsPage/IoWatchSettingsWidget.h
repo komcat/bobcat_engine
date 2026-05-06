@@ -50,6 +50,7 @@ private:
                    const QString& outputDevice,
                    const QString& outputPin,
                    const QString& trigger,
+                   const QString& action,
                    int debounceMs);
 
   void repopulatePinCombo(int row, int pinColumn, bool isInput);
