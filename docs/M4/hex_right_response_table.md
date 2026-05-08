@@ -33,8 +33,8 @@ Compact notation: `2+4−, 6+8−` means cell 2 ↑, cell 4 ↓, cell 6 ↑, cel
 | Y−   | 1−3−, 5−7−                       | ↓(1)      | na   | ↓(3)      | na   | | ↓(5)      | na   | ↓(7)      | na   |
 | Z+   | 2+4−, 6+8+                       | na        | ↑(2) | na        | ↓(4) | | na        | ↑(6) | na        | ↑(8) |
 | Z−   | 2−4+, 6−8−                       | na        | ↓(2) | na        | ↑(4) | | na        | ↓(6) | na        | ↓(8) |
-| U+   | 2−4−, 6−8+ ; 1−3+5−7+ (sm)       | ↓sm(1)    | ↓(2) | ↑sm(3)    | ↓(4) | | ↓sm(5)    | ↓(6) | ↑sm(7)    | ↑(8) |
-| U−   | 2+4+, 6+8− ; 1+3−5+7− (sm)       | ↑sm(1)    | ↑(2) | ↓sm(3)    | ↑(4) | | ↑sm(5)    | ↑(6) | ↓sm(7)    | ↓(8) |
+| U+   | 1+3+, 5−sm                       | ↑(1)      | na   | ↑(3)      | na   | | ↓sm(5)    | na   | na        | na   |
+| U−   | 1−3−, 5+sm                       | ↓(1)      | na   | ↓(3)      | na   | | ↑sm(5)    | na   | na        | na   |
 | V+   | 2−4−, 6−8+                       | na        | ↓(2) | na        | ↓(4) | | na        | ↓(6) | na        | ↑(8) |
 | V−   | 2+4+, 6+8−                       | na        | ↑(2) | na        | ↑(4) | | na        | ↑(6) | na        | ↓(8) |
 | W+   | 2+4−, 6−8+ ; 1+3+5+7+ (A1>A2)    | ↑sm-lg(1) | ↑(2) | ↑sm(3)    | ↓(4) | | ↑sm-lg(5) | ↓(6) | ↑sm(7)    | ↑(8) |
@@ -47,7 +47,7 @@ Compact notation: `2+4−, 6+8−` means cell 2 ↑, cell 4 ↓, cell 6 ↑, cel
 | X    | translation | B0/B1 oppose within station; **A1/A2 in unison** within B-row | none | none |
 | Y    | translation | none | all four cells common-mode | none |
 | Z    | translation | B0/B1 oppose at A1; B0 == B1 at A2 | none | none |
-| U    | rotation | B0 == B1 within station; A1/A2 oppose | small Px, A1 and A2 oppose | yes — A1.z ↑ when A2.z ↓ |
+| U    | rotation | none — Py barely moves | B0-row Px ↑↑ in unison across A1/A2; B1-row Px ~na | not measured here (legacy claim from geometry) |
 | V    | rotation | B0 == B1 within station; A1/A2 same | none | none |
 | W    | rotation | B0/B1 oppose AND A1/A2 oppose | Px common-mode, A1 ≈ 2× A2 | none |
 
@@ -69,6 +69,30 @@ Walkthrough confirmed four of the six axes against real plant data. Each move be
 | 7 | A2.B1.Px | 2.624 | 2.582 | −0.042 | ↓sm | ✓ |
 | 8 | A2.B1.Py | 1.577 | 1.336 | −0.241 | ↓ | ✓ |
 
+### W− (SN 7112b Phase 2) — A1 + A2, 3-point ladder
+
+`w: 0.4633° → 0.4056°` (Δw = −0.0577° across two W− moves) from `7112b.json` `CLAUDE_full_correction` step_no `1.0` → `2.2`. U/V/X/Y/Z all frozen within ±1e−5°.
+
+| step_no | w (°) | A1.B0.Px | A1.B0.Py | A1.B1.Px | A1.B1.Py | A2.B0.Px | A2.B0.Py | A2.B1.Px | A2.B1.Py |
+|---------|------:|---------:|---------:|---------:|---------:|---------:|---------:|---------:|---------:|
+| 1.0 (baseline) | 0.4633 | −2.196 | +1.497 | −0.392 | −0.269 | −2.229 | −0.113 | −0.538 | +0.350 |
+| 2.1 | 0.4221 | −2.283 | +1.206 | −0.475 | −0.166 | −2.210 | +0.159 | −0.482 | +0.082 |
+| 2.2 | 0.4056 | −2.299 | +1.132 | −0.495 | −0.124 | −2.303 | +0.254 | −0.551 | −0.039 |
+| **Δ** (Δw=−0.0577°) | | **−0.103** | **−0.365** | **−0.103** | **+0.145** | **−0.074** | **+0.367** | **−0.013** | **−0.388** |
+
+| # | Cell | Δ | Predicted | Match |
+|---|------|---|-----------|:-----:|
+| 1 | A1.B0.Px | −0.103 | ↓sm-lg | ✓ |
+| 2 | A1.B0.Py | −0.365 | ↓ | ✓ |
+| 3 | A2.B0.Px | −0.074 | ↓sm | ✓ |
+| 4 | A2.B0.Py | +0.367 | ↑ | ✓ |
+| 5 | A1.B1.Px | −0.103 | ↓sm-lg | ✓ |
+| 6 | A1.B1.Py | +0.145 | ↑ | ✓ |
+| 7 | A2.B1.Px | −0.013 | ↓sm | ✓ |
+| 8 | A2.B1.Py | −0.388 | ↓ | ✓ |
+
+Confirms the Py double-antisymmetry (B0/B1 oppose AND A1/A2 oppose) with both stations measured at three W positions. The A1.B1.Py gain (~2.5 °/°) is notably smaller than the other three Py cells (~6.3–6.7 °/°), so the script's choice to use the **B1-row differential** `A2.B1.Py − A1.B1.Py` as the W-balance error is asymmetric: A2.B1.Py carries most of the swing.
+
 ### V+ (step 4 iter 1) — A1 only
 `v: −0.1188° → −0.0188°` (Δv = +0.100°)
 
@@ -78,6 +102,18 @@ Walkthrough confirmed four of the six axes against real plant data. Each move be
 | 2 | A1.B0.Py | 1.726 | 1.121 | −0.605 | ↓ | ✓ |
 | 5 | A1.B1.Px | 2.794 | 2.821 | +0.027 | na | ✓ |
 | 6 | A1.B1.Py | 0.047 | −0.029 | −0.076 | ↓ | ✓ |
+
+### V+ (SN 7112b Phase 3) — A2 cross-check confirms in-station common-mode
+
+Phase 3 V-zero only measures A1 in the loop, so A2's V response was not previously verified. Comparing the last A2 measurement before V (step `2.2.a2`) with the post-V A2 cross-check (step `4.f.a2`) in `7112b.json`:
+
+| | v (°) | x (mm) | A1.B0.Py | A2.B0.Py | A1.B1.Py | A2.B1.Py |
+|---|---:|---:|---:|---:|---:|---:|
+| Pre-V (2.2.a2 / 3.0) | −0.0147 | −3.3140 | +1.304 (3.0) | +0.254 | — | — |
+| Post-V (4.1.a1 / 4.f.a2) | +0.1591 | −3.3151 | +0.072 | −1.230 | — | +0.040 |
+| **Δ** (Δv=+0.174°, Δx=−1µm) | | | **−1.232** | **−1.484** | | |
+
+The Δx=−1µm contributes ≈ +0.21° to A2.B0.Py per the X− rule, so V+ alone drives A2.B0.Py by **≈ −1.69°** over Δv=+0.174° (gain ≈ 9.7 °/°). This confirms A1/A2 move in the **same direction** under V — the existing in-station common-mode rule holds at A2. **V− is therefore A1.B0.Py ↑ AND A2.B0.Py ↑ in unison**, not split.
 
 ### Y− (step 5 iter 1) — A1 only
 `y: −0.8689 → −0.8739` (Δy = −5 µm)
@@ -121,18 +157,45 @@ Cross-check from step 2 (X-zero, A1 only inside loop, A2 cross-checked at end):
 
 A1 reached its target (0); A2 picked up the same +Δ ≈ +4° and overshot zero. This is the diagnostic the user noticed — and it's expected behavior given the corrected X rule.
 
-U and Z were not isolated in this dataset and remain derived from geometry plus the legacy Z−1 µm screenshot. Mark for verification when a clean single-axis step is captured.
+### U+ (SN 7112b) — A1 + A2 measured, 4-step ladder
+
+`u: 0.176° → 0.336°` over four `step1_beam_fit` runs (step_tags `20260505_210430` → `20260505_210717` in `data/Stage main position/7112b.json`). All other axes frozen within ±0.001°.
+
+| step_tag | u (°) | A1.B0.Px | A1.B0.Py | A1.B1.Px | A1.B1.Py | A2.B0.Px | A2.B0.Py | A2.B1.Px | A2.B1.Py |
+|----------|------:|---------:|---------:|---------:|---------:|---------:|---------:|---------:|---------:|
+| 20260505_210430 | 0.176 | −0.6932 | +0.0745 | +0.0595 | +0.0087 | −0.9439 | −1.1892 | +0.0394 | −0.0971 |
+| 20260505_210507 | 0.266 | −0.5726 | +0.0974 | −0.0649 | −0.0419 | −0.6199 | −1.1426 | +0.1416 | −0.1114 |
+| 20260505_210543 | 0.306 | −0.3091 | +0.1196 | −0.0154 | −0.0023 | −0.4664 | −1.1677 | +0.1201 | −0.1724 |
+| 20260505_210717 | 0.336 | −0.1777 | +0.0689 | −0.0493 | −0.0125 | −0.4251 | −1.1673 | +0.0135 | −0.1473 |
+| **Δ** (Δu=+0.160°) |  | **+0.516** | −0.006 | −0.109 | −0.021 | **+0.519** | +0.022 | −0.026 | −0.050 |
+
+| # | Cell | Δ | Predicted (corrected) | Match |
+|---|------|---|-----------|:-----:|
+| 1 | A1.B0.Px | +0.516 | ↑ | ✓ |
+| 2 | A1.B0.Py | −0.006 | na | ✓ (corrected from ↓) |
+| 3 | A2.B0.Px | +0.519 | ↑ | ✓ (corrected from ↑sm) |
+| 4 | A2.B0.Py | +0.022 | na | ✓ (corrected from ↓) |
+| 5 | A1.B1.Px | −0.109 | ↓sm | ✓ |
+| 6 | A1.B1.Py | −0.021 | na | ✓ (corrected from ↓) |
+| 7 | A2.B1.Px | −0.026 | na | ✓ (corrected from ↑sm) |
+| 8 | A2.B1.Py | −0.050 | na | ✓ (corrected from ↑) |
+
+The B0-row Px gain is **~3.2 °/°** at both A1 and A2 — i.e. U+ is **A1/A2 common-mode on B0 Px**, not the antisymmetric tilt the geometric derivation predicted. Py is essentially flat (|Δ| < 0.06° at all four cells). The original U row was derived from geometry without isolated-axis data; this measurement supersedes it.
+
+**Implication:** U is the only axis that drives B0-row Px without touching B1-row Px. It is **orthogonal to Y on Px** (Y is full common-mode across both rows; U is B0-only). If a residual leaves B0 Px off-zero after Y zeroes the global Px average, U is the only single-axis lever. The current `CLAUDE_step_all.lua` does not move U and so cannot fix this residual.
+
+Z was not isolated in this dataset and remains derived from geometry plus the legacy Z−1 µm screenshot. Mark for verification when a clean single-axis step is captured.
 
 ## Use in correction solving
 
 The plant condition number for SN 7112 was ≈ 80 with axes X, Y, U, V, W (Z dropped — no span). The signatures above are the structural reason:
 
-- **Y is fully orthogonal** to every other axis — no other move touches Px common-mode the same way.
-- **V and U are nearly degenerate on Py** — disambiguated only by U's A2-Px nudge and the A1/A2 Z differential.
+- **Y is full Px common-mode** (B0 + B1, A1 + A2 all together), but **U is B0-only Px common-mode** (B0 ↑↑, B1 ~na). They are **orthogonal in Px space**, not degenerate.
+- **V is the in-station Py axis** — drives B0/B1 the same direction at one station; not degenerate with U because U barely touches Py at all.
 - **W is uniquely identifiable** by the Py double-antisymmetry (B0/B1 oppose AND A1/A2 oppose).
 - **X and Z share the Py B0/B1-antisymmetry within station** but differ across A1/A2: X keeps A1/A2 in unison (common-mode across stations), while Z keeps the antisymmetry there too.
 
-Solver implication: project the residual onto each signature in this order — Y first (cleanest), then W, then U/V (resolved by A2.Px or Z differential), then X/Z (resolved by A1/A2 sign pattern).
+Solver implication: project the residual onto each signature in this order — W first (only axis that balances A1/A2), then V (in-station Py common-mode), then X (Py B0/B1 differential), then Y (full Px common-mode), then U (B0-only Px residual). Z is redundant given the other five.
 
 ## Pipeline strategy — rotations balance, translations zero
 
@@ -142,7 +205,7 @@ Each axis can only fix the differentials it spans. Knowing which axis is "balanc
 |------|:-----:|:-----:|------|
 | **W** (rot) | antisymm | antisymm | balancer for A2.Py − A1.Py differential |
 | **V** (rot) | symm  | symm  | in-station Py common-mode (zeros B0, B1 follows) |
-| **U** (rot) | antisymm | symm  | tilt — Z differential, weak Py |
+| **U** (rot) | symm  | antisymm on Px | B0-row Px common-mode — orthogonal to Y; only lever for B0-only Px residuals |
 | **X** (trans) | symm  | antisymm | B0/B1 Py differential — but cannot balance A1/A2 |
 | **Y** (trans) | symm  | symm  | global Px common-mode |
 | **Z** (trans) | mixed | antisymm at A1, symm at A2 | not currently used |
@@ -199,6 +262,26 @@ The scripts assume **0.15 °/µm** for translation→Poynt sensitivity. SN 7112 
 | Y− → A1.B1.Px | 0.15 | 0.29 | post-step-5 1 µm test |
 | Y− → A2.B0.Px | 0.15 | 0.24 | post-step-5 1 µm test |
 | Y− → A2.B1.Px | 0.15 | 0.26 | post-step-5 1 µm test |
+
+Rotation gains from the SN 7112b isolation ladders:
+
+| Move | Empirical (°/°) | Notes |
+|------|----------------:|-------|
+| U+ → A1.B0.Px | ~3.2 | 4-step ladder, Δu=+0.16° |
+| U+ → A2.B0.Px | ~3.2 | 4-step ladder, Δu=+0.16° |
+| U+ → A1.B1.Px | ~−0.7 | small cross-coupling |
+| U+ → A2.B1.Px | ~−0.2 | near noise floor |
+| W− → A1.B0.Py | +6.3 | Phase 2 3-pt ladder, Δw=−0.058° |
+| W− → A2.B0.Py | −6.4 | opposite sign — A1/A2 antisymm |
+| W− → A1.B1.Py | −2.5 | smaller — see note below |
+| W− → A2.B1.Py | +6.7 | dominant cell at B1 |
+| V+ → A1.B0.Py | ~−6.1 | step4 iter1 (Δv=+0.10°) |
+| V+ → A2.B0.Py | ~−9.7 | Phase 3 cross-check (Δv=+0.17°, X-corrected) |
+| V+ → A1.B1.Py | ~−0.8 | small in-station coupling |
+
+**W asymmetry note:** A1.B1.Py (~2.5 °/°) carries about 40% of the swing the other three Py cells get (~6.3–6.7 °/°). The script uses `A2.B1.Py − A1.B1.Py` as the W-balance error → effective differential gain ≈ 9.2 °/°, vs. the script's conservative `W_SENSITIVITY_DEG_PER_DEG = 15.0`. A more accurate constant would converge in fewer iterations; current value is safe but slow.
+
+**V A1/A2 asymmetry:** A2.B0.Py gain (~9.7 °/°) is ~60% larger than A1.B0.Py (~6.1 °/°). The script controls on A1 only, so this just means A2 over-corrects — fine because Phase 2 (W) already balanced A1↔A2, and V is then applied symmetrically.
 
 **Y gain is asymmetric across stations:** A1 ≈ 0.33 °/µm, A2 ≈ 0.25 °/µm (A1 is ~30 % higher). Step 5 controls on A1 only, so this doesn't affect convergence at A1, but it explains why A2 always sits with a larger Px residual after step 5 completes.
 
