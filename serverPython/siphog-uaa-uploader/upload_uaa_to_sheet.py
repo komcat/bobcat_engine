@@ -19,6 +19,7 @@ import sys
 from pathlib import Path
 
 from dateutil import parser as date_parser
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -54,9 +55,16 @@ def authorize() -> gspread.Client:
     if TOKEN_FILE.exists():
         creds = Credentials.from_authorized_user_file(str(TOKEN_FILE), SCOPES)
     if not creds or not creds.valid:
+        refreshed = False
         if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
-        else:
+            try:
+                creds.refresh(Request())
+                refreshed = True
+            except RefreshError:
+                # Refresh token revoked or expired (Google "Testing" apps expire
+                # refresh tokens after 7 days). Fall through to re-auth.
+                creds = None
+        if not refreshed:
             if not CRED_FILE.exists():
                 sys.exit(
                     f"ERROR: {CRED_FILE} not found. See setup notes in file header."
