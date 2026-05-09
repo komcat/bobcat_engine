@@ -6,6 +6,10 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QScrollArea>
+#include <QCheckBox>
+#include <QMenu>
+#include <QInputDialog>
+#include <QSettings>
 
 // ============================================================================
 // OutputButton Implementation
@@ -21,12 +25,35 @@ OutputButton::OutputButton(const QString& displayName, size_t index, QWidget* pa
   layout->setContentsMargins(2, 2, 2, 2);
   layout->setSpacing(2);
 
+  // Top mini-row: right-aligned momentary checkbox.
+  QHBoxLayout* topRow = new QHBoxLayout();
+  topRow->setContentsMargins(0, 0, 0, 0);
+  topRow->setSpacing(0);
+  topRow->addStretch();
+  m_momentaryCheck = new QCheckBox("Mom");
+  m_momentaryCheck->setToolTip(
+    "Momentary mode — when checked, clicking pulses ON for the dwell time then OFF.\n"
+    "Right-click the button below to set the dwell time (ms).");
+  m_momentaryCheck->setStyleSheet(
+    "QCheckBox { color: #cccccc; font-size: 10px; spacing: 3px; }"
+    "QCheckBox::indicator { width: 12px; height: 12px; }");
+  connect(m_momentaryCheck, &QCheckBox::toggled, this, [this](bool on) {
+    m_momentaryEnabled = on;
+    emit momentaryToggled(m_index, on);
+  });
+  topRow->addWidget(m_momentaryCheck);
+  layout->addLayout(topRow);
+
   // Main toggle button
   m_button = new QPushButton(displayName);
   m_button->setMinimumHeight(40);
   m_button->setCheckable(false);
   connect(m_button, &QPushButton::clicked, this, [this]() {
     emit clicked(m_index);
+  });
+  m_button->setContextMenuPolicy(Qt::CustomContextMenu);
+  connect(m_button, &QWidget::customContextMenuRequested, this, [this](const QPoint& pos) {
+    emit contextMenuRequested(m_index, m_button->mapToGlobal(pos));
   });
   layout->addWidget(m_button);
 
@@ -44,6 +71,26 @@ OutputButton::OutputButton(const QString& displayName, size_t index, QWidget* pa
   layout->addWidget(m_statusLabel);
 
   updateStyle();
+}
+
+void OutputButton::setMomentaryEnabled(bool on)
+{
+  m_momentaryEnabled = on;
+  if (m_momentaryCheck && m_momentaryCheck->isChecked() != on) {
+    QSignalBlocker blocker(m_momentaryCheck);  // avoid re-emitting momentaryToggled
+    m_momentaryCheck->setChecked(on);
+  }
+}
+
+void OutputButton::setDwellMs(int ms)
+{
+  if (ms < 0) ms = 0;
+  m_dwellMs = ms;
+  if (m_momentaryCheck) {
+    m_momentaryCheck->setToolTip(
+      QString("Momentary mode — when checked, clicking pulses ON for %1 ms then OFF.\n"
+              "Right-click the button below to change the dwell time.").arg(m_dwellMs));
+  }
 }
 
 void OutputButton::setOutputState(bool isOn, bool isValid)
@@ -135,6 +182,20 @@ void OutputButton::updateStyle()
 // ============================================================================
 // QuickOutputWidget Implementation
 // ============================================================================
+
+namespace {
+// Stable per-pin settings key. Uses pinNumber when available (the configured
+// case for everything in quick_outputs.json today), otherwise falls back to
+// pinName. Trailing slash so callers append "momentary" / "dwellMs".
+QString settingsKey(const OutputPinDefinition& def) {
+  QString id = (def.pinNumber >= 0)
+    ? QString::number(def.pinNumber)
+    : QString::fromStdString(def.pinName);
+  return QString("QuickOutput/%1:%2/")
+           .arg(QString::fromStdString(def.deviceName))
+           .arg(id);
+}
+}  // namespace
 
 QuickOutputWidget::QuickOutputWidget(QuickOutputManager* manager, QWidget* parent)
   : QWidget(parent)
@@ -307,6 +368,8 @@ void QuickOutputWidget::createOutputButtons()
   // Create buttons in grid (3 columns)
   const int columns = 3;
 
+  QSettings settings("Fabrinet", "BobcatEngine");
+
   for (size_t i = 0; i < pinCount; ++i) {
     const OutputPinDefinition* pinDef = m_manager->GetPinDefinition(i);
     if (!pinDef) {
@@ -316,7 +379,14 @@ void QuickOutputWidget::createOutputButtons()
     QString displayName = QString::fromStdString(pinDef->displayName);
     OutputButton* button = new OutputButton(displayName, i, this);
 
+    // Restore persisted momentary settings for this pin.
+    const QString keyBase = settingsKey(*pinDef);
+    button->setMomentaryEnabled(settings.value(keyBase + "momentary", false).toBool());
+    button->setDwellMs(settings.value(keyBase + "dwellMs", 0).toInt());
+
     connect(button, &OutputButton::clicked, this, &QuickOutputWidget::onOutputButtonClicked);
+    connect(button, &OutputButton::momentaryToggled, this, &QuickOutputWidget::onMomentaryToggled);
+    connect(button, &OutputButton::contextMenuRequested, this, &QuickOutputWidget::onOutputContextMenu);
 
     int row = static_cast<int>(i) / columns;
     int col = static_cast<int>(i) % columns;
@@ -348,7 +418,38 @@ void QuickOutputWidget::onOutputButtonClicked(size_t index)
     return;
   }
 
-  // Toggle the output
+  // Momentary path: ON now, OFF after dwell. Reuses the same QTimer::singleShot
+  // pattern already used by this widget for delayed status updates.
+  OutputButton* btn = (index < m_outputButtons.size()) ? m_outputButtons[index] : nullptr;
+  if (btn && btn->isMomentaryEnabled()) {
+    EziIOError onErr = m_manager->TurnOn(index);
+    if (onErr != EziIOError::SUCCESS) {
+      m_statusLabel->setText(QString("Error: %1").arg(QString::fromStdString(GetErrorString(onErr))));
+      return;
+    }
+    updateOutputStatuses();
+    OutputPinStatus status = m_manager->GetPinStatus(index);
+    emit outputToggled(index, true);
+    m_statusLabel->setText(QString("Output %1: pulse %2 ms")
+      .arg(QString::fromStdString(status.displayName))
+      .arg(btn->dwellMs()));
+
+    int dwell = btn->dwellMs();
+    if (dwell < 0) dwell = 0;
+    QTimer::singleShot(dwell, this, [this, index]() {
+      if (m_manager) {
+        EziIOError offErr = m_manager->TurnOff(index);
+        if (offErr != EziIOError::SUCCESS) {
+          m_statusLabel->setText(QString("Error: %1").arg(QString::fromStdString(GetErrorString(offErr))));
+        }
+      }
+      updateOutputStatuses();
+      emit outputToggled(index, false);
+    });
+    return;
+  }
+
+  // Latching (existing) path: toggle on click.
   EziIOError error = m_manager->ToggleOutput(index);
 
   if (error == EziIOError::SUCCESS) {
@@ -370,6 +471,57 @@ void QuickOutputWidget::onOutputButtonClicked(size_t index)
   }
   else {
     m_statusLabel->setText(QString("Error: %1").arg(QString::fromStdString(GetErrorString(error))));
+  }
+}
+
+void QuickOutputWidget::onMomentaryToggled(size_t index, bool enabled)
+{
+  if (!m_manager) return;
+  const OutputPinDefinition* pinDef = m_manager->GetPinDefinition(index);
+  if (!pinDef) return;
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.setValue(settingsKey(*pinDef) + "momentary", enabled);
+}
+
+void QuickOutputWidget::onOutputContextMenu(size_t index, QPoint globalPos)
+{
+  if (!m_manager) return;
+  if (index >= m_outputButtons.size()) return;
+  const OutputPinDefinition* pinDef = m_manager->GetPinDefinition(index);
+  if (!pinDef) return;
+
+  OutputButton* btn = m_outputButtons[index];
+
+  QMenu menu;
+  QAction* setDwell = menu.addAction("Set dwell time…");
+  QAction* clearDwell = menu.addAction("Reset (momentary off, dwell 0)");
+  QAction* chosen = menu.exec(globalPos);
+  if (!chosen) return;
+
+  QSettings settings("Fabrinet", "BobcatEngine");
+  const QString keyBase = settingsKey(*pinDef);
+
+  if (chosen == setDwell) {
+    bool ok = false;
+    int newDwell = QInputDialog::getInt(
+      this,
+      "Momentary Dwell",
+      QString("Dwell time for '%1' (ms):")
+        .arg(QString::fromStdString(pinDef->displayName)),
+      btn->dwellMs(),  // current
+      0,               // min
+      60000,           // max — 60 s ceiling, plenty for any momentary pulse
+      1,               // step
+      &ok);
+    if (!ok) return;
+    btn->setDwellMs(newDwell);
+    settings.setValue(keyBase + "dwellMs", newDwell);
+  }
+  else if (chosen == clearDwell) {
+    btn->setMomentaryEnabled(false);
+    btn->setDwellMs(0);
+    settings.setValue(keyBase + "momentary", false);
+    settings.setValue(keyBase + "dwellMs", 0);
   }
 }
 

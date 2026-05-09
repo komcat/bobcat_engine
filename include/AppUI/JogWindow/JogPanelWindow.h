@@ -14,6 +14,7 @@
 #include <future>
 
 class QSpinBox;
+class QVBoxLayout;
 
 class TransformationMatrixLoader;
 class CoordinateTransformer;
@@ -87,6 +88,16 @@ private:
   void createJogTab();
   void createQuickOutputTab();
   void createLightingTab();
+  void createMovPosTab();
+  void rebuildMovPosDeviceList();
+  void onMovPosDeviceSelected();
+  void onMovPosSlotClicked(int slotIndex);
+  void onMovPosSlotContextMenu(int slotIndex, const QPoint& globalPos);
+  void clearMovPosSlot(int slotIndex);
+  void refreshMovPosSlotLabels();
+  double defaultVelocityForDevice(const std::string& deviceName) const;
+  void applyDefaultVelocityFor(const std::string& deviceName);
+  QString movPosSlotSettingsKey(const std::string& deviceName, int slotIndex) const;
   void createDevicePanel(QWidget* parent);
   void createVelocityPanel(QWidget* parent);
   void createStepSizePanel(QWidget* parent);
@@ -122,6 +133,7 @@ private:
   QLabel* m_currentStepLabel;
   QGroupBox* m_deviceGroupBox;  // ✅ NEW: Store device panel for refresh
   QWidget* m_devicePanelParent;  // ✅ NEW: Store parent widget for refresh
+  QVBoxLayout* m_deviceListLayout = nullptr;  // Inner layout (inside scroll area) holding device buttons
 
   // Movement buttons
   QPushButton* m_btnXPlus;
@@ -162,6 +174,16 @@ private:
   // Velocity preset widgets
   QWidget* m_velocityPresetsWidget;
   QList<QPushButton*> m_velocityButtons;
+  QLabel* m_currentVelocityLabel = nullptr;
+  double m_currentVelocity = -1.0;  // -1 means "unknown / not set via this UI"
+
+  // MovPos tab
+  QWidget* m_movPosWidget = nullptr;
+  QButtonGroup* m_movPosDeviceGroup = nullptr;
+  QVBoxLayout* m_movPosDeviceListLayout = nullptr;
+  std::string m_movPosSelectedDevice;
+  std::vector<QPushButton*> m_movPosSlotButtons;
+  static constexpr int kMovPosSlotCount = 10;  // 2 cols × 5 rows
 
   // State
   std::string m_selectedDevice;
