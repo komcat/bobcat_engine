@@ -17,7 +17,7 @@ struct ApplicationContext;
  * @brief UI for editing io_watch.local.json bindings with hot reload.
  *
  * Columns: Enabled | Name | Input Device | Input Pin | Output Device |
- *          Output Pin | Trigger | Debounce(ms) | Remove
+ *          Output Pin | Trigger | Behavior | Debounce(ms) | Remove
  *
  * Device combos are populated from EziIOManager::GetAllDeviceNames().
  * Pin combos follow device selection (GetAllInputPinNames / GetAllOutputPinNames).
@@ -50,6 +50,7 @@ private:
                    const QString& outputDevice,
                    const QString& outputPin,
                    const QString& trigger,
+                   const QString& behavior,
                    int debounceMs);
 
   void repopulatePinCombo(int row, int pinColumn, bool isInput);

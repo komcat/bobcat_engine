@@ -7,6 +7,7 @@
       "input":  { "device": "IOTop",    "pin_name": "Signal from switch 1" },
       "output": { "device": "IOBottom", "pin_name": "Vacuum Base" },
       "trigger": "rising",
+      "behavior": "toggle",
       "debounce_ms": 100,
       "enabled": true
     },
@@ -15,6 +16,7 @@
       "input":  { "device": "IOTop",    "pin_name": "Signal from switch 2" },
       "output": { "device": "IOBottom", "pin_name": "R Gripper Open/Close" },
       "trigger": "rising",
+      "behavior": "toggle",
       "debounce_ms": 100,
       "enabled": true
     }

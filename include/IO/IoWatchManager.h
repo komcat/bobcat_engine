@@ -16,8 +16,9 @@ class LogManager;
  * @brief Manual-override IO watch layer.
  *
  * Background thread that polls configured input pins and, on a triggering edge,
- * toggles a bound output pin (OFF -> ON, ON -> OFF). Per-binding debounce
- * suppresses switch bounce.
+ * executes a configurable action on a bound output pin. Actions: toggle (flip),
+ * set_on (always ON), set_off (always OFF), momentary (ON while held).
+ * Per-binding debounce suppresses switch bounce.
  *
  * This is a pure background override — it does not interact with the recipe
  * system or the safety cascade.
@@ -32,6 +33,13 @@ public:
     BOTH
   };
 
+  enum class BehaviorAction {
+    TOGGLE,     // Flip output state (default)
+    SET_ON,     // Always set output ON
+    SET_OFF,    // Always set output OFF
+    MOMENTARY   // ON while input active, OFF when released
+  };
+
   struct Binding {
     std::string name;
     std::string inputDevice;
@@ -39,6 +47,7 @@ public:
     std::string outputDevice;
     std::string outputPinName;
     TriggerEdge trigger;
+    BehaviorAction behavior = BehaviorAction::TOGGLE;
     int debounceMs;
     bool enabled;
   };
@@ -88,10 +97,12 @@ private:
 
   void PollingThreadFunction();
   bool ShouldTrigger(bool prevState, bool currState, TriggerEdge edge) const;
-  void ExecuteToggle(const Binding& binding);
+  void ExecuteAction(const Binding& binding, bool inputState);
   std::string MakeInputKey(const std::string& deviceName, const std::string& pinName) const;
   void LogEvent(const std::string& message, bool isError = false);
 
   static TriggerEdge ParseTriggerEdge(const std::string& edgeStr);
   static std::string TriggerEdgeToString(TriggerEdge edge);
+  static BehaviorAction ParseBehavior(const std::string& behaviorStr);
+  static std::string BehaviorToString(BehaviorAction behavior);
 };
