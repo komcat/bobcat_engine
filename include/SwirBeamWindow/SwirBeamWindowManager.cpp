@@ -173,8 +173,18 @@ void SwirBeamWindowManager::saveWindowGeometry()
 {
     if (!m_window || !m_window->GetHwnd()) return;
     HWND hwnd = m_window->GetHwnd();
+    // Use GetWindowPlacement so we record the "restored" frame even when the
+    // window is currently minimized or maximized — GetWindowRect on a minimized
+    // window returns Windows' iconic (~-32000,-32000) coordinates, which would
+    // make the next launch open off-screen.
+    WINDOWPLACEMENT wp{};
+    wp.length = sizeof(wp);
     RECT rect;
-    GetWindowRect(hwnd, &rect);
+    if (GetWindowPlacement(hwnd, &wp)) {
+        rect = wp.rcNormalPosition;
+    } else {
+        GetWindowRect(hwnd, &rect);
+    }
     QSettings settings("Fabrinet", "BobcatEngine");
     settings.setValue("SwirBeamWindow/x", static_cast<int>(rect.left));
     settings.setValue("SwirBeamWindow/y", static_cast<int>(rect.top));
@@ -186,11 +196,35 @@ void SwirBeamWindowManager::saveWindowGeometry()
 void SwirBeamWindowManager::loadWindowGeometry()
 {
     QSettings settings("Fabrinet", "BobcatEngine");
-    if (settings.contains("SwirBeamWindow/x")) {
-        m_initialX = settings.value("SwirBeamWindow/x", 100).toInt();
-        m_initialY = settings.value("SwirBeamWindow/y", 100).toInt();
-        m_initialWidth = settings.value("SwirBeamWindow/width", 1200).toInt();
-        m_initialHeight = settings.value("SwirBeamWindow/height", 700).toInt();
-        m_restoreVisible = settings.value("SwirBeamWindow/visible", false).toBool();
+    if (!settings.contains("SwirBeamWindow/x")) return;
+
+    int x = settings.value("SwirBeamWindow/x", 100).toInt();
+    int y = settings.value("SwirBeamWindow/y", 100).toInt();
+    int w = settings.value("SwirBeamWindow/width", 1200).toInt();
+    int h = settings.value("SwirBeamWindow/height", 700).toInt();
+
+    // Guard against unusable saved geometry (off-screen position from a
+    // disconnected monitor, or iconic coords from a minimized window written
+    // by older builds). If the rect's center isn't on any active monitor, or
+    // the size is too small to be usable, fall back to defaults.
+    constexpr int kMinW = 400;
+    constexpr int kMinH = 300;
+    if (w < kMinW) w = 1200;
+    if (h < kMinH) h = 700;
+
+    POINT center{ x + w / 2, y + h / 2 };
+    HMONITOR mon = MonitorFromPoint(center, MONITOR_DEFAULTTONULL);
+    if (!mon) {
+        // Center the default rect on the primary monitor's work area.
+        RECT wa{};
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+        x = wa.left + ((wa.right - wa.left) - w) / 2;
+        y = wa.top  + ((wa.bottom - wa.top) - h) / 2;
     }
+
+    m_initialX = x;
+    m_initialY = y;
+    m_initialWidth = w;
+    m_initialHeight = h;
+    m_restoreVisible = settings.value("SwirBeamWindow/visible", false).toBool();
 }
