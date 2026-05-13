@@ -382,6 +382,7 @@ private:
     std::mutex m_detectionMutex;
     std::condition_variable m_detectionCV;
     std::vector<uint8_t> m_detectionBuffer;
+    std::vector<uint8_t> m_detectionWorkBuffer;  // detection-thread-only; swapped with m_detectionBuffer to avoid per-frame alloc
     uint32_t m_detectionWidth = 0;
     uint32_t m_detectionHeight = 0;
     std::atomic<bool> m_detectionReady{false};

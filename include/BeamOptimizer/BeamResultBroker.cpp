@@ -15,17 +15,21 @@ void BeamResultBroker::Publish(const std::vector<BeamDetectionResult>& results)
 {
     if (m_shuttingDown.load()) return;
 
+    // Wrap once into an immutable shared snapshot. Subscribers get the same
+    // shared_ptr — no per-subscriber deep copy of profile vectors.
+    auto snapshot = std::make_shared<const std::vector<BeamDetectionResult>>(results);
+
     // Copy subscribers under lock, then invoke outside lock
     std::vector<Subscription> subs;
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_latestResults = results;
+        m_latestResults = snapshot;
         subs = m_subscribers;
     }
 
     for (const auto& sub : subs) {
         if (sub.callback) {
-            sub.callback(results);
+            sub.callback(snapshot);
         }
     }
 }
@@ -47,7 +51,7 @@ void BeamResultBroker::Unsubscribe(uint32_t subscriptionId)
         m_subscribers.end());
 }
 
-std::vector<BeamDetectionResult> BeamResultBroker::GetLatestResults() const
+BeamResultBroker::BeamResultsPtr BeamResultBroker::GetLatestResults() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
     return m_latestResults;
@@ -56,5 +60,5 @@ std::vector<BeamDetectionResult> BeamResultBroker::GetLatestResults() const
 bool BeamResultBroker::HasResults() const
 {
     std::lock_guard<std::mutex> lock(m_mutex);
-    return !m_latestResults.empty();
+    return m_latestResults && !m_latestResults->empty();
 }

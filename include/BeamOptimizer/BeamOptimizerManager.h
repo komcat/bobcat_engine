@@ -6,13 +6,13 @@
 
 #include "common/ErrorCode.h"
 #include "SwirBeamWindow/SwirBeamDetector.h"
+#include "BeamResultBroker.h"
 #include <atomic>
 #include <cstdint>
 #include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
-class BeamResultBroker;
 class CameraManager;
 class LogManager;
 class PowerSupplyManager;
@@ -75,7 +75,7 @@ public:
     [[nodiscard]] ErrorCode ReadPSUCurrent(double& outMilliamps);
 
 private:
-    void OnBeamResultsUpdated(const std::vector<BeamDetectionResult>& results);
+    void OnBeamResultsUpdated(const BeamResultBroker::BeamResultsPtr& results);
     void AutoDiscoverPSU();
 
     UnifiedMotionManager* m_motionManager = nullptr;
@@ -87,7 +87,7 @@ private:
 
     BeamOptimizerConfig m_config;
     mutable std::mutex m_resultsMutex;
-    std::vector<BeamDetectionResult> m_latestResults;
+    BeamResultBroker::BeamResultsPtr m_latestResults;  // shared snapshot, no deep copy on update
     std::atomic<bool> m_initialized{false};
     std::atomic<bool> m_shuttingDown{false};
 };

@@ -2717,32 +2717,36 @@ void SwirBeamWindow::StartDetectionThread()
             if (m_detectionShutdown.load()) break;
             if (!m_detectionReady.load()) continue;
 
-            // Copy buffer locally
-            std::vector<uint8_t> localBuffer;
+            // Hand the producer buffer to the worker via swap to avoid a per-frame
+            // alloc+memcpy of the full grayscale image (~1-4 MB at 10 FPS was a
+            // major source of heap churn). m_detectionWorkBuffer keeps the prior
+            // frame's capacity for reuse; OnNewFrame will resize m_detectionBuffer
+            // back to the correct size on the next arrival.
             uint32_t localW = 0, localH = 0;
             {
                 std::lock_guard<std::mutex> lock(m_detectionMutex);
-                localBuffer = m_detectionBuffer;
+                std::swap(m_detectionWorkBuffer, m_detectionBuffer);
                 localW = m_detectionWidth;
                 localH = m_detectionHeight;
                 m_detectionReady.store(false);
             }
 
-            if (localBuffer.empty() || localW == 0 || localH == 0) continue;
+            if (m_detectionWorkBuffer.empty() || localW == 0 || localH == 0) continue;
 
             // Run detection on single frame (raw, no averaging).
             // Mode priority: Halcon > Blob > D4sigma (toggled via JSON config).
             std::vector<BeamDetectionResult> results;
             const auto detectStart = std::chrono::steady_clock::now();
+            const uint8_t* workData = m_detectionWorkBuffer.data();
 #ifdef HAS_HALCON
             if (m_useHalconDetection) {
-                results = RunHalconBeamDetection(localBuffer.data(), localW, localH, m_halconConfig);
+                results = RunHalconBeamDetection(workData, localW, localH, m_halconConfig);
             } else
 #endif
             if (m_useBlobDetection) {
-                results = RunBlobDetection(localBuffer.data(), localW, localH, m_blobConfig);
+                results = RunBlobDetection(workData, localW, localH, m_blobConfig);
             } else {
-                results = RunBeamDetection(localBuffer.data(), localW, localH, m_beamConfig);
+                results = RunBeamDetection(workData, localW, localH, m_beamConfig);
             }
             const double detectMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - detectStart).count();

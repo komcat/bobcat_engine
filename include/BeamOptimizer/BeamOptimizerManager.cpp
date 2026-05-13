@@ -23,7 +23,7 @@ ErrorCode BeamOptimizerManager::Initialize()
 
     // Subscribe to beam results
     m_brokerSubscriptionId = m_broker->Subscribe(
-        [this](const std::vector<BeamDetectionResult>& results) {
+        [this](const BeamResultBroker::BeamResultsPtr& results) {
             OnBeamResultsUpdated(results);
         });
 
@@ -57,7 +57,7 @@ void BeamOptimizerManager::Shutdown()
     // Clear cached results
     {
         std::lock_guard<std::mutex> lock(m_resultsMutex);
-        m_latestResults.clear();
+        m_latestResults.reset();
     }
 
     m_initialized.store(false);
@@ -84,9 +84,9 @@ void BeamOptimizerManager::SetHexDevice(const std::string& deviceId)
 
 // --- Beam results ---
 
-void BeamOptimizerManager::OnBeamResultsUpdated(const std::vector<BeamDetectionResult>& results)
+void BeamOptimizerManager::OnBeamResultsUpdated(const BeamResultBroker::BeamResultsPtr& results)
 {
-    // Runs on detection thread — fast copy only, no hardware calls
+    // Runs on detection thread — refcount bump only, no deep copy.
     if (m_shuttingDown.load()) return;
     std::lock_guard<std::mutex> lock(m_resultsMutex);
     m_latestResults = results;
@@ -94,14 +94,23 @@ void BeamOptimizerManager::OnBeamResultsUpdated(const std::vector<BeamDetectionR
 
 std::vector<BeamDetectionResult> BeamOptimizerManager::GetLatestBeamResults() const
 {
-    std::lock_guard<std::mutex> lock(m_resultsMutex);
-    return m_latestResults;
+    BeamResultBroker::BeamResultsPtr snapshot;
+    {
+        std::lock_guard<std::mutex> lock(m_resultsMutex);
+        snapshot = m_latestResults;
+    }
+    return snapshot ? *snapshot : std::vector<BeamDetectionResult>{};
 }
 
 std::optional<BeamDetectionResult> BeamOptimizerManager::GetBeamByLabel(const std::string& label) const
 {
-    std::lock_guard<std::mutex> lock(m_resultsMutex);
-    for (const auto& result : m_latestResults) {
+    BeamResultBroker::BeamResultsPtr snapshot;
+    {
+        std::lock_guard<std::mutex> lock(m_resultsMutex);
+        snapshot = m_latestResults;
+    }
+    if (!snapshot) return std::nullopt;
+    for (const auto& result : *snapshot) {
         if (result.label == label) return result;
     }
     return std::nullopt;
