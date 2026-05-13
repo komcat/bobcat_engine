@@ -81,6 +81,11 @@ struct HalconBeamDetectionConfig {
     double widthFactor     = 2.5;    // ROI half-width factor for crop bounds
     uint8_t saturationValue = 255;
     double micronsPerPixel = 0.17;
+    // Run mean/threshold/connection stage on a 1/N-resolution copy of the
+    // image to cut CPU. Centroid coords are mapped back to full-res for
+    // display and downstream measurements. 1 = full-res, 2 = half-res
+    // (~4x cheaper, ~0.5px less centroid precision in source units).
+    int detectionDownsample = 1;
     GaQuadrantLabels gaLabels;
 };
 

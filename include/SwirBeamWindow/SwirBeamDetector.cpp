@@ -765,15 +765,33 @@ std::vector<BeamDetectionResult> RunHalconBeamDetection(
         const Hlong W = static_cast<Hlong>(w);
         const Hlong H = static_cast<Hlong>(h);
 
+        HImage imageFull;
+        imageFull.GenImage1("byte", W, H, static_cast<void*>(const_cast<uint8_t*>(grayData)));
+
+        // Optional 1/ds downsample for the find-the-beam stage. Centroid coords
+        // are scaled back to full-res before being returned; per-beam intensity
+        // measurements below still run against the full-res grayData buffer.
+        const int ds = std::max(1, config.detectionDownsample);
         HImage image;
-        image.GenImage1("byte", W, H, static_cast<void*>(const_cast<uint8_t*>(grayData)));
+        Hlong Wd = W, Hd = H;
+        if (ds > 1) {
+            ZoomImageFactor(imageFull, &image, 1.0 / ds, 1.0 / ds, "constant");
+            HTuple wTup, hTup, typeTup;
+            GetImageSize(image, &wTup, &hTup);
+            Wd = wTup.L();
+            Hd = hTup.L();
+        } else {
+            image = imageFull;
+        }
 
         // 1+2: local-mean background subtract (matches HDevelop mean_image+sub_image).
         // Skip when bgKernelSize <= 0 to allow A/B testing without bg sub.
+        // Kernel scales with the detection grid so the smoothing footprint in
+        // source pixels stays roughly constant.
         HImage signalByte;
         if (config.bgKernelSize > 0) {
             HImage meanBg;
-            int k = config.bgKernelSize | 1;  // ensure odd
+            int k = std::max(3, (config.bgKernelSize / ds)) | 1;  // ensure odd, min 3
             // MeanImage signature: (mask_w, mask_h)
             MeanImage(image, &meanBg, k, k);
             // SubImage(image1, image2, &result, mult, add) computes mult*(image1-image2)+add
@@ -788,22 +806,28 @@ std::vector<BeamDetectionResult> RunHalconBeamDetection(
         Threshold(signalByte, &bright, static_cast<double>(config.noiseThreshold), 255.0);
 
         // 4: connection + area filter (HDev: only MinBeamArea, no max).
+        // minBeamArea is in source-pixel units; divide by ds^2 for the
+        // downsampled grid so configs stay invariant to ds.
         HRegion connected;
         Connection(bright, &connected);
         HRegion candidates;
+        const double minAreaDetect =
+            std::max(1.0, static_cast<double>(config.minBeamArea) / (ds * ds));
         SelectShape(connected, &candidates, "area", "and",
-                    static_cast<double>(config.minBeamArea),
+                    minAreaDetect,
                     1.0e9);
 
         Hlong numCand = candidates.CountObj();
         if (numCand == 0) return {};
 
         // Real-valued signal image and coordinate images for moment math.
+        // Coordinate surfaces live in the detection grid; centroids are
+        // scaled back to source pixels right before populating results.
         HImage signalReal;
         ConvertImageType(signalByte, &signalReal, "real");
         HImage rowImg, colImg;
-        GenImageSurfaceFirstOrder(&rowImg, "real", 1.0, 0.0, 0.0, 0, 0, W, H);
-        GenImageSurfaceFirstOrder(&colImg, "real", 0.0, 1.0, 0.0, 0, 0, W, H);
+        GenImageSurfaceFirstOrder(&rowImg, "real", 1.0, 0.0, 0.0, 0, 0, Wd, Hd);
+        GenImageSurfaceFirstOrder(&colImg, "real", 0.0, 1.0, 0.0, 0, 0, Wd, Hd);
 
         struct Cand {
             BeamDetectionResult res;
@@ -849,6 +873,17 @@ std::vector<BeamDetectionResult> RunHalconBeamDetection(
             double vx = meanWDC2.D() / mSig;
             double dy = 4.0 * std::sqrt(std::max(vy, 0.0));
             double dx = 4.0 * std::sqrt(std::max(vx, 0.0));
+
+            // Scale detection-grid coords back to source-pixel space. From
+            // here on cx/cy/dx/dy are in full-res coordinates, so the ROI,
+            // peak/saturation/energy scans on grayData, and the returned
+            // result struct all use the same units the caller expects.
+            if (ds > 1) {
+                cx *= ds;
+                cy *= ds;
+                dx *= ds;
+                dy *= ds;
+            }
 
             // HDev script doesn't filter on D4sigma or aspect ratio — every
             // region with area >= MinBeamArea makes it to the output.
