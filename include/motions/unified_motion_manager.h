@@ -8,6 +8,7 @@
 #include "ILogger.h"
 
 class InterlockManager;
+class TransformationMatrixLoader;
 
 #include <string>
 #include <map>
@@ -67,6 +68,13 @@ public:
 	 */
 	void SetInterlockManager(InterlockManager* mgr) { m_interlockManager = mgr; }
 	InterlockManager* GetInterlockManager() const { return m_interlockManager; }
+
+	/**
+	 * @brief Set transformation matrix loader for global-frame relative moves
+	 * @param loader Pointer to TransformationMatrixLoader (owned externally)
+	 */
+	void SetMatrixLoader(TransformationMatrixLoader* loader) { m_matrixLoader = loader; }
+	TransformationMatrixLoader* GetMatrixLoader() const { return m_matrixLoader; }
 
 	void SetDebugLogging(bool enable) { m_debugLogging = enable; }
 	bool IsDebugLoggingEnabled() const { return m_debugLogging; }
@@ -131,6 +139,21 @@ public:
 	// Move relative (single axis)
 	[[nodiscard]] bool MoveRelative(const std::string& deviceName,
 		const std::string& axis,
+		double distance,
+		bool blocking = true);
+
+	// Move relative expressed in the GLOBAL frame.
+	// The (dx, dy, dz) delta is transformed into the device's local axes via
+	// the per-device 3x3 matrix from transformation_matrix.json and dispatched
+	// as a single simultaneous multi-axis relative move. Fails if the device
+	// is not registered in the matrix file.
+	[[nodiscard]] bool MoveRelativeGlobal(const std::string& deviceName,
+		double dx, double dy, double dz,
+		bool blocking = true);
+
+	// Convenience wrapper: relative move along a single GLOBAL axis ("X"|"Y"|"Z").
+	[[nodiscard]] bool MoveRelativeGlobalAxis(const std::string& deviceName,
+		const std::string& globalAxis,
 		double distance,
 		bool blocking = true);
 
@@ -520,6 +543,9 @@ private:
 
 	// Interlock manager (owned externally)
 	InterlockManager* m_interlockManager = nullptr;
+
+	// Transformation matrix loader (owned externally) - used by MoveRelativeGlobal
+	TransformationMatrixLoader* m_matrixLoader = nullptr;
 
 	// Debug logging flag
 	bool m_debugLogging = false;  // Set to true to enable verbose waypoint logging

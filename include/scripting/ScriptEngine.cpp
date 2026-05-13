@@ -984,6 +984,20 @@ motion = {
     moveRel = function(device, axis, distance)
         return _dispatch(device, "MoveRelative", {axis = axis, distance = tostring(distance)})
     end,
+    moveRelGlobal = function(device, dx, dy, dz, blocking)
+        local p = {
+            dx = tostring(dx or 0),
+            dy = tostring(dy or 0),
+            dz = tostring(dz or 0),
+        }
+        if blocking == false then p.blocking = "false" end
+        return _dispatch(device, "MoveRelativeGlobal", p)
+    end,
+    moveRelGlobalAxis = function(device, axis, distance, blocking)
+        local p = {axis = axis, distance = tostring(distance)}
+        if blocking == false then p.blocking = "false" end
+        return _dispatch(device, "MoveRelativeGlobal", p)
+    end,
     home = function(device, axis)
         return _dispatch(device, "HomeAxis", {axis = axis or "all"})
     end,

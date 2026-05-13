@@ -3,6 +3,9 @@
 //   - MoveToPosition         : single-axis absolute move
 //   - MoveToAbs              : multi-axis absolute move (XYZUVW)
 //   - MoveRelative           : single-axis relative move
+//   - MoveRelativeGlobal     : relative move in the global frame (uses
+//                              transformation_matrix.json); accepts either
+//                              (dx,dy,dz) or (axis,distance)
 //   - MoveToNamedPosition    : move to a named position
 //   - StopAxis               : decelerated stop
 //   - EmergencyStop          : immediate stop

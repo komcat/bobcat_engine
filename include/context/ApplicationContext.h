@@ -34,6 +34,7 @@ class BeamOptimizerManager; // Beam optimization coordinator
 class ScanActivityTracker;  // Reference-counted scan-busy broadcaster (drives TopBar indicator)
 class ScriptEngine;         // Lua 5.4 scripting engine
 class IoWatchManager;       // IO manual-override watch layer
+class TransformationMatrixLoader;  // Per-device global<->local frame matrices
 
 namespace Lighting {
 class LightingManager;
@@ -77,6 +78,7 @@ struct ApplicationContext
   ScanActivityTracker* scanActivityTracker = nullptr;    // Reference-counted scan-busy broadcaster
   ScriptEngine* scriptEngine = nullptr;                  // Lua 5.4 scripting engine
   IoWatchManager* ioWatchManager = nullptr;              // IO manual-override watch layer
+  TransformationMatrixLoader* transformationMatrixLoader = nullptr;  // Per-device global<->local frame matrices
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

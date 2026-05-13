@@ -2,8 +2,11 @@
 #include "unified_motion_manager.h"
 #include "InterlockManager.h"
 #include "MotionJsonLoader.h"
+#include "TransformationMatrixLoader.h"
+#include "CoordinateTransformer.h"
 #include "safety/SafetyWatchManager.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <thread>
 #include <chrono>
@@ -471,6 +474,113 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
 
   LOG_ERROR("Unknown device type " + type);
   return false;
+}
+
+// ============================================================================
+// MoveRelativeGlobal: relative move expressed in the global (world) frame.
+//
+// The transformation_matrix.json entry for each device maps GLOBAL -> LOCAL.
+// We transform (dx, dy, dz) into the device's local axes and dispatch a
+// simultaneous multi-axis relative move on the underlying controller.
+// ============================================================================
+bool UnifiedMotionManager::MoveRelativeGlobal(const std::string& deviceName,
+  double dx, double dy, double dz,
+  bool blocking) {
+  LOG_DEBUG("MoveRelativeGlobal START - device=" + deviceName +
+            " global=(" + std::to_string(dx) + "," + std::to_string(dy) + "," + std::to_string(dz) + ")" +
+            " blocking=" + std::string(blocking ? "true" : "false"));
+
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    LOG_ERROR("MoveRelativeGlobal: device " + deviceName + " not found");
+    return false;
+  }
+
+  if (!m_matrixLoader) {
+    LOG_ERROR("MoveRelativeGlobal: TransformationMatrixLoader not set on UnifiedMotionManager");
+    return false;
+  }
+
+  const auto* matrix = m_matrixLoader->GetMatrix(deviceName);
+  if (!matrix) {
+    LOG_ERROR("MoveRelativeGlobal: device '" + deviceName +
+              "' not registered in transformation_matrix.json");
+    return false;
+  }
+
+  // Transform global delta -> local delta (UVW pass through unchanged, zero here)
+  CoordinateTransformer::Vector6D globalDelta(dx, dy, dz, 0.0, 0.0, 0.0);
+  CoordinateTransformer::Vector6D localDelta =
+    CoordinateTransformer::TransformGlobalToLocal(globalDelta, *matrix);
+
+  LOG_DEBUG("MoveRelativeGlobal: " + deviceName +
+            " local=(" + std::to_string(localDelta.x) + "," +
+                         std::to_string(localDelta.y) + "," +
+                         std::to_string(localDelta.z) + ")");
+
+  // Interlock check (same scope as the other Move* methods)
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: MoveRelativeGlobal blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
+
+  // Build the axes/distances vectors, dropping near-zero components so we
+  // don't send no-op commands to axes that aren't part of the move.
+  constexpr double kAxisEps = 1e-5;  // mm
+  std::vector<std::string> axes;
+  std::vector<double> distances;
+  axes.reserve(3);
+  distances.reserve(3);
+  if (std::fabs(localDelta.x) > kAxisEps) { axes.push_back("X"); distances.push_back(localDelta.x); }
+  if (std::fabs(localDelta.y) > kAxisEps) { axes.push_back("Y"); distances.push_back(localDelta.y); }
+  if (std::fabs(localDelta.z) > kAxisEps) { axes.push_back("Z"); distances.push_back(localDelta.z); }
+
+  if (axes.empty()) {
+    LOG_DEBUG("MoveRelativeGlobal: all local components below epsilon - nothing to move");
+    return true;
+  }
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) {
+      LOG_ERROR("MoveRelativeGlobal: GetACSController returned null for " + deviceName);
+      return false;
+    }
+    bool result = controller->MoveRelativeMultiAxis(axes, distances, blocking);
+    LOG_DEBUG("ACSController::MoveRelativeMultiAxis returned " + std::string(result ? "true" : "false"));
+    return result;
+  }
+  else if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) {
+      LOG_ERROR("MoveRelativeGlobal: GetPIController returned null for " + deviceName);
+      return false;
+    }
+    bool result = controller->MoveRelativeMultiAxis(axes, distances, blocking);
+    LOG_DEBUG("PIController::MoveRelativeMultiAxis returned " + std::string(result ? "true" : "false"));
+    return result;
+  }
+
+  LOG_ERROR("MoveRelativeGlobal: unknown device type " + type);
+  return false;
+}
+
+bool UnifiedMotionManager::MoveRelativeGlobalAxis(const std::string& deviceName,
+  const std::string& globalAxis,
+  double distance,
+  bool blocking) {
+  double dx = 0.0, dy = 0.0, dz = 0.0;
+  if (globalAxis == "X" || globalAxis == "x") { dx = distance; }
+  else if (globalAxis == "Y" || globalAxis == "y") { dy = distance; }
+  else if (globalAxis == "Z" || globalAxis == "z") { dz = distance; }
+  else {
+    LOG_ERROR("MoveRelativeGlobalAxis: invalid global axis '" + globalAxis + "' (expected X, Y, or Z)");
+    return false;
+  }
+  return MoveRelativeGlobal(deviceName, dx, dy, dz, blocking);
 }
 
 bool UnifiedMotionManager::EmergencyStop(const std::string& deviceName) {

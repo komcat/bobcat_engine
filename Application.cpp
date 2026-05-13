@@ -562,6 +562,17 @@ void Application::initializeMotionManager()
     m_context.motionManager = m_motionManager.get();
     m_logManager->Info("UnifiedMotionManager created", "Application");
 
+    // 1b. Create transformation matrix loader and inject into motion manager so
+    //     MoveRelativeGlobal can convert global deltas into each device's local frame.
+    m_transformationMatrixLoader = std::make_unique<TransformationMatrixLoader>();
+    if (m_transformationMatrixLoader->LoadFromFile("config/transformation_matrix.json")) {
+      m_logManager->Info("Transformation matrices loaded for UnifiedMotionManager", "Application");
+    } else {
+      m_logManager->Warning("Could not load config/transformation_matrix.json - MoveRelativeGlobal will fail per-device until matrices are provided", "Application");
+    }
+    m_motionManager->SetMatrixLoader(m_transformationMatrixLoader.get());
+    m_context.transformationMatrixLoader = m_transformationMatrixLoader.get();
+
     // 2. Load config using MotionJsonLoader - try local first, then default
     int loadedCount = 0;
     std::string configPath;
@@ -2548,14 +2559,14 @@ void Application::initializeDeviceLinkManager()
       m_deviceLinkManager->SetMotionManager(m_motionManager.get());
     }
 
-    // Create and load transformation matrix loader
-    static TransformationMatrixLoader matrixLoader;
-    std::string matrixPath = "config/transformation_matrix.json";
-    if (matrixLoader.LoadFromFile(matrixPath)) {
-      m_deviceLinkManager->SetMatrixLoader(&matrixLoader);
-      m_logManager->Info("Transformation matrices loaded for DeviceLinkManager", "Application");
+    // Share the transformation matrix loader owned by Application (loaded during
+    // initializeMotionManager). DeviceLinkManager and UnifiedMotionManager use
+    // the same instance so a single config edit is visible everywhere.
+    if (m_transformationMatrixLoader) {
+      m_deviceLinkManager->SetMatrixLoader(m_transformationMatrixLoader.get());
+      m_logManager->Info("Transformation matrices shared with DeviceLinkManager", "Application");
     } else {
-      m_logManager->Warning("DeviceLinkManager: Could not load transformation matrices", "Application");
+      m_logManager->Warning("DeviceLinkManager: TransformationMatrixLoader not available", "Application");
     }
 
     // Try to load existing device links
