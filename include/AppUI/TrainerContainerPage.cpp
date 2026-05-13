@@ -130,43 +130,8 @@ void TrainerContainerPage::setupUI()
     vSep->setFixedWidth(1);
     bodyLayout->addWidget(vSep);
 
-    // --- Content stack ---
+    // --- Content stack (pages built lazily on first selection) ---
     m_contentStack = new QStackedWidget();
-
-    // Index 0: AccuracyTrainerPage (with its own top bar hidden)
-    m_accuracyTrainerPage = new AccuracyTrainerPage(m_context, this);
-    m_accuracyTrainerPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_accuracyTrainerPage);
-
-    // Index 1: CameraOffsetTrainerPage (with its own top bar hidden)
-    m_cameraOffsetPage = new CameraOffsetTrainerPage(m_context, this);
-    m_cameraOffsetPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_cameraOffsetPage);
-
-    // Index 2: PlanarAdjustmentPage (with its own top bar hidden)
-    m_planarAdjustmentPage = new PlanarAdjustmentPage(m_context, this);
-    m_planarAdjustmentPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_planarAdjustmentPage);
-
-    // Index 3: ZOffsetPage (with its own top bar hidden)
-    m_zOffsetPage = new ZOffsetPage(m_context, this);
-    m_zOffsetPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_zOffsetPage);
-
-    // Index 4: YawTrainerPage (with its own top bar hidden)
-    m_yawTrainerPage = new YawTrainerPage(m_context, this);
-    m_yawTrainerPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_yawTrainerPage);
-
-    // Index 5: PlacementCorrectionPage (with its own top bar hidden)
-    m_placementCorrectionPage = new PlacementCorrectionPage(m_context, this);
-    m_placementCorrectionPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_placementCorrectionPage);
-
-    // Index 6: EdgeTransferPage (with its own top bar hidden)
-    m_edgeTransferPage = new EdgeTransferPage(m_context, this);
-    m_edgeTransferPage->setTopBarVisible(false);
-    m_contentStack->addWidget(m_edgeTransferPage);
 
     bodyLayout->addWidget(m_contentStack, 1);
     mainLayout->addLayout(bodyLayout, 1);
@@ -192,10 +157,67 @@ void TrainerContainerPage::selectButton(int index)
         m_sideButtons[i]->setChecked(i == index);
     }
 
-    // Switch content
-    if (index < m_contentStack->count()) {
-        m_contentStack->setCurrentIndex(index);
+    // Build the page if it doesn't exist yet, then switch to it
+    if (QWidget* page = ensurePageBuilt(index)) {
+        m_contentStack->setCurrentWidget(page);
     }
 
     std::cout << "[TrainerContainerPage] Switched to tab " << index << std::endl;
+}
+
+QWidget* TrainerContainerPage::ensurePageBuilt(int index)
+{
+    switch (index) {
+    case 0:
+        if (!m_accuracyTrainerPage) {
+            m_accuracyTrainerPage = new AccuracyTrainerPage(m_context, this);
+            m_accuracyTrainerPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_accuracyTrainerPage);
+        }
+        return m_accuracyTrainerPage;
+    case 1:
+        if (!m_cameraOffsetPage) {
+            m_cameraOffsetPage = new CameraOffsetTrainerPage(m_context, this);
+            m_cameraOffsetPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_cameraOffsetPage);
+        }
+        return m_cameraOffsetPage;
+    case 2:
+        if (!m_planarAdjustmentPage) {
+            m_planarAdjustmentPage = new PlanarAdjustmentPage(m_context, this);
+            m_planarAdjustmentPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_planarAdjustmentPage);
+        }
+        return m_planarAdjustmentPage;
+    case 3:
+        if (!m_zOffsetPage) {
+            m_zOffsetPage = new ZOffsetPage(m_context, this);
+            m_zOffsetPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_zOffsetPage);
+        }
+        return m_zOffsetPage;
+    case 4:
+        if (!m_yawTrainerPage) {
+            m_yawTrainerPage = new YawTrainerPage(m_context, this);
+            m_yawTrainerPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_yawTrainerPage);
+        }
+        return m_yawTrainerPage;
+    case 5:
+        if (!m_placementCorrectionPage) {
+            m_placementCorrectionPage = new PlacementCorrectionPage(m_context, this);
+            m_placementCorrectionPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_placementCorrectionPage);
+        }
+        return m_placementCorrectionPage;
+    case 6:
+        if (!m_edgeTransferPage) {
+            m_edgeTransferPage = new EdgeTransferPage(m_context, this);
+            m_edgeTransferPage->setTopBarVisible(false);
+            m_contentStack->addWidget(m_edgeTransferPage);
+        }
+        return m_edgeTransferPage;
+    default:
+        return nullptr;
+    }
 }

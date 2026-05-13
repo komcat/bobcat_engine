@@ -245,89 +245,9 @@ void EdgeTransferPage::setupUI()
     welcomeLayout->addWidget(welcomeLabel);
     m_contentStack->addWidget(m_welcomeWidget);   // index 0
 
-    m_teachRefWidget = new EdgeTeachWidget("Reference", m_context, this);
-    m_contentStack->addWidget(m_teachRefWidget);  // index 1
-
-    m_teachTgtWidget = new EdgeTeachWidget("Target", m_context, this);
-    m_contentStack->addWidget(m_teachTgtWidget);  // index 2
-
-    m_resultWidget = new EdgeResultWidget(m_context, this);
-    m_contentStack->addWidget(m_resultWidget);    // index 3
-
-    m_galleryWidget = new EdgeImageGalleryWidget(m_context, this);
-    m_contentStack->addWidget(m_galleryWidget);   // index 4
-
-    m_summaryWidget = new EdgeSummaryDiagramWidget(m_context, this);
-    m_contentStack->addWidget(m_summaryWidget);   // index 5
-
-    m_retraceWidget = new EdgeRetraceWidget(m_context, this);
-    m_contentStack->addWidget(m_retraceWidget);   // index 6
-
-    // When the user accepts the retrace result, replace the current set's
-    // taught edges with the retraced values and refresh downstream widgets.
-    connect(m_retraceWidget, &EdgeRetraceWidget::retraceCompleted,
-            this, [this](const EdgeTransferSet& updated) {
-        // Preserve disk identity (name, source filename); overwrite edges.
-        m_currentSet.referenceEdge = updated.referenceEdge;
-        m_currentSet.targetEdge    = updated.targetEdge;
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
-        if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
-        if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        if (m_retraceWidget) m_retraceWidget->SetData(m_currentSet);
-        updateStatus();
-        m_statusLabel->setText(
-            QString("Retraced edges applied. Use Save to persist to disk."));
-        std::cout << "[EdgeTransferPage] Retraced values applied to current set"
-                  << std::endl;
-    });
-
-    // Bidirectional lock: block Apply buttons while summary nav is moving,
-    // and block summary nav buttons while a correction is being applied.
-    connect(m_summaryWidget, &EdgeSummaryDiagramWidget::navBusyChanged,
-            this, [this](bool busy) {
-        if (m_resultWidget) m_resultWidget->SetApplyButtonsLocked(busy);
-    });
-    connect(m_resultWidget, &EdgeResultWidget::applyBusyChanged,
-            this, [this](bool busy) {
-        if (m_summaryWidget) m_summaryWidget->SetNavBlockedExternal(busy);
-    });
-
-    connect(m_teachRefWidget, &EdgeTeachWidget::edgeCaptured,
-            this, [this](const EdgePoints& e) {
-        m_currentSet.referenceEdge = e;
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
-        if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
-        if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        updateStatus();
-    });
-
-    connect(m_teachTgtWidget, &EdgeTeachWidget::edgeCaptured,
-            this, [this](const EdgePoints& e) {
-        m_currentSet.targetEdge = e;
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
-        if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
-        if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        updateStatus();
-    });
-
-    connect(m_resultWidget, &EdgeResultWidget::configChanged,
-            this, [this](const EdgeTransferConfig& cfg) {
-        m_currentSet.config = cfg;
-        m_currentSet.Recalculate();
-        if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        updateStatus();
-    });
-
-    connect(m_resultWidget, &EdgeResultWidget::recalculateRequested,
-            this, [this]() {
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
-        if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        updateStatus();
-    });
+    // Inner workflow widgets (teach/result/gallery/summary/retrace) are built
+    // lazily on first navigation — see ensureContentBuilt() called from
+    // onNavItemChanged().
 
     splitter->addWidget(leftPanel);
     splitter->addWidget(m_contentStack);
@@ -336,7 +256,7 @@ void EdgeTransferPage::setupUI()
     splitter->setHandleWidth(3);
 
     mainLayout->addWidget(splitter, 1);
-    m_contentStack->setCurrentIndex(0);
+    m_contentStack->setCurrentWidget(m_welcomeWidget);
 
     // Seed the current set's config from the (possibly empty) default combos,
     // so the result widget reflects what's selected on the left panel.
@@ -406,38 +326,150 @@ void EdgeTransferPage::onNavItemChanged(int currentRow)
 {
     if (!m_hasLoadedSet && currentRow >= 0) {
         m_statusLabel->setText("Create or load a training set first.");
-        m_contentStack->setCurrentIndex(0);
+        m_contentStack->setCurrentWidget(m_welcomeWidget);
         return;
     }
+
+    ensureContentBuilt(currentRow);
+
     switch (currentRow) {
     case 0:
         m_teachRefWidget->SetEdge(m_currentSet.referenceEdge);
-        m_contentStack->setCurrentIndex(1);
+        m_contentStack->setCurrentWidget(m_teachRefWidget);
         break;
     case 1:
         m_teachTgtWidget->SetEdge(m_currentSet.targetEdge);
-        m_contentStack->setCurrentIndex(2);
+        m_contentStack->setCurrentWidget(m_teachTgtWidget);
         break;
     case 2:
         m_currentSet.Recalculate();
         m_resultWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(3);
+        m_contentStack->setCurrentWidget(m_resultWidget);
         break;
     case 3:
         if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(4);
+        m_contentStack->setCurrentWidget(m_galleryWidget);
         break;
     case 4:
         m_currentSet.Recalculate();
         if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(5);
+        m_contentStack->setCurrentWidget(m_summaryWidget);
         break;
     case 5:
         if (m_retraceWidget) m_retraceWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(6);
+        m_contentStack->setCurrentWidget(m_retraceWidget);
         break;
     default:
-        m_contentStack->setCurrentIndex(0);
+        m_contentStack->setCurrentWidget(m_welcomeWidget);
+        break;
+    }
+}
+
+void EdgeTransferPage::ensureContentBuilt(int navRow)
+{
+    switch (navRow) {
+    case 0:
+        if (!m_teachRefWidget) {
+            m_teachRefWidget = new EdgeTeachWidget("Reference", m_context, this);
+            m_contentStack->addWidget(m_teachRefWidget);
+            if (m_cameraCombo) {
+                QString text = m_cameraCombo->currentText();
+                std::string camId = (text == "(none)") ? std::string() : text.toStdString();
+                m_teachRefWidget->SetCameraId(camId);
+            }
+            connect(m_teachRefWidget, &EdgeTeachWidget::edgeCaptured,
+                    this, [this](const EdgePoints& e) {
+                m_currentSet.referenceEdge = e;
+                m_currentSet.Recalculate();
+                if (m_resultWidget) m_resultWidget->SetData(m_currentSet);
+                if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
+                if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
+                updateStatus();
+            });
+        }
+        break;
+    case 1:
+        if (!m_teachTgtWidget) {
+            m_teachTgtWidget = new EdgeTeachWidget("Target", m_context, this);
+            m_contentStack->addWidget(m_teachTgtWidget);
+            if (m_cameraCombo) {
+                QString text = m_cameraCombo->currentText();
+                std::string camId = (text == "(none)") ? std::string() : text.toStdString();
+                m_teachTgtWidget->SetCameraId(camId);
+            }
+            connect(m_teachTgtWidget, &EdgeTeachWidget::edgeCaptured,
+                    this, [this](const EdgePoints& e) {
+                m_currentSet.targetEdge = e;
+                m_currentSet.Recalculate();
+                if (m_resultWidget) m_resultWidget->SetData(m_currentSet);
+                if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
+                if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
+                updateStatus();
+            });
+        }
+        break;
+    case 2:
+        if (!m_resultWidget) {
+            m_resultWidget = new EdgeResultWidget(m_context, this);
+            m_contentStack->addWidget(m_resultWidget);
+            connect(m_resultWidget, &EdgeResultWidget::applyBusyChanged,
+                    this, [this](bool busy) {
+                if (m_summaryWidget) m_summaryWidget->SetNavBlockedExternal(busy);
+            });
+            connect(m_resultWidget, &EdgeResultWidget::configChanged,
+                    this, [this](const EdgeTransferConfig& cfg) {
+                m_currentSet.config = cfg;
+                m_currentSet.Recalculate();
+                if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
+                updateStatus();
+            });
+            connect(m_resultWidget, &EdgeResultWidget::recalculateRequested,
+                    this, [this]() {
+                m_currentSet.Recalculate();
+                m_resultWidget->SetData(m_currentSet);
+                if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
+                updateStatus();
+            });
+        }
+        break;
+    case 3:
+        if (!m_galleryWidget) {
+            m_galleryWidget = new EdgeImageGalleryWidget(m_context, this);
+            m_contentStack->addWidget(m_galleryWidget);
+        }
+        break;
+    case 4:
+        if (!m_summaryWidget) {
+            m_summaryWidget = new EdgeSummaryDiagramWidget(m_context, this);
+            m_contentStack->addWidget(m_summaryWidget);
+            connect(m_summaryWidget, &EdgeSummaryDiagramWidget::navBusyChanged,
+                    this, [this](bool busy) {
+                if (m_resultWidget) m_resultWidget->SetApplyButtonsLocked(busy);
+            });
+        }
+        break;
+    case 5:
+        if (!m_retraceWidget) {
+            m_retraceWidget = new EdgeRetraceWidget(m_context, this);
+            m_contentStack->addWidget(m_retraceWidget);
+            connect(m_retraceWidget, &EdgeRetraceWidget::retraceCompleted,
+                    this, [this](const EdgeTransferSet& updated) {
+                m_currentSet.referenceEdge = updated.referenceEdge;
+                m_currentSet.targetEdge    = updated.targetEdge;
+                m_currentSet.Recalculate();
+                if (m_resultWidget) m_resultWidget->SetData(m_currentSet);
+                if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
+                if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
+                if (m_retraceWidget) m_retraceWidget->SetData(m_currentSet);
+                updateStatus();
+                m_statusLabel->setText(
+                    QString("Retraced edges applied. Use Save to persist to disk."));
+                std::cout << "[EdgeTransferPage] Retraced values applied to current set"
+                          << std::endl;
+            });
+        }
+        break;
+    default:
         break;
     }
 }
@@ -473,7 +505,7 @@ void EdgeTransferPage::onNewSet()
 
     (void)m_store.SaveSet(m_currentSet);
     m_setLabel->setText(name.trimmed());
-    m_resultWidget->SetData(m_currentSet);
+    if (m_resultWidget) m_resultWidget->SetData(m_currentSet);
     updateStatus();
 
     std::cout << "[EdgeTransferPage] Created new set: " << m_currentSet.name << std::endl;
@@ -523,7 +555,7 @@ void EdgeTransferPage::onLoadSet()
     if (m_teachTgtWidget) m_teachTgtWidget->SetCameraId(m_currentSet.config.cameraId);
 
     m_setLabel->setText(QString::fromStdString(stem));
-    m_resultWidget->SetData(m_currentSet);
+    if (m_resultWidget) m_resultWidget->SetData(m_currentSet);
     if (m_galleryWidget) m_galleryWidget->SetData(m_currentSet);
     if (m_summaryWidget) m_summaryWidget->SetData(m_currentSet);
     if (m_retraceWidget) m_retraceWidget->SetData(m_currentSet);

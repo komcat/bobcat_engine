@@ -54,6 +54,7 @@ private slots:
 
 private:
     void setupUI();
+    void ensureContentBuilt(int navRow);
     void setSetLoaded(bool loaded);
     void updateStoreBasePath();
     void updateStatus();

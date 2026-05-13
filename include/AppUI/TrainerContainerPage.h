@@ -47,6 +47,7 @@ private slots:
 private:
     void setupUI();
     void selectButton(int index);
+    QWidget* ensurePageBuilt(int index);
 
     ApplicationContext* m_context;
     QStackedWidget* m_contentStack;

@@ -75,6 +75,7 @@ private:
                             QPushButton* btn);
 
     void setupUI();
+    void ensureContentBuilt(int navRow);
     void updateCurrentSet();
     void setSetLoaded(bool loaded);
     void updateStoreBasePath();
