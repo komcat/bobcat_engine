@@ -9,6 +9,9 @@
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
 #include "../../AppUI/RecipePage/DeviceSelectorWidgets.h"
 #include "../../AppUI/RecipePage/PropertyTableWidget.h"
+#include "../../context/ApplicationContext.h"
+#include "../../camera/CameraManager.h"
+#include "../../camera/ICameraHardware.h"
 
 #include <iostream>
 #include <memory>
@@ -376,7 +379,7 @@ public:
       getParamOr(params, "exposure_camera", "main_camera"),
       static_cast<int>(DeviceComboBox::DeviceType::Camera));
     widget->addNumericParameter("exposure_value", "Exposure (us)",
-      getParamOr(params, "exposure_value", "1000"), 1, 10000, 1, 0, "us");
+      getParamOr(params, "exposure_value", "1000"), 1, 100000, 1, 0, "us");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -402,10 +405,21 @@ public:
       getParamOr(params, "exposure_camera", "main_camera"),
       static_cast<int>(DeviceComboBox::DeviceType::Camera),
       "Camera to set exposure on");
-    table->addNumericProperty("exposure_value", "Exposure",
+    table->addNumericActionProperty("exposure_value", "Exposure",
       std::stod(getParamOr(params, "exposure_value", "1000")),
-      1, 10000, 1, 0, "us",
-      "Exposure time in microseconds (1-10000)");
+      1, 100000, 1, 0, "us",
+      "Apply",
+      [table](double exposureUs) {
+        ApplicationContext* c = table->getContext();
+        if (!c || !c->cameraManager) return;
+        std::string cam = table->getParameter("exposure_camera");
+        if (cam.empty()) return;
+        ICameraHardware::ExposureSettings settings = c->cameraManager->GetExposureSettings(cam);
+        settings.exposure_time = exposureUs;
+        settings.auto_exposure = false;
+        c->cameraManager->ApplyExposureSettings(cam, settings);
+      },
+      "Exposure time in microseconds (1-100000). Click Apply to push this value to the selected camera now.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {

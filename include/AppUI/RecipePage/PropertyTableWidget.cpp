@@ -293,6 +293,71 @@ void PropertyTableWidget::addNumericProperty(const std::string& key, const std::
   addPropertyRow(key, label, spinBox, tooltip);
 }
 
+void PropertyTableWidget::addNumericActionProperty(const std::string& key, const std::string& label,
+                                                   double value, double minValue, double maxValue,
+                                                   double step, int decimals,
+                                                   const std::string& suffix,
+                                                   const std::string& buttonLabel,
+                                                   std::function<void(double)> onClicked,
+                                                   const std::string& tooltip)
+{
+  QWidget* container = new QWidget();
+  QHBoxLayout* layout = new QHBoxLayout(container);
+  layout->setContentsMargins(6, 4, 6, 4);
+  layout->setSpacing(6);
+
+  QDoubleSpinBox* spinBox = new QDoubleSpinBox();
+  spinBox->setRange(minValue, maxValue);
+  spinBox->setSingleStep(step);
+  spinBox->setDecimals(decimals);
+  spinBox->setValue(value);
+  if (!suffix.empty()) {
+    spinBox->setSuffix(QString::fromStdString(" " + suffix));
+  }
+  if (!tooltip.empty()) {
+    spinBox->setToolTip(QString::fromStdString(tooltip));
+  }
+
+  connect(spinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+    this, [this, key](double val) {
+      emit propertyChanged(QString::fromStdString(key), QString::number(val));
+      emit propertyChanged();
+    });
+
+  QPushButton* button = new QPushButton(QString::fromStdString(buttonLabel));
+  button->setStyleSheet(
+    "QPushButton { "
+    "  background-color: #3a7fc6; "
+    "  color: #ffffff; "
+    "  border: 1px solid #4a8fd6; "
+    "  border-radius: 3px; "
+    "  padding: 4px 10px; "
+    "  min-height: 22px; "
+    "} "
+    "QPushButton:hover { background-color: #4a8fd6; } "
+    "QPushButton:pressed { background-color: #2a6fb6; }"
+  );
+
+  connect(button, &QPushButton::clicked, this, [spinBox, onClicked]() {
+    if (onClicked) {
+      onClicked(spinBox->value());
+    }
+  });
+
+  layout->addWidget(spinBox, 1);
+  layout->addWidget(button, 0);
+
+  m_valueWidgets[key] = spinBox;
+
+  int row = m_table->rowCount();
+  m_table->insertRow(row);
+  m_table->setCellWidget(row, 0, createPropertyLabel(label, tooltip));
+  m_table->setCellWidget(row, 1, container);
+  m_keyToRow[key] = row;
+
+  updateTableHeight();
+}
+
 void PropertyTableWidget::addDeviceProperty(const std::string& key, const std::string& label,
                                             const std::string& value, int deviceType,
                                             const std::string& tooltip)
