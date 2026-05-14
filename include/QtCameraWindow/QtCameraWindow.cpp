@@ -133,6 +133,7 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
     // the main layout LAST so the side panel and quick-move column sit
     // to its left in display order.
     m_viewport = new QtCameraViewport(this);
+    m_viewport->setDiagName(m_instanceId);
 
     buildSidePanel();
     mainLayout->addWidget(m_sidePanelScroll);

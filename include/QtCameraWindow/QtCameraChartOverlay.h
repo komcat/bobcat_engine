@@ -24,6 +24,7 @@
 #include <QGroupBox>
 #include <QString>
 
+#include <atomic>
 #include <chrono>
 #include <deque>
 #include <map>
@@ -105,4 +106,23 @@ private:
   std::chrono::steady_clock::time_point m_lastChartRepaint;
 
   static constexpr size_t CHART_MAX_POINTS = 200;
+
+  // Diagnostics: measure SMU sample rate, throttle decisions, and UI-thread
+  // backlog (latency between scheduling a queued repaint and it actually
+  // running). Emit a summary line every kDiagLogIntervalSec.
+  // Counters are written from the DataStore subscriber callback (worker
+  // thread) and from the queued lambda (UI thread); use atomics so the
+  // updates are race-free without taking m_chartMutex.
+  void maybeLogDiagnostics();
+  std::atomic<uint64_t> m_diagSamplesTotal{0};
+  std::atomic<uint64_t> m_diagSamplesEnabled{0};
+  std::atomic<uint64_t> m_diagThrottleKeeps{0};
+  std::atomic<uint64_t> m_diagThrottleDrops{0};
+  std::atomic<uint64_t> m_diagQueuedExecuted{0};
+  std::atomic<int64_t>  m_diagLatencyTotalUs{0};
+  std::atomic<int64_t>  m_diagLatencyMaxUs{0};
+  std::chrono::steady_clock::time_point m_diagWindowStart;
+  std::chrono::steady_clock::time_point m_diagStartupTime;
+  std::mutex m_diagLogMutex;
+  static constexpr int kDiagLogIntervalSec = 5;
 };

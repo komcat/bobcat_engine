@@ -14,6 +14,7 @@
 #include <cstring>
 #include <cmath>
 #include <algorithm>
+#include <iostream>
 #include <limits>
 
 // ============================================================================
@@ -23,6 +24,8 @@
 QtCameraViewport::QtCameraViewport(QWidget* parent)
     : QWidget(parent)
     , m_fpsTimestamp(std::chrono::steady_clock::now())
+    , m_paintLogWindowStart(std::chrono::steady_clock::now())
+    , m_paintLogStartupTime(std::chrono::steady_clock::now())
 {
     setAttribute(Qt::WA_OpaquePaintEvent);
     setMouseTracking(true);
@@ -161,6 +164,13 @@ void QtCameraViewport::setChartOverlayData(bool enabled, float scale,
     m_chartOverlayEnabled = enabled;
     m_chartOverlayScale   = scale;
     m_chartSnapshots      = channels;
+    m_chartCacheDirty     = true;
+    // Rebuild eagerly so paintEvent stays at "blit only" cost. The rebuild
+    // runs on the UI thread (via the queued chart-overlay lambda), but
+    // outside paintEvent, so camera-frame paints don't pay chart-render cost.
+    if (m_chartOverlayEnabled) {
+        rebuildChartCachePixmap();
+    }
 }
 
 #ifdef HAS_OPENCV
@@ -260,6 +270,7 @@ QImage QtCameraViewport::applyRotation(const QImage& src, int degrees) const
 
 void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
 {
+    const auto paintStart = std::chrono::steady_clock::now();
     QPainter p(this);
     const QRect widgetRect = rect();
 
@@ -316,9 +327,18 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
         m_primaryDest = calcDestRect(widgetRect, dispW, dispH);
         m_secondaryDest = QRect{};
 
+        const auto rotStart = std::chrono::steady_clock::now();
         const QImage displayed = applyRotation(m_frameImage, m_displayRotation);
+        const auto rotEnd = std::chrono::steady_clock::now();
         p.drawImage(m_primaryDest, displayed);
+        const auto blitEnd = std::chrono::steady_clock::now();
+        m_paintRotateUsTotal += std::chrono::duration_cast<std::chrono::microseconds>(
+                                    rotEnd - rotStart).count();
+        m_paintBlitUsTotal   += std::chrono::duration_cast<std::chrono::microseconds>(
+                                    blitEnd - rotEnd).count();
     }
+
+    const auto overlayStart = std::chrono::steady_clock::now();
 
     // --- Overlays ---
     if (m_crosshairEnabled && m_primaryDest.isValid()) {
@@ -339,11 +359,14 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
     if (m_visionOverlayEnabled) drawVisionOverlay(p);
 #endif
     if (m_beamOverlayEnabled)  drawBeamOverlay(p, widgetRect);
-    if (m_chartOverlayEnabled) drawChartOverlay(p, widgetRect);
+    if (m_chartOverlayEnabled) drawChartOverlayCached(p, widgetRect);
 
     if (m_deviceTracking.enabled) drawDeviceTrackingOverlay(p, widgetRect);
 
     drawFpsOverlay(p, widgetRect);
+
+    m_paintOverlayUsTotal += std::chrono::duration_cast<std::chrono::microseconds>(
+                                  std::chrono::steady_clock::now() - overlayStart).count();
 
     // --- Update display FPS counter ---
     ++m_paintCount;
@@ -353,6 +376,62 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
         m_displayFps  = m_paintCount / elapsed;
         m_paintCount  = 0;
         m_fpsTimestamp = now;
+    }
+
+    // --- Per-paint cost diagnostics ---
+    // Measured AFTER QPainter `p` is still in scope (so we include its work
+    // but exclude its destructor flush — close enough for relative comparison).
+    const int64_t paintUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                                std::chrono::steady_clock::now() - paintStart).count();
+    m_paintDurUsTotal += paintUs;
+    if (paintUs > m_paintDurUsMax) m_paintDurUsMax = paintUs;
+    ++m_paintWindowCount;
+    if (m_dualMode) ++m_paintDualCount;
+    if (m_chartOverlayEnabled) ++m_paintChartActiveCount;
+#ifdef HAS_OPENCV
+    if (m_visionOverlayEnabled) ++m_paintVisionActiveCount;
+#endif
+    if (m_beamOverlayEnabled) ++m_paintBeamActiveCount;
+    if (m_deviceTracking.enabled) ++m_paintTrackingActiveCount;
+
+    const int64_t windowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                                 now - m_paintLogWindowStart).count();
+    if (windowMs >= 5000 && m_paintWindowCount > 0) {
+        const double seconds  = windowMs / 1000.0;
+        const double paintsHz = m_paintWindowCount / seconds;
+        const double avgMs    = (static_cast<double>(m_paintDurUsTotal) / m_paintWindowCount) / 1000.0;
+        const double maxMs    = m_paintDurUsMax / 1000.0;
+        const double avgRotMs     = (static_cast<double>(m_paintRotateUsTotal)  / m_paintWindowCount) / 1000.0;
+        const double avgBlitMs    = (static_cast<double>(m_paintBlitUsTotal)    / m_paintWindowCount) / 1000.0;
+        const double avgOverlayMs = (static_cast<double>(m_paintOverlayUsTotal) / m_paintWindowCount) / 1000.0;
+        const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
+                               now - m_paintLogStartupTime).count();
+        std::cout << "[Viewport/" << m_diagName << "] t=" << upSec << "s"
+                  << " paints=" << m_paintWindowCount << " (" << paintsHz << "/s)"
+                  << " src=" << m_frameW << "x" << m_frameH
+                  << " dst=" << m_primaryDest.width() << "x" << m_primaryDest.height()
+                  << " rot=" << m_displayRotation
+                  << " cost: avg=" << avgMs << "ms max=" << maxMs << "ms"
+                  << " phase: rot=" << avgRotMs << "ms blit=" << avgBlitMs
+                  << "ms overlays=" << avgOverlayMs << "ms"
+                  << " overlays: chart=" << m_paintChartActiveCount
+                  << " vision=" << m_paintVisionActiveCount
+                  << " beam=" << m_paintBeamActiveCount
+                  << " tracking=" << m_paintTrackingActiveCount
+                  << " dual=" << m_paintDualCount
+                  << std::endl;
+        m_paintDurUsTotal = 0;
+        m_paintDurUsMax = 0;
+        m_paintRotateUsTotal = 0;
+        m_paintBlitUsTotal = 0;
+        m_paintOverlayUsTotal = 0;
+        m_paintWindowCount = 0;
+        m_paintChartActiveCount = 0;
+        m_paintVisionActiveCount = 0;
+        m_paintBeamActiveCount = 0;
+        m_paintTrackingActiveCount = 0;
+        m_paintDualCount = 0;
+        m_paintLogWindowStart = now;
     }
 }
 
@@ -578,6 +657,9 @@ void QtCameraViewport::leaveEvent(QEvent* event)
 void QtCameraViewport::resizeEvent(QResizeEvent* event)
 {
     // Dest rects will be recalculated on the next paintEvent; just trigger one.
+    // The chart overlay rect depends on widget width, so its cache must be
+    // rebuilt at the new geometry.
+    m_chartCacheDirty = true;
     update();
     QWidget::resizeEvent(event);
 }
@@ -760,6 +842,51 @@ void QtCameraViewport::drawChartOverlay(QPainter& p, const QRect& widgetRect)
     }
 
     p.restore();
+}
+
+QRect QtCameraViewport::chartOverlayRect(const QRect& widgetRect) const
+{
+    const float scale = std::max(0.5f, std::min(m_chartOverlayScale, 3.0f));
+    constexpr int BASE_W = 320;
+    constexpr int BASE_H = 180;
+    constexpr int margin = 6;
+    const int chartW = static_cast<int>(BASE_W * scale);
+    const int chartH = static_cast<int>(BASE_H * scale);
+    return QRect(widgetRect.right() - chartW - margin,
+                 widgetRect.top()  + margin,
+                 chartW, chartH);
+}
+
+void QtCameraViewport::rebuildChartCachePixmap()
+{
+    const QRect chartRect = chartOverlayRect(rect());
+    if (chartRect.width() <= 0 || chartRect.height() <= 0) return;
+
+    if (m_chartCachePixmap.size() != chartRect.size()) {
+        m_chartCachePixmap = QPixmap(chartRect.size());
+    }
+    m_chartCachePixmap.fill(Qt::transparent);
+    QPainter cacheP(&m_chartCachePixmap);
+    // drawChartOverlay positions itself from widgetRect.right(); translate
+    // so widget-coords land at the pixmap origin.
+    cacheP.translate(-chartRect.topLeft());
+    drawChartOverlay(cacheP, rect());
+    m_chartCacheDirty = false;
+}
+
+void QtCameraViewport::drawChartOverlayCached(QPainter& p, const QRect& widgetRect)
+{
+    const QRect chartRect = chartOverlayRect(widgetRect);
+    if (chartRect.width() <= 0 || chartRect.height() <= 0) return;
+
+    // Fallback rebuild only when geometry changed (resize) and the eager
+    // rebuild in setChartOverlayData hasn't picked up the new size yet, or
+    // before the first data push.
+    if (m_chartCacheDirty || m_chartCachePixmap.size() != chartRect.size()) {
+        rebuildChartCachePixmap();
+    }
+
+    p.drawPixmap(chartRect.topLeft(), m_chartCachePixmap);
 }
 
 // ============================================================================
