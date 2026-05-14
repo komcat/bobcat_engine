@@ -58,7 +58,7 @@ void QtCameraViewport::setFrame(const uint8_t* rgb, int width, int height)
 
     std::memcpy(m_frameImage.bits(), rgb, static_cast<std::size_t>(width * height * 3));
     m_hasFrame = true;
-    update();
+    // No update() here — QtCameraWindow's 30 fps paint timer drives repaints.
 }
 
 void QtCameraViewport::setSecondaryFrame(const uint8_t* rgb, int width, int height)
@@ -75,7 +75,7 @@ void QtCameraViewport::setSecondaryFrame(const uint8_t* rgb, int width, int heig
 
     std::memcpy(m_secondaryFrameImage.bits(), rgb, static_cast<std::size_t>(width * height * 3));
     m_hasSecondaryFrame = true;
-    update();
+    // No update() here — paint timer drives repaints.
 }
 
 void QtCameraViewport::clearFrame()
@@ -406,6 +406,10 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
         const double avgOverlayMs = (static_cast<double>(m_paintOverlayUsTotal) / m_paintWindowCount) / 1000.0;
         const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
                                now - m_paintLogStartupTime).count();
+        const double chartRebuildAvgMs = (m_chartRebuildCount > 0)
+            ? (static_cast<double>(m_chartRebuildUsTotal) / m_chartRebuildCount) / 1000.0
+            : 0.0;
+        const double chartRebuildMaxMs = m_chartRebuildUsMax / 1000.0;
         std::cout << "[Viewport/" << m_diagName << "] t=" << upSec << "s"
                   << " paints=" << m_paintWindowCount << " (" << paintsHz << "/s)"
                   << " src=" << m_frameW << "x" << m_frameH
@@ -414,6 +418,9 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
                   << " cost: avg=" << avgMs << "ms max=" << maxMs << "ms"
                   << " phase: rot=" << avgRotMs << "ms blit=" << avgBlitMs
                   << "ms overlays=" << avgOverlayMs << "ms"
+                  << " chartRebuild: n=" << m_chartRebuildCount
+                  << " avg=" << chartRebuildAvgMs << "ms"
+                  << " max=" << chartRebuildMaxMs << "ms"
                   << " overlays: chart=" << m_paintChartActiveCount
                   << " vision=" << m_paintVisionActiveCount
                   << " beam=" << m_paintBeamActiveCount
@@ -431,6 +438,9 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
         m_paintBeamActiveCount = 0;
         m_paintTrackingActiveCount = 0;
         m_paintDualCount = 0;
+        m_chartRebuildUsTotal = 0;
+        m_chartRebuildUsMax = 0;
+        m_chartRebuildCount = 0;
         m_paintLogWindowStart = now;
     }
 }
@@ -862,6 +872,8 @@ void QtCameraViewport::rebuildChartCachePixmap()
     const QRect chartRect = chartOverlayRect(rect());
     if (chartRect.width() <= 0 || chartRect.height() <= 0) return;
 
+    const auto rebuildStart = std::chrono::steady_clock::now();
+
     if (m_chartCachePixmap.size() != chartRect.size()) {
         m_chartCachePixmap = QPixmap(chartRect.size());
     }
@@ -872,6 +884,12 @@ void QtCameraViewport::rebuildChartCachePixmap()
     cacheP.translate(-chartRect.topLeft());
     drawChartOverlay(cacheP, rect());
     m_chartCacheDirty = false;
+
+    const int64_t rebuildUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                                  std::chrono::steady_clock::now() - rebuildStart).count();
+    m_chartRebuildUsTotal += rebuildUs;
+    if (rebuildUs > m_chartRebuildUsMax) m_chartRebuildUsMax = rebuildUs;
+    ++m_chartRebuildCount;
 }
 
 void QtCameraViewport::drawChartOverlayCached(QPainter& p, const QRect& widgetRect)

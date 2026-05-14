@@ -141,7 +141,9 @@ JogPanelWindow::JogPanelWindow(
   // Setup position update timer
   m_positionUpdateTimer = new QTimer(this);
   connect(m_positionUpdateTimer, &QTimer::timeout, this, &JogPanelWindow::updatePositionDisplay);
-  m_positionUpdateTimer->setInterval(200);  // Update every 200ms
+  // 500ms is plenty for a human-readable label and reads from the
+  // motion manager's cached-position thread (non-blocking).
+  m_positionUpdateTimer->setInterval(500);
 
   // Start hidden
   hide();
@@ -2169,17 +2171,21 @@ void JogPanelWindow::updatePositionDisplay()
   bool hasV = installedAxes.find('V') != std::string::npos;
   bool hasW = installedAxes.find('W') != std::string::npos;
 
-  // Get current position from motion manager
-  double x = 0.0, y = 0.0, z = 0.0, u = 0.0, v = 0.0, w = 0.0;
+  // Read from the motion manager's background-polled cache — non-blocking.
+  // The cache is refreshed every kPositionPollIntervalMs (~200ms) by a
+  // dedicated worker thread, so this never touches hardware on the UI thread.
+  PositionStruct pos;
+  const bool cacheValid = m_context->motionManager->GetCachedPosition(
+      m_selectedDevice, pos);
 
-  bool xValid = m_context->motionManager->GetPosition(m_selectedDevice, "X", x);
-  bool yValid = m_context->motionManager->GetPosition(m_selectedDevice, "Y", y);
-  bool zValid = m_context->motionManager->GetPosition(m_selectedDevice, "Z", z);
-
-  // Only query U/V/W if the device supports them
-  bool uValid = hasU && m_context->motionManager->GetPosition(m_selectedDevice, "U", u);
-  bool vValid = hasV && m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
-  bool wValid = hasW && m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
+  const double x = pos.x, y = pos.y, z = pos.z;
+  const double u = pos.u, v = pos.v, w = pos.w;
+  const bool xValid = cacheValid;
+  const bool yValid = cacheValid;
+  const bool zValid = cacheValid;
+  const bool uValid = cacheValid && hasU;
+  const bool vValid = cacheValid && hasV;
+  const bool wValid = cacheValid && hasW;
 
   // Update labels with formatted values (4 decimal places — 0.1 µm visible)
   if (m_posXLabel) {

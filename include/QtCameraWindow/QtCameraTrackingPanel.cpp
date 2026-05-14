@@ -99,7 +99,12 @@ void QtCameraTrackingPanel::setupUI()
 bool QtCameraTrackingPanel::getGantryMainXY(double& x, double& y) const
 {
   if (!m_motionManager) return false;
-  PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
+  // Non-blocking cache read — onTrackingTimerTick() runs on the UI thread
+  // at 10 Hz and was previously stalling for the duration of each
+  // controller round-trip. The background polling thread in
+  // UnifiedMotionManager keeps the cache fresh (~200ms).
+  PositionStruct pos;
+  if (!m_motionManager->GetCachedPosition("gantry-main", pos)) return false;
   x = pos.x;
   y = pos.y;
   return true;
@@ -109,7 +114,8 @@ bool QtCameraTrackingPanel::getHexLocalXYZ(const std::string& hexDevice,
                                            double& lx, double& ly, double& lz) const
 {
   if (!m_motionManager) return false;
-  PositionStruct pos = m_motionManager->GetCurrentPosition(hexDevice);
+  PositionStruct pos;
+  if (!m_motionManager->GetCachedPosition(hexDevice, pos)) return false;
   lx = pos.x; ly = pos.y; lz = pos.z;
   return true;
 }

@@ -165,6 +165,12 @@ private:
     int m_paintBeamActiveCount = 0;
     int m_paintTrackingActiveCount = 0;
     int m_paintDualCount = 0;
+    // Chart cache rebuild diagnostics — accumulated over the same 5s window
+    // as the paint stats and reset alongside them. Written from the UI thread
+    // (inside setChartOverlayData / rebuildChartCachePixmap) so no atomics.
+    int64_t m_chartRebuildUsTotal = 0;
+    int64_t m_chartRebuildUsMax = 0;
+    int     m_chartRebuildCount = 0;
 
     // Mouse state
     QPoint m_lastMousePos;

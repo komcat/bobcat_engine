@@ -105,6 +105,12 @@ private:
   float m_chartScale   = 1.0f;
   std::chrono::steady_clock::time_point m_lastChartRepaint;
 
+  // Set whenever something that affects the chart push changes (new sample on
+  // an enabled channel, chart toggle, scale change, channel selection change).
+  // Cleared inside pushSnapshotsToViewport() so the camera-frame-driven path
+  // skips the expensive rebuild when nothing has changed since the last push.
+  std::atomic<bool> m_pushDirty{true};
+
   static constexpr size_t CHART_MAX_POINTS = 200;
 
   // Diagnostics: measure SMU sample rate, throttle decisions, and UI-thread

@@ -318,22 +318,40 @@ void MotionControllerPageBase::updatePositions()
       continue;
     }
 
-    // Update positions for each axis
-    for (size_t i = 0; i < axisNames.size(); ++i) {
-      double position = 0.0;
-      bool success = motionMgr->GetPosition(deviceName, axisNames[i], position);
+    // Update positions for each axis. Read once from the non-blocking cache
+    // instead of issuing one synchronous controller round-trip per axis —
+    // at 10 Hz × N axes × M devices this was the dominant UI-thread stall
+    // whenever this page was visible.
+    PositionStruct pos;
+    const bool cacheValid = motionMgr->GetCachedPosition(deviceName, pos);
 
+    for (size_t i = 0; i < axisNames.size(); ++i) {
       QTableWidgetItem* posItem = m_deviceTable->item(row, COL_AXIS_START + static_cast<int>(i));
-      if (posItem) {
-        if (success) {
-          posItem->setText(QString::number(position, 'f', 4));
-          posItem->setForeground(QColor("#d4d4d4"));
-        }
-        else {
+      if (!posItem) continue;
+
+      if (!cacheValid) {
+        posItem->setText("--");
+        posItem->setForeground(QColor("#666666"));
+        continue;
+      }
+
+      double position = 0.0;
+      const std::string& axis = axisNames[i];
+      const char a = axis.empty() ? '\0' : axis[0];
+      switch (a) {
+        case 'X': case 'x': position = pos.x; break;
+        case 'Y': case 'y': position = pos.y; break;
+        case 'Z': case 'z': position = pos.z; break;
+        case 'U': case 'u': position = pos.u; break;
+        case 'V': case 'v': position = pos.v; break;
+        case 'W': case 'w': position = pos.w; break;
+        default:
           posItem->setText("--");
           posItem->setForeground(QColor("#666666"));
-        }
+          continue;
       }
+      posItem->setText(QString::number(position, 'f', 4));
+      posItem->setForeground(QColor("#d4d4d4"));
     }
   }
 }

@@ -243,6 +243,32 @@ private:
     std::chrono::steady_clock::time_point m_acqFpsTimestamp;
     std::atomic<double> m_acquisitionFps{0.0};
 
+    // Paint pacing timer — drives viewport->update() at ~30 fps independent
+    // of camera frame arrival. This decouples UI refresh (chart, crosshair,
+    // mouse distance readout, FPS overlay) from camera acquisition rate.
+    // setFrame() / chart-overlay pushes only update internal state; the timer
+    // is the single trigger for paint events. Started/stopped from
+    // showEvent/hideEvent so a hidden window does no paint work.
+    QTimer* m_paintTimer = nullptr;
+    static constexpr int kPaintIntervalMs = 33;  // ~30 fps
+
+    // updateViewport() cost diagnostics — written from UI thread only.
+    // Emitted every 5 s on the same cadence as the viewport paint log so
+    // the two can be correlated. Tracks total wall time spent inside
+    // updateViewport (memcpy of frame buffer + overlay pushes).
+    int64_t m_diagUpdViewUsTotal = 0;
+    int64_t m_diagUpdViewUsMax = 0;
+    int     m_diagUpdViewCount = 0;
+    std::chrono::steady_clock::time_point m_diagUpdViewLogStart;
+    std::chrono::steady_clock::time_point m_diagUpdViewStartupTime;
+
+    // Paint-timer tick counter. Incremented every time the 30 Hz paint
+    // timer fires (regardless of whether the resulting update() request
+    // produces a paint event). Compared against viewport paints/s in the
+    // [CamWin/] log line — a big gap means Qt is coalescing or rate-
+    // limiting paint deliveries between the timer and paintEvent.
+    int m_diagPaintTimerFires = 0;
+
     // Pixel-to-mm calibration (loaded from CameraConfigManager or fallback JSON)
     double m_pixToMmX        = 0.00248;
     double m_pixToMmY        = 0.00248;

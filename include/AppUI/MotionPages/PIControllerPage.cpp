@@ -613,24 +613,34 @@ void PIControllerPage::onPositionPollTimer()
 
   std::map<std::string, bool> connectionStatus = motionMgr->GetConnectionStatus();
 
-  // Update each device's position labels
+  // Update each device's position labels. Read from the non-blocking cache
+  // once per device — synchronous per-axis GetPosition() calls at 10 Hz
+  // were stalling the UI thread on serial/USB controller round-trips.
   for (auto& [deviceName, axisLabels] : m_positionLabels) {
-    bool isConnected = connectionStatus[deviceName];
+    const bool isConnected = connectionStatus[deviceName];
+
+    PositionStruct pos;
+    const bool cacheValid = isConnected
+        && motionMgr->GetCachedPosition(deviceName, pos);
 
     for (auto& [axis, label] : axisLabels) {
       if (!label) continue;
-
-      if (!isConnected) {
+      if (!cacheValid) {
         label->setText("--");
         continue;
       }
-
       double position = 0.0;
-      if (motionMgr->GetPosition(deviceName, axis, position)) {
-        label->setText(QString::number(position, 'f', 4));
-      } else {
-        label->setText("--");
+      const char a = axis.empty() ? '\0' : axis[0];
+      switch (a) {
+        case 'X': case 'x': position = pos.x; break;
+        case 'Y': case 'y': position = pos.y; break;
+        case 'Z': case 'z': position = pos.z; break;
+        case 'U': case 'u': position = pos.u; break;
+        case 'V': case 'v': position = pos.v; break;
+        case 'W': case 'w': position = pos.w; break;
+        default: label->setText("--"); continue;
       }
+      label->setText(QString::number(position, 'f', 4));
     }
   }
 }
