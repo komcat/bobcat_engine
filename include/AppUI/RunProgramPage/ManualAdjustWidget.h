@@ -5,10 +5,13 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QString>
+#include <QStringList>
 #include <string>
 #include <future>
 
 class QVBoxLayout;
+class QHBoxLayout;
+class QScrollArea;
 class UnifiedMotionManager;
 class TransformationMatrixLoader;
 struct ApplicationContext;
@@ -39,11 +42,15 @@ public:
     double stepSizeUm,
     bool enableX,
     bool enableY,
-    bool enableZ
+    bool enableZ,
+    const QStringList& imagePaths = QStringList()
   );
 
   // Hide adjustment dialog
   void hideAdjustment();
+
+  // Populate the image gallery (max 3 images, each rendered at 400x300)
+  void setAdjustmentImages(const QStringList& imagePaths);
 
 signals:
   // Emitted when user makes a choice
@@ -63,10 +70,13 @@ private slots:
 private:
   void setupUI();
   void createAutoFocusPanel(QVBoxLayout* containerLayout);
+  void createPresetStepSizePanel(QVBoxLayout* containerLayout);
+  void createImageGallery(QVBoxLayout* containerLayout);
   void runAutoFocus(const std::string& camera, const std::string& motionDevice,
                     double zRangeMm, double zStepMm, QPushButton* button);
   void sendJogCommand(const std::string& axis, double direction);
   void updatePositionDisplay();
+  void applyStepSize(double stepUm);
 
   ApplicationContext* m_context;
   UnifiedMotionManager* m_motionManager;
@@ -89,6 +99,14 @@ private:
   // Action buttons
   QPushButton* m_okButton;
   QPushButton* m_cancelButton;
+
+  // Preset step size buttons (override of parameter-config step size)
+  QList<QPushButton*> m_presetStepButtons;
+
+  // Image gallery (under OK/Cancel row, horizontally scrollable, up to 3 images at 400x300)
+  QScrollArea* m_imageScrollArea;
+  QWidget* m_imageContainer;
+  QHBoxLayout* m_imageLayout;
 
   // State
   std::string m_currentDevice;

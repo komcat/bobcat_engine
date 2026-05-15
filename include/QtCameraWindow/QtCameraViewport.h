@@ -3,6 +3,7 @@
 
 #include <QWidget>
 #include <QImage>
+#include <QPixmap>
 #include <QRect>
 #include <QPoint>
 #include <chrono>
@@ -64,6 +65,10 @@ public:
 
     // FPS
     void setAcquisitionFps(double fps);
+
+    // Diagnostic label used in periodic paint-cost log lines. Set by
+    // QtCameraWindow so the two camera windows are distinguishable in stdout.
+    void setDiagName(const std::string& name) { m_diagName = name; }
 
     // --- Overlay data setters (called by QtCameraWindow) ---
 
@@ -144,6 +149,29 @@ private:
     int m_paintCount = 0;
     std::chrono::steady_clock::time_point m_fpsTimestamp;
 
+    // Per-paint cost diagnostics (UI thread only — no atomics needed).
+    // Logged every 5 s alongside which overlays were active during the window.
+    std::string m_diagName;
+    std::chrono::steady_clock::time_point m_paintLogWindowStart;
+    std::chrono::steady_clock::time_point m_paintLogStartupTime;
+    int64_t m_paintDurUsTotal = 0;
+    int64_t m_paintDurUsMax = 0;
+    int64_t m_paintRotateUsTotal = 0;
+    int64_t m_paintBlitUsTotal = 0;
+    int64_t m_paintOverlayUsTotal = 0;
+    int m_paintWindowCount = 0;
+    int m_paintChartActiveCount = 0;
+    int m_paintVisionActiveCount = 0;
+    int m_paintBeamActiveCount = 0;
+    int m_paintTrackingActiveCount = 0;
+    int m_paintDualCount = 0;
+    // Chart cache rebuild diagnostics — accumulated over the same 5s window
+    // as the paint stats and reset alongside them. Written from the UI thread
+    // (inside setChartOverlayData / rebuildChartCachePixmap) so no atomics.
+    int64_t m_chartRebuildUsTotal = 0;
+    int64_t m_chartRebuildUsMax = 0;
+    int     m_chartRebuildCount = 0;
+
     // Mouse state
     QPoint m_lastMousePos;
     bool m_mouseInWidget = false;
@@ -152,6 +180,14 @@ private:
     bool m_chartOverlayEnabled = false;
     float m_chartOverlayScale = 1.0f;
     std::vector<ChartChannelSnapshot> m_chartSnapshots;
+
+    // Chart overlay cache. The chart is expensive (~7-10 ms with antialiased
+    // polylines on 200-pt deques), so re-rendering it on every camera frame
+    // dominates paintEvent cost. Cache the rasterized chart into a pixmap and
+    // only rebuild it when data, scale, or geometry change. Camera frames
+    // then just drawPixmap the cached panel (sub-millisecond).
+    QPixmap m_chartCachePixmap;
+    bool    m_chartCacheDirty = true;
 
 #ifdef HAS_OPENCV
     // Vision overlay state
@@ -181,6 +217,18 @@ private:
 
     // Overlay draw methods
     void drawChartOverlay(QPainter& p, const QRect& widgetRect);
+    // Chart panel rect (top-right area inside the widget). Depends only on
+    // widgetRect and m_chartOverlayScale — independent of data, so it's safe
+    // to use to size the chart cache pixmap.
+    QRect chartOverlayRect(const QRect& widgetRect) const;
+    // Render the chart into the cache pixmap. Called eagerly from
+    // setChartOverlayData (on the UI thread, but outside paintEvent) so that
+    // when paintEvent runs, the cached pixmap is already up-to-date and the
+    // paint cost stays at "blit only". Also called from drawChartOverlayCached
+    // as a fallback when the pixmap size is stale (after resize).
+    void rebuildChartCachePixmap();
+    // Blit the cached chart pixmap onto `p`. Will rebuild if size is stale.
+    void drawChartOverlayCached(QPainter& p, const QRect& widgetRect);
 #ifdef HAS_OPENCV
     void drawVisionOverlay(QPainter& p);
 #endif

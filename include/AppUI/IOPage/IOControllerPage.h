@@ -9,6 +9,7 @@
 #include <QPushButton>
 #include <QVBoxLayout>
 #include <QMenu>
+#include <cstdint>
 #include <string>
 
 struct ApplicationContext;
@@ -80,6 +81,13 @@ private:
 
   // Current selection
   std::string m_selectedDevice;
+
+  // Change detection so the 10 Hz poll only touches cells whose bit
+  // actually flipped. Resetting m_haveLastIo forces a full redraw on the
+  // next tick (used when the device or pin table changes).
+  uint64_t m_lastInputs = 0;
+  uint64_t m_lastOutputs = 0;
+  bool     m_haveLastIo = false;
 
   static constexpr int POLL_INTERVAL_MS = 100;
 };

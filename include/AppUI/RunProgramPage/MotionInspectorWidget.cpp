@@ -20,6 +20,8 @@
 #include <QTableWidget>
 #include <QVBoxLayout>
 
+#include <iostream>
+
 namespace {
 
 const QStringList kMotionStepTypes = {
@@ -385,12 +387,22 @@ void MotionStepEditDialog::onSave()
 
   for (const auto& field : m_fields) {
     QString value;
-    if (field.combo)       value = field.combo->currentText();
-    else if (field.spin)   value = trimNumberString(QString::number(field.spin->value(), 'f', 6));
-    else if (field.line)   value = field.line->text();
+    if (field.combo) {
+      value = field.combo->currentText();
+    } else if (field.spin) {
+      // Force any pending text in the spin box to be committed before we
+      // read value() — without this, clicking Save without first leaving
+      // focus can return the previous value.
+      field.spin->interpretText();
+      value = trimNumberString(QString::number(field.spin->value(), 'f', 6));
+    } else if (field.line) {
+      value = field.line->text();
+    }
     // Recipe JSON convention: parameter values are stored as strings, even
     // for numeric fields. Preserve that convention here so diffs stay clean.
     params[field.key] = value;
+    std::cout << "[MotionInspector] set " << field.key.toStdString()
+              << " = " << value.toStdString() << std::endl;
   }
 
   step["parameters"] = params;
@@ -403,8 +415,20 @@ void MotionStepEditDialog::onSave()
     m_errorLabel->setVisible(true);
     return;
   }
-  out.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+  const QByteArray payload = QJsonDocument(root).toJson(QJsonDocument::Indented);
+  qint64 written = out.write(payload);
   out.close();
+
+  if (written != payload.size()) {
+    m_errorLabel->setText(QString("Wrote only %1 of %2 bytes.")
+      .arg(written).arg(payload.size()));
+    m_errorLabel->setVisible(true);
+    return;
+  }
+
+  std::cout << "[MotionInspector] wrote " << written
+            << " bytes to " << m_recipeFilePath.toStdString()
+            << " (step " << m_stepIndex << ")" << std::endl;
 
   accept();
 }

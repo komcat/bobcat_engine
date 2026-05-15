@@ -4,6 +4,8 @@
 
 #include "MotionCommandHandler.h"        // for parent->Wait* / Resolve* / InvokeRetrace* / TargetPosition
 #include "unified_motion_manager.h"
+#include "TransformationMatrixLoader.h"
+#include "CoordinateTransformer.h"
 #include "LogManager.h"
 #include "SequenceContext.h"
 
@@ -306,6 +308,120 @@ std::optional<bool> MotionBasicCommands::TryExecute(
 
     if (!deps.parent->WaitForMotionWithStopCheck(motionManager, deviceName, context, 30000, &target)) {
       errorMessage = "Motion stopped, timeout, or position verification failed";
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================================
+  // RELATIVE MOVE IN GLOBAL FRAME
+  // Params (vector form): dx, dy, dz (mm). Any may be omitted -> 0.
+  // Params (single-axis form): axis ("X"|"Y"|"Z"), distance (mm).
+  // If 'axis' is present, single-axis form is used.
+  // blocking=false skips the WaitForMotionWithStopCheck verification phase.
+  // ============================================================================
+  if (methodName == "MoveRelativeGlobal") {
+    auto axisIt = params.find("axis");
+
+    double dx = 0.0, dy = 0.0, dz = 0.0;
+
+    if (axisIt != params.end()) {
+      // Single-axis form: requires 'distance'
+      auto distIt = params.find("distance");
+      if (distIt == params.end()) {
+        errorMessage = "MoveRelativeGlobal (axis form): missing required parameter 'distance'";
+        return false;
+      }
+      std::string axis = axisIt->second;
+      for (auto& c : axis) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+      double distance = deps.parent->ResolveNumericValue(distIt->second, context);
+      if (axis == "X")      { dx = distance; }
+      else if (axis == "Y") { dy = distance; }
+      else if (axis == "Z") { dz = distance; }
+      else {
+        errorMessage = "MoveRelativeGlobal: invalid global axis '" + axis + "' (expected X, Y, or Z)";
+        return false;
+      }
+    } else {
+      // Vector form: dx/dy/dz optional, default 0
+      auto dxIt = params.find("dx");
+      auto dyIt = params.find("dy");
+      auto dzIt = params.find("dz");
+      if (dxIt == params.end() && dyIt == params.end() && dzIt == params.end()) {
+        errorMessage = "MoveRelativeGlobal: provide either {axis, distance} or at least one of {dx, dy, dz}";
+        return false;
+      }
+      if (dxIt != params.end()) dx = deps.parent->ResolveNumericValue(dxIt->second, context);
+      if (dyIt != params.end()) dy = deps.parent->ResolveNumericValue(dyIt->second, context);
+      if (dzIt != params.end()) dz = deps.parent->ResolveNumericValue(dzIt->second, context);
+    }
+
+    bool explicitNonBlocking = false;
+    auto blockingIt = params.find("blocking");
+    if (blockingIt != params.end() && blockingIt->second == "false") {
+      explicitNonBlocking = true;
+    }
+
+    if (deps.logger) {
+      deps.logger->Info(
+        "MoveRelativeGlobal " + deviceName +
+        " global=(" + std::to_string(dx) + "," + std::to_string(dy) + "," + std::to_string(dz) + ")",
+        "MotionHandler"
+      );
+    }
+
+    // Pre-compute the expected local-axis targets so WaitForMotionWithStopCheck
+    // can verify final position. This mirrors what MoveRelativeGlobal does
+    // internally but is needed here because the matrix lookup result is not
+    // returned to callers.
+    MotionCommandHandler::TargetPosition target;
+    auto* matrixLoader = motionManager->GetMatrixLoader();
+    if (!matrixLoader) {
+      errorMessage = "MoveRelativeGlobal: TransformationMatrixLoader not set on UnifiedMotionManager";
+      return false;
+    }
+    const auto* matrix = matrixLoader->GetMatrix(deviceName);
+    if (!matrix) {
+      errorMessage = "MoveRelativeGlobal: device '" + deviceName + "' not registered in transformation_matrix.json";
+      return false;
+    }
+    CoordinateTransformer::Vector6D globalDelta(dx, dy, dz, 0.0, 0.0, 0.0);
+    CoordinateTransformer::Vector6D localDelta =
+      CoordinateTransformer::TransformGlobalToLocal(globalDelta, *matrix);
+    double curX = 0.0, curY = 0.0, curZ = 0.0;
+    motionManager->GetPosition(deviceName, "X", curX);
+    motionManager->GetPosition(deviceName, "Y", curY);
+    motionManager->GetPosition(deviceName, "Z", curZ);
+    constexpr double kAxisEps = 1e-5;
+    if (std::fabs(localDelta.x) > kAxisEps) { target.hasX = true; target.x = curX + localDelta.x; }
+    if (std::fabs(localDelta.y) > kAxisEps) { target.hasY = true; target.y = curY + localDelta.y; }
+    if (std::fabs(localDelta.z) > kAxisEps) { target.hasZ = true; target.z = curZ + localDelta.z; }
+
+    // Issue the move non-blocking; WaitForMotionWithStopCheck handles
+    // stop-flag monitoring + final-position verification.
+    if (!motionManager->MoveRelativeGlobal(deviceName, dx, dy, dz, false)) {
+      int errorCode = motionManager->GetLastErrorCode(deviceName);
+      std::string errorDetail = motionManager->GetLastErrorMessage(deviceName);
+      if (deps.logger) {
+        deps.logger->Error("MoveRelativeGlobal FAILED for " + deviceName +
+          " - errorCode=" + std::to_string(errorCode) + " detail=" + errorDetail, "MotionHandler");
+      }
+      errorMessage = "MoveRelativeGlobal failed to start (code=" + std::to_string(errorCode) + "): " + errorDetail;
+      return false;
+    }
+
+    if (explicitNonBlocking) {
+      return true;
+    }
+
+    // If localDelta was below epsilon on all axes the move is a no-op; nothing to wait for.
+    if (!target.hasX && !target.hasY && !target.hasZ) {
+      return true;
+    }
+
+    if (!deps.parent->WaitForMotionWithStopCheck(motionManager, deviceName, context, 30000, &target)) {
+      errorMessage = "MoveRelativeGlobal: motion stopped, timeout, or position verification failed";
       return false;
     }
 

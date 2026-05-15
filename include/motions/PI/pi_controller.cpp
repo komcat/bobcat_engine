@@ -766,6 +766,59 @@ bool PIController::MoveToPositionMultiAxis(const std::vector<std::string>& axes,
   return true;
 }
 
+bool PIController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
+  const std::vector<double>& distances,
+  bool blocking) {
+  if (!m_isConnected) {
+    LOG_ERROR("Cannot move - not connected");
+    return false;
+  }
+
+  if (axes.size() != distances.size() || axes.empty()) {
+    LOG_ERROR("Invalid axes/distances arrays");
+    return false;
+  }
+
+  LOG_INFO("Moving multiple axes relative");
+
+  std::string axesStr;
+  for (size_t i = 0; i < axes.size(); i++) {
+    axesStr += axes[i];
+    if (i < axes.size() - 1) {
+      axesStr += " ";
+    }
+  }
+
+  const char* szAxes = axesStr.c_str();
+  std::vector<double> distArray = distances;
+
+  if (!PI_MVR(m_controllerId, szAxes, distArray.data())) {
+    int error = PI_GetError(m_controllerId);
+    LOG_ERROR("Failed relative move. Error: " + std::to_string(error));
+    return false;
+  }
+
+  {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    for (const auto& axis : axes) {
+      m_axisMoving[axis] = true;
+    }
+  }
+
+  if (blocking) {
+    bool success = true;
+    for (const auto& axis : axes) {
+      if (!WaitForMotionCompletion(axis)) {
+        LOG_ERROR("Timeout waiting for " + axis);
+        success = false;
+      }
+    }
+    return success;
+  }
+
+  return true;
+}
+
 bool PIController::Home(const std::string& axis) {
   if (!IsConnected()) {
     LOG_ERROR("Home: Not connected");

@@ -20,11 +20,28 @@ from pathlib import Path
 from tkinter import filedialog, ttk
 
 BASE_DIR = Path(__file__).parent
+SETTINGS_PATH = BASE_DIR / "view_serial_data.local.json"
 POLL_MS = 1000
 POYNT_THRESHOLD = 0.5
 COLOR_OK = "#0a7e07"     # green: |v| < 0.5
 COLOR_BAD = "#c62828"    # red:   |v| >= 0.5
 COLOR_NEUTRAL = "#222"
+
+
+def load_settings():
+    try:
+        return json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_settings(settings):
+    try:
+        SETTINGS_PATH.write_text(
+            json.dumps(settings, indent=2), encoding="utf-8"
+        )
+    except OSError:
+        pass
 
 SERIES = [
     # (label,   side, section, color)
@@ -37,6 +54,49 @@ AXIS_MIN = -5.0
 AXIS_MAX = 5.0
 ACCEPT_R = 0.5
 
+# Hex-right response rules — see docs/M4/hex_right_response_table.md
+# Cell layout (B0/B1 rows × A1.X / A1.Y / A2.X / A2.Y columns):
+#   B0: 1=A1.Px  2=A1.Py  3=A2.Px  4=A2.Py
+#   B1: 5=A1.Px  6=A1.Py  7=A2.Px  8=A2.Py
+CELL_NUMBERS = {
+    ("b0", "a1", "poynt_x_deg"): 1,
+    ("b0", "a1", "poynt_y_deg"): 2,
+    ("b0", "a2", "poynt_x_deg"): 3,
+    ("b0", "a2", "poynt_y_deg"): 4,
+    ("b1", "a1", "poynt_x_deg"): 5,
+    ("b1", "a1", "poynt_y_deg"): 6,
+    ("b1", "a2", "poynt_x_deg"): 7,
+    ("b1", "a2", "poynt_y_deg"): 8,
+}
+CELL_NAMES = {
+    1: "A1.B0.Px", 2: "A1.B0.Py", 3: "A2.B0.Px", 4: "A2.B0.Py",
+    5: "A1.B1.Px", 6: "A1.B1.Py", 7: "A2.B1.Px", 8: "A2.B1.Py",
+}
+
+# Per cell: axis moves that drive the value up/down, tagged by gain magnitude.
+# Tag legend: lg = dominant gain; med = sm-lg cross-coupling (~½ of dominant);
+# sm = small (~5–10× smaller than dominant). Derived from the master table
+# (with U/X corrections from the SN 7112b verification ladders).
+CELL_RULES = {
+    1: {"up":   [("Y+", "lg"), ("U+", "lg"), ("W+", "med")],
+        "down": [("Y-", "lg"), ("U-", "lg"), ("W-", "med")]},
+    2: {"up":   [("X+", "lg"), ("Z+", "lg"), ("V-", "lg"), ("W+", "lg")],
+        "down": [("X-", "lg"), ("Z-", "lg"), ("V+", "lg"), ("W-", "lg")]},
+    3: {"up":   [("Y+", "lg"), ("U+", "lg"), ("W+", "sm")],
+        "down": [("Y-", "lg"), ("U-", "lg"), ("W-", "sm")]},
+    4: {"up":   [("X+", "lg"), ("Z-", "lg"), ("V-", "lg"), ("W-", "lg")],
+        "down": [("X-", "lg"), ("Z+", "lg"), ("V+", "lg"), ("W+", "lg")]},
+    5: {"up":   [("Y+", "lg"), ("U-", "sm"), ("W+", "med")],
+        "down": [("Y-", "lg"), ("U+", "sm"), ("W-", "med")]},
+    6: {"up":   [("X-", "lg"), ("Z+", "lg"), ("V-", "lg"), ("W-", "lg")],
+        "down": [("X+", "lg"), ("Z-", "lg"), ("V+", "lg"), ("W+", "lg")]},
+    7: {"up":   [("Y+", "lg"), ("W+", "sm")],
+        "down": [("Y-", "lg"), ("W-", "sm")]},
+    8: {"up":   [("X-", "lg"), ("Z+", "lg"), ("V+", "lg"), ("W+", "lg")],
+        "down": [("X+", "lg"), ("Z-", "lg"), ("V-", "lg"), ("W-", "lg")]},
+}
+TAG_LABEL = {"lg": "dominant", "med": "medium", "sm": "small"}
+
 
 def fmt_number(v):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
@@ -48,6 +108,82 @@ def poynt_color(v):
     if not isinstance(v, (int, float)) or isinstance(v, bool):
         return COLOR_NEUTRAL
     return COLOR_OK if abs(v) < POYNT_THRESHOLD else COLOR_BAD
+
+
+def cell_tip(cell_num, value):
+    """Return a tooltip string for a poynt cell, or None if no value."""
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        return None
+    rules = CELL_RULES.get(cell_num)
+    if not rules:
+        return None
+    in_spec = abs(value) < POYNT_THRESHOLD
+    if value >= 0:
+        direction, arrow = "down", "↓"
+    else:
+        direction, arrow = "up", "↑"
+    grouped = {"lg": [], "med": [], "sm": []}
+    for axis, tag in rules[direction]:
+        grouped[tag].append(axis)
+    if in_spec:
+        status = f"In spec (|v| < {POYNT_THRESHOLD})"
+    else:
+        sign_word = "too high" if value > 0 else "too low"
+        status = f"Out of spec (|v| ≥ {POYNT_THRESHOLD}); {sign_word}"
+    lines = [
+        f"Cell {cell_num}: {CELL_NAMES[cell_num]} = {value:+.4f}",
+        f"{status}; toward 0 needs {arrow}",
+        "",
+        "Hex-right moves that drive this cell toward 0:",
+    ]
+    for tag in ("lg", "med", "sm"):
+        if grouped[tag]:
+            lines.append(f"  {TAG_LABEL[tag]:>8}: {', '.join(grouped[tag])}")
+    return "\n".join(lines)
+
+
+class Tooltip:
+    """Lightweight hover tooltip; .set_text(None) disables it for the widget."""
+    def __init__(self, widget):
+        self.widget = widget
+        self.tip = None
+        self._text = None
+        widget.bind("<Enter>", self._on_enter)
+        widget.bind("<Leave>", self._on_leave)
+        widget.bind("<Motion>", self._on_motion)
+
+    def set_text(self, text):
+        self._text = text
+        if not text:
+            self._hide()
+
+    def _on_enter(self, event):
+        if self._text:
+            self._show(event.x_root + 16, event.y_root + 16)
+
+    def _on_motion(self, event):
+        if self.tip and self._text:
+            self.tip.wm_geometry(f"+{event.x_root + 16}+{event.y_root + 16}")
+
+    def _on_leave(self, _event):
+        self._hide()
+
+    def _show(self, x, y):
+        if self.tip is not None:
+            return
+        self.tip = tk.Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        tk.Label(
+            self.tip, text=self._text, justify=tk.LEFT,
+            background="#fff8c5", relief=tk.SOLID, borderwidth=1,
+            font=("Consolas", 9), padx=8, pady=6,
+        ).pack()
+
+    def _hide(self):
+        if self.tip is not None:
+            self.tip.destroy()
+            self.tip = None
 
 
 def find_latest_json(root):
@@ -82,7 +218,12 @@ class SerialDataViewer(tk.Tk):
                                 font=("Segoe UI", 10, "bold"))
         self.header.pack(fill=tk.X, padx=8, pady=(6, 2))
 
-        self.watch_dir = BASE_DIR
+        self.settings = load_settings()
+        saved_dir = self.settings.get("watch_dir")
+        self.watch_dir = (
+            Path(saved_dir) if saved_dir and Path(saved_dir).is_dir()
+            else BASE_DIR
+        )
 
         controls = ttk.Frame(self)
         controls.pack(fill=tk.X, padx=8, pady=(0, 4))
@@ -149,7 +290,8 @@ class SerialDataViewer(tk.Tk):
             ttk.Label(grid, text=text, font=header_font).grid(
                 row=0, column=col, padx=12, pady=(0, 6), sticky=tk.W)
 
-        self.value_labels = {}  # (section, axis_key) -> tk.Label
+        self.value_labels = {}  # (section, side, axis_key) -> tk.Label
+        self.value_tooltips = {}  # same key -> Tooltip
         rows = [
             ("B0 (Rx)", "b0"),
             ("B1 (Tx)", "b1"),
@@ -169,6 +311,7 @@ class SerialDataViewer(tk.Tk):
                                width=12)
                 lbl.grid(row=r_idx, column=c_idx, padx=12, pady=6, sticky=tk.E)
                 self.value_labels[(section, side, key)] = lbl
+                self.value_tooltips[(section, side, key)] = Tooltip(lbl)
 
         # scatter plot below the table
         scatter_wrap = ttk.Frame(right)
@@ -192,6 +335,8 @@ class SerialDataViewer(tk.Tk):
         if initial_file:
             p = Path(initial_file)
             self.watch_dir = p.parent
+            self.settings["watch_dir"] = str(self.watch_dir)
+            save_settings(self.settings)
             self._update_folder_caption()
             self.load_file(p)
         else:
@@ -260,6 +405,8 @@ class SerialDataViewer(tk.Tk):
         if not chosen:
             return
         self.watch_dir = Path(chosen)
+        self.settings["watch_dir"] = str(self.watch_dir)
+        save_settings(self.settings)
         self._update_folder_caption()
         latest = find_latest_json(self.watch_dir)
         if latest is not None:
@@ -380,6 +527,8 @@ class SerialDataViewer(tk.Tk):
         self.detail_header.config(text="Select an entry on the left.")
         for lbl in self.value_labels.values():
             lbl.config(text="", fg=COLOR_NEUTRAL)
+        for tip in self.value_tooltips.values():
+            tip.set_text(None)
         self.current_points = []
         self._draw_scatter()
 
@@ -412,8 +561,14 @@ class SerialDataViewer(tk.Tk):
                 src = (sides[side] or {}).get("value", {}).get(section) or {}
                 for axis in ("poynt_x_deg", "poynt_y_deg"):
                     v = src.get(axis)
-                    lbl = self.value_labels[(section, side, axis)]
-                    lbl.config(text=fmt_number(v), fg=poynt_color(v))
+                    key = (section, side, axis)
+                    self.value_labels[key].config(
+                        text=fmt_number(v), fg=poynt_color(v)
+                    )
+                    cell_num = CELL_NUMBERS.get(key)
+                    self.value_tooltips[key].set_text(
+                        cell_tip(cell_num, v) if cell_num else None
+                    )
 
         pts = []
         for label, side, section, color in SERIES:

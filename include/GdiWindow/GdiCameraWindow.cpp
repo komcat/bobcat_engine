@@ -922,8 +922,12 @@ void GdiCameraWindow::OnCameraStatusChanged(const std::string& cameraId, bool co
 }
 
 bool GdiCameraWindow::ProcessMessages() {
+    if (!m_hwnd) return true;
+    // CRITICAL: filter by m_hwnd. With nullptr filter this would drain
+    // every window's messages on this thread (including all Qt windows),
+    // dispatch them via DispatchMessage, and starve Qt's own event loop.
     MSG msg;
-    while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE)) {
+    while (PeekMessage(&msg, m_hwnd, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
             return false;
         }

@@ -231,7 +231,8 @@ void RecipeWorker::run()
       // No callback - auto-accept all adjustments for automated execution
       m_engine->SetManualAdjustCallback(
         [this](const std::string& message, const std::string& deviceName,
-               double /*stepSizeUm*/, bool /*enableX*/, bool /*enableY*/, bool /*enableZ*/) -> bool {
+               double /*stepSizeUm*/, bool /*enableX*/, bool /*enableY*/, bool /*enableZ*/,
+               const std::vector<std::string>& /*imagePaths*/) -> bool {
         if (!m_loopMode) {
           emit logMessage(QString("Auto-accepting manual adjust: %1 (device: %2)")
             .arg(QString::fromStdString(message))

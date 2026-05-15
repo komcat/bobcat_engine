@@ -3,12 +3,17 @@
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "SequenceEngine.h"
+#include "product_position_manager.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QMessageBox>
 #include <QMetaObject>
+#include <QPainter>
+#include <QPixmap>
 #include <cmath>
+#include <filesystem>
+#include <thread>
 #include <utility>
 #include <vector>
 #include <iostream>
@@ -156,6 +161,21 @@ void EdgeRetraceWidget::setupUI()
     taughtLayout->addWidget(m_waitTaughtLabel);
     waitLayout->addWidget(taughtGroup);
 
+    // Template image captured during teach for this point. The trainer stores
+    // p1ImageFile / p2ImageFile relative to <product>/images/trainer.
+    QGroupBox* templateGroup = new QGroupBox("Template image (taught)");
+    templateGroup->setStyleSheet(groupStyle);
+    QVBoxLayout* templateLayout = new QVBoxLayout(templateGroup);
+    templateLayout->setContentsMargins(8, 8, 8, 8);
+    m_waitTemplateImageLabel = new QLabel("(no template image)");
+    m_waitTemplateImageLabel->setFixedSize(360, 240);
+    m_waitTemplateImageLabel->setAlignment(Qt::AlignCenter);
+    m_waitTemplateImageLabel->setStyleSheet(
+        "background-color: #1a2640; color: #888; "
+        "border: 1px solid #3d5a8c; border-radius: 4px;");
+    templateLayout->addWidget(m_waitTemplateImageLabel, 0, Qt::AlignCenter);
+    waitLayout->addWidget(templateGroup);
+
     QGroupBox* liveGroup = new QGroupBox("Current gantry position");
     liveGroup->setStyleSheet(groupStyle);
     QVBoxLayout* liveLayout = new QVBoxLayout(liveGroup);
@@ -165,6 +185,89 @@ void EdgeRetraceWidget::setupUI()
     m_waitLiveLabel->setAlignment(Qt::AlignCenter);
     liveLayout->addWidget(m_waitLiveLabel);
     waitLayout->addWidget(liveGroup);
+
+    // -------- Embedded Manual Jog (gantry-main) --------
+    QGroupBox* jogGroup = new QGroupBox("Manual Jog (gantry-main)");
+    jogGroup->setStyleSheet(groupStyle);
+    QVBoxLayout* jogLayout = new QVBoxLayout(jogGroup);
+    jogLayout->setSpacing(6);
+
+    // Step size preset row
+    QHBoxLayout* stepRow = new QHBoxLayout();
+    stepRow->setSpacing(5);
+    m_jogStepLabel = new QLabel(QString("Step: %1 μm").arg(m_jogStepUm, 0, 'f', 1));
+    m_jogStepLabel->setStyleSheet(
+        "color: #00ff88; font-family: monospace; font-weight: bold; font-size: 12px;");
+    stepRow->addWidget(m_jogStepLabel);
+    stepRow->addSpacing(8);
+
+    const QString stepBtnStyle =
+        "QPushButton { background-color: #2a3a55; color: #d4d4d4; font-size: 11px; "
+        "border: 1px solid #3d5a8c; border-radius: 3px; padding: 3px 8px; "
+        "min-width: 40px; min-height: 22px; }"
+        "QPushButton:hover { background-color: #3d5a8c; border-color: #5d8acc; }"
+        "QPushButton:pressed { background-color: #2980b9; color: white; }"
+        "QPushButton:disabled { background-color: #1a1f2e; color: #555; border-color: #2a2a2a; }";
+
+    static const double kPresets[] = { 0.5, 1.0, 2.0, 5.0, 10.0, 20.0, 50.0 };
+    for (double um : kPresets) {
+        QString text = (um < 1.0)
+            ? QString::number(um, 'f', 1) + " μm"
+            : QString::number(um, 'f', 0) + " μm";
+        QPushButton* btn = new QPushButton(text);
+        btn->setStyleSheet(stepBtnStyle);
+        btn->setCursor(Qt::PointingHandCursor);
+        connect(btn, &QPushButton::clicked, this, [this, um]() { setJogStepUm(um); });
+        stepRow->addWidget(btn);
+        m_jogStepPresetBtns.append(btn);
+    }
+    stepRow->addStretch();
+    jogLayout->addLayout(stepRow);
+
+    // Jog button row (X-, X+, Y-, Y+, Z-, Z+)
+    const QString jogBtnStyle =
+        "QPushButton { background-color: #2980b9; color: white; font-size: 12px; "
+        "font-weight: bold; border: 1px solid #1f6391; border-radius: 4px; "
+        "padding: 6px 10px; min-width: 60px; min-height: 30px; }"
+        "QPushButton:hover { background-color: #3498db; }"
+        "QPushButton:pressed { background-color: #1f6391; }"
+        "QPushButton:disabled { background-color: #1a1f2e; color: #555; border-color: #2a2a2a; }";
+
+    QHBoxLayout* jogRow = new QHBoxLayout();
+    jogRow->setSpacing(5);
+
+    m_jogXMinusBtn = new QPushButton("← X-");
+    m_jogXMinusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogXMinusBtn, &QPushButton::clicked, this, [this]() { jogGantry("X", -1.0); });
+    jogRow->addWidget(m_jogXMinusBtn);
+
+    m_jogXPlusBtn = new QPushButton("X+ →");
+    m_jogXPlusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogXPlusBtn, &QPushButton::clicked, this, [this]() { jogGantry("X", 1.0); });
+    jogRow->addWidget(m_jogXPlusBtn);
+
+    m_jogYMinusBtn = new QPushButton("⊗ Y- In");
+    m_jogYMinusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogYMinusBtn, &QPushButton::clicked, this, [this]() { jogGantry("Y", -1.0); });
+    jogRow->addWidget(m_jogYMinusBtn);
+
+    m_jogYPlusBtn = new QPushButton("⊙ Y+ Out");
+    m_jogYPlusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogYPlusBtn, &QPushButton::clicked, this, [this]() { jogGantry("Y", 1.0); });
+    jogRow->addWidget(m_jogYPlusBtn);
+
+    m_jogZMinusBtn = new QPushButton("↓ Z-");
+    m_jogZMinusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogZMinusBtn, &QPushButton::clicked, this, [this]() { jogGantry("Z", -1.0); });
+    jogRow->addWidget(m_jogZMinusBtn);
+
+    m_jogZPlusBtn = new QPushButton("Z+ ↑");
+    m_jogZPlusBtn->setStyleSheet(jogBtnStyle);
+    connect(m_jogZPlusBtn, &QPushButton::clicked, this, [this]() { jogGantry("Z", 1.0); });
+    jogRow->addWidget(m_jogZPlusBtn);
+
+    jogLayout->addLayout(jogRow);
+    waitLayout->addWidget(jogGroup);
 
     waitLayout->addStretch();
 
@@ -407,6 +510,8 @@ void EdgeRetraceWidget::refreshWaitPage()
     if (m_confirmBtn) {
         m_confirmBtn->setText(QString("Confirm %1").arg(pt));
     }
+
+    refreshTemplateImage();
 }
 
 void EdgeRetraceWidget::refreshReview()
@@ -760,6 +865,7 @@ void EdgeRetraceWidget::startAutoNavAsync(double tx, double ty, double tz,
     m_confirmBtn->setEnabled(false);
     m_cancelBtn->setEnabled(false);
     m_stopBtn->setEnabled(true);
+    setJogPanelEnabled(false);
 
     auto* mm = m_context->motionManager;
     const std::string device = m_navActiveDevice;
@@ -783,10 +889,130 @@ void EdgeRetraceWidget::startAutoNavAsync(double tx, double ty, double tz,
             m_confirmBtn->setEnabled(true);
             m_cancelBtn->setEnabled(true);
             m_stopBtn->setEnabled(false);
+            setJogPanelEnabled(true);
             if (!moveOk) {
                 QMessageBox::warning(this, "Auto-Nav Failed",
                     QString("MoveToAbs to %1 failed.").arg(whichCopy));
             }
         }, Qt::QueuedConnection);
     });
+}
+
+// ---------------------------------------------------------------------------
+// Embedded jog panel
+// ---------------------------------------------------------------------------
+
+void EdgeRetraceWidget::jogGantry(const QString& axis, double sign)
+{
+    if (!m_context || !m_context->motionManager) return;
+    if (!m_navActiveDevice.empty()) return;          // auto-nav in progress
+    if (m_state == Idle || m_state == Review) return;
+
+    auto* mm = m_context->motionManager;
+    const std::string device = "gantry-main";
+    const std::string axisStd = axis.toStdString();
+    const double deltaMm = (m_jogStepUm * sign) / 1000.0;   // µm → mm
+
+    // ACSController::MoveRelative blocks the caller while it idle-polls the
+    // previous move (up to ~5s) and post-issues a 30ms settle sleep. On the UI
+    // thread that freezes every widget — including the global JogPanel — for
+    // the duration of each jog. Detach a worker thread so the click returns
+    // immediately. The lambda captures only the motion-manager pointer (owned
+    // by Application for the whole process lifetime) and primitives, so the
+    // widget can be torn down without affecting the in-flight move.
+    std::thread([mm, device, axisStd, deltaMm]() {
+        bool ok = mm->MoveRelative(device, axisStd, deltaMm, /*blocking*/ false);
+        if (!ok) {
+            std::cout << "[EdgeRetrace] Jog " << axisStd
+                      << " " << deltaMm << " mm FAILED" << std::endl;
+        }
+    }).detach();
+}
+
+void EdgeRetraceWidget::setJogStepUm(double um)
+{
+    m_jogStepUm = um;
+    if (m_jogStepLabel) {
+        m_jogStepLabel->setText(QString("Step: %1 μm").arg(um, 0, 'f', 1));
+    }
+}
+
+void EdgeRetraceWidget::setJogPanelEnabled(bool enabled)
+{
+    if (m_jogXMinusBtn) m_jogXMinusBtn->setEnabled(enabled);
+    if (m_jogXPlusBtn)  m_jogXPlusBtn->setEnabled(enabled);
+    if (m_jogYMinusBtn) m_jogYMinusBtn->setEnabled(enabled);
+    if (m_jogYPlusBtn)  m_jogYPlusBtn->setEnabled(enabled);
+    if (m_jogZMinusBtn) m_jogZMinusBtn->setEnabled(enabled);
+    if (m_jogZPlusBtn)  m_jogZPlusBtn->setEnabled(enabled);
+    for (QPushButton* b : m_jogStepPresetBtns) {
+        if (b) b->setEnabled(enabled);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Template image (taught) for the current wait state
+// ---------------------------------------------------------------------------
+
+std::string EdgeRetraceWidget::imageFileForCurrentState() const
+{
+    switch (m_state) {
+    case WaitRefP1: return m_taughtSet.referenceEdge.p1ImageFile;
+    case WaitRefP2: return m_taughtSet.referenceEdge.p2ImageFile;
+    case WaitTgtP1: return m_taughtSet.targetEdge.p1ImageFile;
+    case WaitTgtP2: return m_taughtSet.targetEdge.p2ImageFile;
+    default:        return std::string();
+    }
+}
+
+std::string EdgeRetraceWidget::getImageDirectory() const
+{
+    if (m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+        std::filesystem::path productPath(
+            m_context->productPositionManager->GetCurrentProductPath());
+        return (productPath.parent_path() / "images" / "trainer").string();
+    }
+    return "config/images/trainer";
+}
+
+void EdgeRetraceWidget::refreshTemplateImage()
+{
+    if (!m_waitTemplateImageLabel) return;
+
+    const std::string file = imageFileForCurrentState();
+    if (file.empty()) {
+        m_waitTemplateImageLabel->setPixmap(QPixmap());
+        m_waitTemplateImageLabel->setText("(no template image)");
+        return;
+    }
+
+    const std::string fullPath = getImageDirectory() + "/" + file;
+    QPixmap pixmap(QString::fromStdString(fullPath));
+    if (pixmap.isNull()) {
+        m_waitTemplateImageLabel->setPixmap(QPixmap());
+        m_waitTemplateImageLabel->setText(
+            QString("(image missing)\n%1").arg(QString::fromStdString(file)));
+        return;
+    }
+
+    constexpr int TW = 360;
+    constexpr int TH = 240;
+    QPixmap scaled = pixmap.scaled(TW, TH, Qt::KeepAspectRatio,
+                                   Qt::SmoothTransformation);
+
+    // Crosshair overlay matches the trainer thumbnail style so the user can
+    // line up the same feature during retrace.
+    QPainter painter(&scaled);
+    painter.setPen(QPen(QColor(0, 255, 255), 1));
+    const int cx = scaled.width() / 2;
+    const int cy = scaled.height() / 2;
+    painter.drawLine(cx, 0, cx, scaled.height());
+    painter.drawLine(0, cy, scaled.width(), cy);
+    painter.setPen(QPen(QColor("#3d5a8c"), 1));
+    painter.drawRect(0, 0, scaled.width() - 1, scaled.height() - 1);
+    painter.end();
+
+    m_waitTemplateImageLabel->setText("");
+    m_waitTemplateImageLabel->setPixmap(scaled);
 }

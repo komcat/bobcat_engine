@@ -10,6 +10,7 @@
 
 class QuickOutputManager;
 class SafetyWatchManager;
+class QCheckBox;
 
 /**
  * @brief Output control button with state display
@@ -25,17 +26,29 @@ public:
   bool isOn() const { return m_isOn; }
   size_t getIndex() const { return m_index; }
 
+  // Momentary mode — when enabled, clicking pulses ON for m_dwellMs then OFF.
+  void setMomentaryEnabled(bool on);
+  bool isMomentaryEnabled() const { return m_momentaryEnabled; }
+  void setDwellMs(int ms);
+  int dwellMs() const { return m_dwellMs; }
+
 signals:
   void clicked(size_t index);
+  void momentaryToggled(size_t index, bool enabled);
+  void contextMenuRequested(size_t index, QPoint globalPos);
 
 private:
   void updateStyle();
 
   QPushButton* m_button;
   QLabel* m_statusLabel;
+  QCheckBox* m_momentaryCheck;
   size_t m_index;
   bool m_isOn;
   bool m_isValid;
+  bool m_styleInitialized = false;  // First setOutputState always paints, then diff-gated
+  bool m_momentaryEnabled = false;
+  int m_dwellMs = 0;
 };
 
 /**
@@ -74,6 +87,8 @@ private slots:
   void onRefreshButtonClicked();
   void onTurnOffAllClicked();
   void updateOutputStatuses();
+  void onMomentaryToggled(size_t index, bool enabled);
+  void onOutputContextMenu(size_t index, QPoint globalPos);
 
 private:
   void setupUI();

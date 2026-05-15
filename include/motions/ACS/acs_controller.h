@@ -47,6 +47,11 @@ public:
   bool MoveToPositionMultiAxis(const std::vector<std::string>& axes,
     const std::vector<double>& positions,
     bool blocking = true);
+  // Simultaneous multi-axis relative move (used by MoveRelativeGlobal to apply
+  // a transformed XYZ delta on all axes at once instead of sequentially).
+  bool MoveRelativeMultiAxis(const std::vector<std::string>& axes,
+    const std::vector<double>& distances,
+    bool blocking = true);
   bool HomeAxis(const std::string& axis);
   [[nodiscard]] bool StopAxis(const std::string& axis);
   [[nodiscard]] bool StopAllAxes();

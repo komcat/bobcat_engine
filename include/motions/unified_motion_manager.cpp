@@ -2,8 +2,11 @@
 #include "unified_motion_manager.h"
 #include "InterlockManager.h"
 #include "MotionJsonLoader.h"
+#include "TransformationMatrixLoader.h"
+#include "CoordinateTransformer.h"
 #include "safety/SafetyWatchManager.h"
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <thread>
 #include <chrono>
@@ -61,6 +64,7 @@ void UnifiedMotionManager::SetLogger(ILogger* logger) {
 
 UnifiedMotionManager::~UnifiedMotionManager() {
   LOG_INFO("Shutting down");
+  StopPositionPolling();  // join thread before tearing down controllers
   DisconnectAll();
 }
 
@@ -210,11 +214,14 @@ bool UnifiedMotionManager::ConnectAll() {
 
   LOG_INFO("Connect all " + std::string(allSuccess ? "succeeded" : "completed with errors"));
 
+  StartPositionPolling();
   return allSuccess;
 }
 
 void UnifiedMotionManager::DisconnectAll() {
   LOG_INFO("Disconnecting all devices");
+
+  StopPositionPolling();
 
   for (auto& [type, manager] : m_managers) {
     manager->DisconnectAll();
@@ -231,7 +238,11 @@ bool UnifiedMotionManager::ConnectDevice(const std::string& deviceName) {
   }
 
   LOG_INFO("Connecting device " + deviceName);
-  return manager->ConnectDevice(deviceName);
+  const bool ok = manager->ConnectDevice(deviceName);
+  if (ok) {
+    StartPositionPolling();
+  }
+  return ok;
 }
 
 bool UnifiedMotionManager::DisconnectDevice(const std::string& deviceName) {
@@ -265,6 +276,9 @@ int UnifiedMotionManager::ConnectEnabledDevices() {
   }
 
   LOG_INFO("Total connected: " + std::to_string(totalCount));
+  if (totalCount > 0) {
+    StartPositionPolling();
+  }
   return totalCount;
 }
 
@@ -473,6 +487,113 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
   return false;
 }
 
+// ============================================================================
+// MoveRelativeGlobal: relative move expressed in the global (world) frame.
+//
+// The transformation_matrix.json entry for each device maps GLOBAL -> LOCAL.
+// We transform (dx, dy, dz) into the device's local axes and dispatch a
+// simultaneous multi-axis relative move on the underlying controller.
+// ============================================================================
+bool UnifiedMotionManager::MoveRelativeGlobal(const std::string& deviceName,
+  double dx, double dy, double dz,
+  bool blocking) {
+  LOG_DEBUG("MoveRelativeGlobal START - device=" + deviceName +
+            " global=(" + std::to_string(dx) + "," + std::to_string(dy) + "," + std::to_string(dz) + ")" +
+            " blocking=" + std::string(blocking ? "true" : "false"));
+
+  std::string type = GetDeviceType(deviceName);
+  if (type.empty()) {
+    LOG_ERROR("MoveRelativeGlobal: device " + deviceName + " not found");
+    return false;
+  }
+
+  if (!m_matrixLoader) {
+    LOG_ERROR("MoveRelativeGlobal: TransformationMatrixLoader not set on UnifiedMotionManager");
+    return false;
+  }
+
+  const auto* matrix = m_matrixLoader->GetMatrix(deviceName);
+  if (!matrix) {
+    LOG_ERROR("MoveRelativeGlobal: device '" + deviceName +
+              "' not registered in transformation_matrix.json");
+    return false;
+  }
+
+  // Transform global delta -> local delta (UVW pass through unchanged, zero here)
+  CoordinateTransformer::Vector6D globalDelta(dx, dy, dz, 0.0, 0.0, 0.0);
+  CoordinateTransformer::Vector6D localDelta =
+    CoordinateTransformer::TransformGlobalToLocal(globalDelta, *matrix);
+
+  LOG_DEBUG("MoveRelativeGlobal: " + deviceName +
+            " local=(" + std::to_string(localDelta.x) + "," +
+                         std::to_string(localDelta.y) + "," +
+                         std::to_string(localDelta.z) + ")");
+
+  // Interlock check (same scope as the other Move* methods)
+  if (m_interlockManager) {
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    if (!allowed) {
+      LOG_ERROR("INTERLOCK: MoveRelativeGlobal blocked on " + deviceName + " - " + reason);
+      return false;
+    }
+  }
+
+  // Build the axes/distances vectors, dropping near-zero components so we
+  // don't send no-op commands to axes that aren't part of the move.
+  constexpr double kAxisEps = 1e-5;  // mm
+  std::vector<std::string> axes;
+  std::vector<double> distances;
+  axes.reserve(3);
+  distances.reserve(3);
+  if (std::fabs(localDelta.x) > kAxisEps) { axes.push_back("X"); distances.push_back(localDelta.x); }
+  if (std::fabs(localDelta.y) > kAxisEps) { axes.push_back("Y"); distances.push_back(localDelta.y); }
+  if (std::fabs(localDelta.z) > kAxisEps) { axes.push_back("Z"); distances.push_back(localDelta.z); }
+
+  if (axes.empty()) {
+    LOG_DEBUG("MoveRelativeGlobal: all local components below epsilon - nothing to move");
+    return true;
+  }
+
+  if (NormalizeType(type) == "ACS") {
+    ACSController* controller = GetACSController(deviceName);
+    if (!controller) {
+      LOG_ERROR("MoveRelativeGlobal: GetACSController returned null for " + deviceName);
+      return false;
+    }
+    bool result = controller->MoveRelativeMultiAxis(axes, distances, blocking);
+    LOG_DEBUG("ACSController::MoveRelativeMultiAxis returned " + std::string(result ? "true" : "false"));
+    return result;
+  }
+  else if (NormalizeType(type) == "PI") {
+    PIController* controller = GetPIController(deviceName);
+    if (!controller) {
+      LOG_ERROR("MoveRelativeGlobal: GetPIController returned null for " + deviceName);
+      return false;
+    }
+    bool result = controller->MoveRelativeMultiAxis(axes, distances, blocking);
+    LOG_DEBUG("PIController::MoveRelativeMultiAxis returned " + std::string(result ? "true" : "false"));
+    return result;
+  }
+
+  LOG_ERROR("MoveRelativeGlobal: unknown device type " + type);
+  return false;
+}
+
+bool UnifiedMotionManager::MoveRelativeGlobalAxis(const std::string& deviceName,
+  const std::string& globalAxis,
+  double distance,
+  bool blocking) {
+  double dx = 0.0, dy = 0.0, dz = 0.0;
+  if (globalAxis == "X" || globalAxis == "x") { dx = distance; }
+  else if (globalAxis == "Y" || globalAxis == "y") { dy = distance; }
+  else if (globalAxis == "Z" || globalAxis == "z") { dz = distance; }
+  else {
+    LOG_ERROR("MoveRelativeGlobalAxis: invalid global axis '" + globalAxis + "' (expected X, Y, or Z)");
+    return false;
+  }
+  return MoveRelativeGlobal(deviceName, dx, dy, dz, blocking);
+}
+
 bool UnifiedMotionManager::EmergencyStop(const std::string& deviceName) {
   std::string type = GetDeviceType(deviceName);
   if (type.empty()) {
@@ -624,6 +745,105 @@ PositionStruct UnifiedMotionManager::GetCurrentPosition(const std::string& devic
   }
 
   return defaultPos;
+}
+
+// ============================================================================
+// CACHED POSITION READ (non-blocking, for UI consumers)
+// ============================================================================
+
+bool UnifiedMotionManager::GetCachedPosition(const std::string& deviceName,
+  PositionStruct& outPosition) const {
+  std::lock_guard<std::mutex> lock(m_cachedPositionMutex);
+  auto validIt = m_cachedPositionValid.find(deviceName);
+  if (validIt == m_cachedPositionValid.end() || !validIt->second) {
+    return false;
+  }
+  auto posIt = m_cachedPositions.find(deviceName);
+  if (posIt == m_cachedPositions.end()) {
+    return false;
+  }
+  outPosition = posIt->second;
+  return true;
+}
+
+bool UnifiedMotionManager::GetCachedPosition(const std::string& deviceName,
+  const std::string& axis,
+  double& position) const {
+  PositionStruct pos;
+  if (!GetCachedPosition(deviceName, pos)) return false;
+  if (axis.empty()) return false;
+  switch (axis[0]) {
+    case 'X': case 'x': position = pos.x; return true;
+    case 'Y': case 'y': position = pos.y; return true;
+    case 'Z': case 'z': position = pos.z; return true;
+    case 'U': case 'u': position = pos.u; return true;
+    case 'V': case 'v': position = pos.v; return true;
+    case 'W': case 'w': position = pos.w; return true;
+    default: return false;
+  }
+}
+
+void UnifiedMotionManager::StartPositionPolling() {
+  bool expected = false;
+  if (!m_positionPollRunning.compare_exchange_strong(expected, true)) {
+    // Already running — Connect* may be called multiple times.
+    return;
+  }
+  LOG_INFO("Starting position polling thread (interval=" +
+           std::to_string(kPositionPollIntervalMs) + "ms)");
+  m_positionPollThread = std::thread(&UnifiedMotionManager::PositionPollLoop, this);
+}
+
+void UnifiedMotionManager::StopPositionPolling() {
+  if (!m_positionPollRunning.exchange(false)) {
+    return;  // not running
+  }
+  if (m_positionPollThread.joinable()) {
+    m_positionPollThread.join();
+  }
+  LOG_INFO("Position polling thread stopped");
+}
+
+void UnifiedMotionManager::PositionPollLoop() {
+  while (m_positionPollRunning.load(std::memory_order_acquire)) {
+    const auto cycleStart = std::chrono::steady_clock::now();
+
+    // Snapshot connected device list so the poll itself doesn't hold any
+    // structural lock. GetConnectedDeviceNames is safe to call concurrently
+    // because the controller managers expose connection state via their
+    // own internal locking.
+    const std::vector<std::string> devices = GetConnectedDeviceNames();
+
+    for (const auto& deviceName : devices) {
+      // Bail out promptly on shutdown — don't keep hitting controllers
+      // we're about to disconnect.
+      if (!m_positionPollRunning.load(std::memory_order_acquire)) return;
+
+      PositionStruct pos = GetCurrentPosition(deviceName);
+      {
+        std::lock_guard<std::mutex> lock(m_cachedPositionMutex);
+        m_cachedPositions[deviceName] = pos;
+        m_cachedPositionValid[deviceName] = true;
+      }
+    }
+
+    // Sleep the remainder of the interval. We measure the cycle so a slow
+    // poll on one device doesn't compound — if the cycle already exceeded
+    // the interval we just go again immediately.
+    const auto cycleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            std::chrono::steady_clock::now() - cycleStart).count();
+    const int sleepMs = static_cast<int>(kPositionPollIntervalMs - cycleMs);
+    if (sleepMs > 0) {
+      // Sleep in small slices so shutdown is responsive.
+      const int sliceMs = 25;
+      int remaining = sleepMs;
+      while (remaining > 0 && m_positionPollRunning.load(std::memory_order_acquire)) {
+        const int chunk = remaining > sliceMs ? sliceMs : remaining;
+        std::this_thread::sleep_for(std::chrono::milliseconds(chunk));
+        remaining -= chunk;
+      }
+    }
+  }
 }
 
 bool UnifiedMotionManager::SetVelocity(const std::string& deviceName,

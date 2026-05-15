@@ -152,6 +152,12 @@ private:
     std::string m_currentDeviceId;
     bool m_isConnected;
 
+    // Cached visual state — updateStatus() runs every poll tick (2 Hz) and
+    // used to setText/setStyleSheet/setEnabled unconditionally. Diff against
+    // these to skip the QSS recompute when nothing changed. -1 = uninitialized.
+    int m_lastRenderedStatus = -1;  // -1=init, 0=no-device, 1=connected, 2=disconnected
+    QString m_lastDeviceInfoText;
+
     // Parameter worker for non-blocking operations
     LightingParameterWorker* m_parameterWorker;
     bool m_connectionPending;

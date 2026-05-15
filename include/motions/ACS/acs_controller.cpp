@@ -1190,6 +1190,121 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   return true;
 }
 
+bool ACSController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
+  const std::vector<double>& distances,
+  bool blocking) {
+  // Clear previous error
+  m_lastErrorCode = 0;
+  m_lastErrorMessage.clear();
+
+  LOG_DEBUG("MoveRelativeMultiAxis START - axes=" + std::to_string(axes.size()) +
+            " blocking=" + std::string(blocking ? "true" : "false"));
+
+  if (!m_isConnected) {
+    m_lastErrorCode = -1;
+    m_lastErrorMessage = "Not connected";
+    LOG_ERROR("Cannot move - not connected");
+    return false;
+  }
+
+  if (axes.size() != distances.size() || axes.empty()) {
+    m_lastErrorCode = -2;
+    m_lastErrorMessage = "Invalid axes/distances arrays";
+    LOG_ERROR("Invalid axes/distances arrays");
+    return false;
+  }
+
+  // Resolve axis indices up front
+  std::vector<int> axisIndices;
+  axisIndices.reserve(axes.size());
+  for (const auto& axis : axes) {
+    int axisIndex = GetAxisIndex(axis);
+    if (axisIndex < 0) {
+      m_lastErrorCode = -2;
+      m_lastErrorMessage = "Invalid axis: " + axis;
+      LOG_ERROR("Invalid axis: " + axis);
+      return false;
+    }
+    axisIndices.push_back(axisIndex);
+  }
+
+  // Wait for all axes to be idle (prevents error 3065). Same pattern as MoveToPositionMultiAxis.
+  constexpr int kMaxIdleIter = 500;  // 5000ms / 10ms poll
+  constexpr int kIdlePollMs = 10;
+
+  for (size_t i = 0; i < axisIndices.size(); i++) {
+    int axisIdx = axisIndices[i];
+    const std::string& axisName = axes[i];
+    bool isMoving = true;
+
+    for (int j = 0; j < kMaxIdleIter; ++j) {
+      int motorState = 0;
+      if (acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL)) {
+        isMoving = (motorState & ACSC_MST_MOVE) != 0;
+        if (!isMoving) {
+          if (j > 0) {
+            LOG_DEBUG("Axis " + axisName + " became idle after " + std::to_string(j * kIdlePollMs) + "ms wait");
+          }
+          break;
+        }
+      } else {
+        LOG_DEBUG("Motor state query failed for " + axisName + ", proceeding anyway");
+        isMoving = false;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(kIdlePollMs));
+    }
+
+    if (isMoving) {
+      m_lastErrorCode = -3;
+      m_lastErrorMessage = "Timeout waiting for axis " + axisName + " to become idle";
+      LOG_ERROR(m_lastErrorMessage);
+      return false;
+    }
+  }
+
+  // Capture target absolute positions for blocking-completion verification
+  std::vector<double> targetAbsPositions;
+  targetAbsPositions.reserve(axes.size());
+  for (size_t i = 0; i < axes.size(); i++) {
+    double cur = 0.0;
+    GetPosition(axes[i], cur);
+    targetAbsPositions.push_back(cur + distances[i]);
+  }
+
+  // Build axis-index array terminated with -1
+  std::vector<int> axesArray(axisIndices.size() + 1);
+  for (size_t i = 0; i < axisIndices.size(); i++) {
+    axesArray[i] = axisIndices[i];
+  }
+  axesArray[axisIndices.size()] = -1;
+
+  LOG_DEBUG("Calling acsc_ToPointM (relative) for multi-axis move");
+  if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT | ACSC_AMF_RELATIVE, axesArray.data(),
+    const_cast<double*>(distances.data()), NULL)) {
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_ToPointM (relative) failed: error=" + std::to_string(m_lastErrorCode);
+    LOG_ERROR(m_lastErrorMessage);
+    return false;
+  }
+
+  LOG_DEBUG("Calling acsc_GoM");
+  if (!acsc_GoM(m_controllerId, axesArray.data(), NULL)) {
+    m_lastErrorCode = acsc_GetLastError();
+    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(m_lastErrorCode);
+    LOG_ERROR(m_lastErrorMessage);
+    return false;
+  }
+
+  if (blocking) {
+    LOG_DEBUG("Waiting for relative motion completion on all axes");
+    return WaitForMultiAxisCompletion(axes, 30.0, targetAbsPositions);
+  }
+
+  LOG_DEBUG("MoveRelativeMultiAxis END - success");
+  return true;
+}
+
 void ACSController::CheckInPosition(const std::string& axis, int axisIndex) {
   int motorState = 0;
   if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {

@@ -36,6 +36,7 @@
 #include "startup/ConnectionWorkerPool.h"
 #include "startup/ConnectionResult.h"
 #include <QApplication>
+#include "diagnostics/LongEventDetector.h"
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -141,7 +142,11 @@ bool Application::initialize()
   if (m_initialized) return true;
 
   try {
-    m_qApplication = std::make_unique<QApplication>(m_argc, m_argv);
+    // LongEventDetector overrides QApplication::notify() to log any event
+    // whose dispatch exceeds 50ms — used to find UI-thread hot spots that
+    // stall the event loop and cause display-fps drops. Safe to ship: only
+    // the threshold-exceeded path emits output.
+    m_qApplication = std::make_unique<LongEventDetector>(m_argc, m_argv);
     m_qApplication->setApplicationName(QString::fromStdString(getApplicationName()));
     m_qApplication->setApplicationVersion(QString::fromStdString(getVersion()));
 
@@ -561,6 +566,17 @@ void Application::initializeMotionManager()
     m_motionManager = std::make_unique<UnifiedMotionManager>();
     m_context.motionManager = m_motionManager.get();
     m_logManager->Info("UnifiedMotionManager created", "Application");
+
+    // 1b. Create transformation matrix loader and inject into motion manager so
+    //     MoveRelativeGlobal can convert global deltas into each device's local frame.
+    m_transformationMatrixLoader = std::make_unique<TransformationMatrixLoader>();
+    if (m_transformationMatrixLoader->LoadFromFile("config/transformation_matrix.json")) {
+      m_logManager->Info("Transformation matrices loaded for UnifiedMotionManager", "Application");
+    } else {
+      m_logManager->Warning("Could not load config/transformation_matrix.json - MoveRelativeGlobal will fail per-device until matrices are provided", "Application");
+    }
+    m_motionManager->SetMatrixLoader(m_transformationMatrixLoader.get());
+    m_context.transformationMatrixLoader = m_transformationMatrixLoader.get();
 
     // 2. Load config using MotionJsonLoader - try local first, then default
     int loadedCount = 0;
@@ -2548,14 +2564,14 @@ void Application::initializeDeviceLinkManager()
       m_deviceLinkManager->SetMotionManager(m_motionManager.get());
     }
 
-    // Create and load transformation matrix loader
-    static TransformationMatrixLoader matrixLoader;
-    std::string matrixPath = "config/transformation_matrix.json";
-    if (matrixLoader.LoadFromFile(matrixPath)) {
-      m_deviceLinkManager->SetMatrixLoader(&matrixLoader);
-      m_logManager->Info("Transformation matrices loaded for DeviceLinkManager", "Application");
+    // Share the transformation matrix loader owned by Application (loaded during
+    // initializeMotionManager). DeviceLinkManager and UnifiedMotionManager use
+    // the same instance so a single config edit is visible everywhere.
+    if (m_transformationMatrixLoader) {
+      m_deviceLinkManager->SetMatrixLoader(m_transformationMatrixLoader.get());
+      m_logManager->Info("Transformation matrices shared with DeviceLinkManager", "Application");
     } else {
-      m_logManager->Warning("DeviceLinkManager: Could not load transformation matrices", "Application");
+      m_logManager->Warning("DeviceLinkManager: TransformationMatrixLoader not available", "Application");
     }
 
     // Try to load existing device links

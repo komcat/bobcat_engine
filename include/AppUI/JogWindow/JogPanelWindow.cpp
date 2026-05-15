@@ -33,6 +33,8 @@
 #include <QStyle>
 #include <QFile>
 #include <QSpinBox>
+#include <QScrollArea>
+#include <QMenu>
 
 JogPanelWindow::JogPanelWindow(
   ApplicationContext* context,
@@ -65,7 +67,13 @@ JogPanelWindow::JogPanelWindow(
   , m_keyboardActive(false)
 {
   setWindowTitle("Jog Panel");
-  setWindowFlags(Qt::Window | Qt::WindowStaysOnTopHint);
+  // Resizable window with title + close + maximize, but no minimize button.
+  setWindowFlags(Qt::Window
+                 | Qt::WindowStaysOnTopHint
+                 | Qt::CustomizeWindowHint
+                 | Qt::WindowTitleHint
+                 | Qt::WindowMaximizeButtonHint
+                 | Qt::WindowCloseButtonHint);
 
   // Initialize Quick Output Manager
   if (m_context && m_context->ioManager) {
@@ -132,8 +140,11 @@ JogPanelWindow::JogPanelWindow(
 
   // Setup position update timer
   m_positionUpdateTimer = new QTimer(this);
+  m_positionUpdateTimer->setObjectName("jogPositionTimer");
   connect(m_positionUpdateTimer, &QTimer::timeout, this, &JogPanelWindow::updatePositionDisplay);
-  m_positionUpdateTimer->setInterval(200);  // Update every 200ms
+  // 500ms is plenty for a human-readable label and reads from the
+  // motion manager's cached-position thread (non-blocking).
+  m_positionUpdateTimer->setInterval(500);
 
   // Start hidden
   hide();
@@ -188,6 +199,7 @@ void JogPanelWindow::setupUI()
 
   // Create tabs
   createJogTab();
+  createMovPosTab();
   createQuickOutputTab();
   createLightingTab();
 
@@ -248,7 +260,10 @@ void JogPanelWindow::setupUI()
     }
   )");
 
-  setFixedSize(400, 600);
+  // Resizable: enforce a minimum that fits the controls; default to the previous fixed size.
+  // restoreWindowSettings() (called after setupUI) will override this when a saved size exists.
+  setMinimumSize(400, 600);
+  resize(400, 600);
 }
 
 void JogPanelWindow::createJogTab()
@@ -366,6 +381,345 @@ void JogPanelWindow::createLightingTab()
     label->setStyleSheet("color: #888888; font-size: 11px;");
     layout->addWidget(label);
     m_tabWidget->addTab(placeholder, "Lighting");
+  }
+}
+
+// ===========================================================================
+// MovPos tab — 2x5 named-position slot grid with right-click teach.
+// Slot→position-name mapping is persisted in QSettings, keyed per device.
+// ===========================================================================
+
+QString JogPanelWindow::movPosSlotSettingsKey(const std::string& deviceName,
+                                              int slotIndex) const
+{
+  return QString("MovPosSlots/%1/%2").arg(QString::fromStdString(deviceName)).arg(slotIndex);
+}
+
+double JogPanelWindow::defaultVelocityForDevice(const std::string& deviceName) const
+{
+  // Hex devices (PI) move at 2 mm/s by default; gantry/stage (ACS) at 10 mm/s.
+  if (!m_context || !m_context->motionManager || deviceName.empty()) return 10.0;
+  std::string type = m_context->motionManager->GetDeviceType(deviceName);
+  for (auto& c : type) c = static_cast<char>(toupper(c));
+  return (type == "PI") ? 2.0 : 10.0;
+}
+
+void JogPanelWindow::applyDefaultVelocityFor(const std::string& deviceName)
+{
+  if (!m_context || !m_context->motionManager || deviceName.empty()) return;
+
+  const double vel = defaultVelocityForDevice(deviceName);
+  std::string type = m_context->motionManager->GetDeviceType(deviceName);
+  std::string upperType = type;
+  for (auto& c : upperType) c = static_cast<char>(toupper(c));
+
+  // Same dispatch shape as JogPanelWindow::applyVelocity (PI = system, ACS = per-axis).
+  if (upperType == "PI") {
+    m_context->motionManager->SetSystemVelocity(deviceName, vel);
+  } else {
+    std::string axes = m_context->motionManager->GetInstalledAxes(deviceName);
+    for (char c : axes) {
+      m_context->motionManager->SetVelocity(deviceName, std::string(1, c), vel);
+    }
+  }
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "MovPos: pre-move velocity " + std::to_string(vel) + " mm/s on " + deviceName,
+      "JogPanel");
+  }
+}
+
+void JogPanelWindow::createMovPosTab()
+{
+  m_movPosWidget = new QWidget();
+  QHBoxLayout* root = new QHBoxLayout(m_movPosWidget);
+  root->setContentsMargins(4, 8, 4, 8);
+  root->setSpacing(8);
+
+  // -------- Left column: device selector (mirrors Jog tab pattern) --------
+  QWidget* leftColumn = new QWidget();
+  leftColumn->setMaximumWidth(180);
+  QVBoxLayout* leftLayout = new QVBoxLayout(leftColumn);
+  leftLayout->setContentsMargins(0, 0, 0, 0);
+  leftLayout->setSpacing(4);
+
+  QGroupBox* deviceBox = new QGroupBox("Device");
+  QVBoxLayout* deviceBoxLayout = new QVBoxLayout(deviceBox);
+  deviceBoxLayout->setSpacing(3);
+  deviceBoxLayout->setContentsMargins(4, 8, 4, 4);
+
+  QScrollArea* scroll = new QScrollArea(deviceBox);
+  scroll->setWidgetResizable(true);
+  scroll->setFrameShape(QFrame::NoFrame);
+  scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  scroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  scroll->setMaximumHeight(4 * 34 + 3 * 3 + 4);  // ~4 buttons visible
+
+  QWidget* listContainer = new QWidget();
+  m_movPosDeviceListLayout = new QVBoxLayout(listContainer);
+  m_movPosDeviceListLayout->setSpacing(3);
+  m_movPosDeviceListLayout->setContentsMargins(0, 0, 0, 0);
+  scroll->setWidget(listContainer);
+  deviceBoxLayout->addWidget(scroll);
+
+  m_movPosDeviceGroup = new QButtonGroup(this);
+  m_movPosDeviceGroup->setExclusive(true);
+
+  rebuildMovPosDeviceList();
+
+  leftLayout->addWidget(deviceBox);
+  leftLayout->addStretch();
+
+  root->addWidget(leftColumn);
+
+  // -------- Right column: 2 x 5 slot grid --------
+  QWidget* rightColumn = new QWidget();
+  QVBoxLayout* rightLayout = new QVBoxLayout(rightColumn);
+  rightLayout->setContentsMargins(0, 0, 0, 0);
+  rightLayout->setSpacing(4);
+
+  QLabel* hint = new QLabel("Click: move • Right-click: assign from product positions");
+  hint->setStyleSheet("QLabel { color: #888888; font-size: 10px; }");
+  rightLayout->addWidget(hint);
+
+  QGridLayout* slotGrid = new QGridLayout();
+  slotGrid->setSpacing(6);
+  slotGrid->setContentsMargins(0, 0, 0, 0);
+
+  m_movPosSlotButtons.assign(kMovPosSlotCount, nullptr);
+  for (int i = 0; i < kMovPosSlotCount; ++i) {
+    QPushButton* btn = new QPushButton();
+    btn->setMinimumHeight(48);
+    btn->setStyleSheet(
+      "QPushButton { "
+      "  background-color: #3c3c3c; "
+      "  color: #d4d4d4; "
+      "  border: 1px solid #555555; "
+      "  border-radius: 4px; "
+      "  font-size: 11px; "
+      "  font-weight: bold; "
+      "  padding: 4px; "
+      "} "
+      "QPushButton:hover { background-color: #0e639c; color: white; border-color: #1177bb; } "
+      "QPushButton:pressed { background-color: #0c5280; }"
+    );
+    btn->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    connect(btn, &QPushButton::clicked, this, [this, i]() {
+      onMovPosSlotClicked(i);
+    });
+    connect(btn, &QWidget::customContextMenuRequested, this, [this, i, btn](const QPoint& pos) {
+      onMovPosSlotContextMenu(i, btn->mapToGlobal(pos));
+    });
+
+    int row = i / 2;  // 5 rows
+    int col = i % 2;  // 2 cols
+    slotGrid->addWidget(btn, row, col);
+    m_movPosSlotButtons[i] = btn;
+  }
+
+  rightLayout->addLayout(slotGrid);
+  rightLayout->addStretch();
+  root->addWidget(rightColumn, 1);
+
+  refreshMovPosSlotLabels();
+
+  m_tabWidget->addTab(m_movPosWidget, "MovPos");
+}
+
+void JogPanelWindow::rebuildMovPosDeviceList()
+{
+  if (!m_movPosDeviceListLayout || !m_movPosDeviceGroup) return;
+
+  // Clear existing buttons
+  QList<QAbstractButton*> buttons = m_movPosDeviceGroup->buttons();
+  for (QAbstractButton* btn : buttons) {
+    m_movPosDeviceGroup->removeButton(btn);
+    m_movPosDeviceListLayout->removeWidget(btn);
+    delete btn;
+  }
+  // Drop trailing stretch if present
+  if (m_movPosDeviceListLayout->count() > 0) {
+    QLayoutItem* tail = m_movPosDeviceListLayout->takeAt(m_movPosDeviceListLayout->count() - 1);
+    delete tail;
+  }
+
+  if (!m_context || !m_context->motionManager || !m_matrixLoader) {
+    m_movPosDeviceListLayout->addStretch();
+    return;
+  }
+
+  std::vector<std::string> piDevices = m_context->motionManager->GetDeviceNamesByType("PI");
+  std::vector<std::string> acsDevices = m_context->motionManager->GetDeviceNamesByType("ACS");
+  std::vector<std::string> all;
+  all.insert(all.end(), piDevices.begin(), piDevices.end());
+  all.insert(all.end(), acsDevices.begin(), acsDevices.end());
+
+  std::map<std::string, bool> connectionStatus = m_context->motionManager->GetConnectionStatus();
+
+  std::vector<std::string> validDevices;
+  for (const auto& deviceId : all) {
+    if (!m_matrixLoader->HasDevice(deviceId)) continue;
+    auto it = connectionStatus.find(deviceId);
+    if (it == connectionStatus.end() || !it->second) continue;
+    validDevices.push_back(deviceId);
+  }
+  std::sort(validDevices.begin(), validDevices.end());
+
+  for (const auto& deviceId : validDevices) {
+    QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
+    btn->setCheckable(true);
+    btn->setMinimumHeight(26);
+    btn->setMaximumHeight(26);
+    btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
+    m_movPosDeviceGroup->addButton(btn);
+    m_movPosDeviceListLayout->addWidget(btn);
+    connect(btn, &QPushButton::clicked, this, &JogPanelWindow::onMovPosDeviceSelected);
+  }
+
+  if (!validDevices.empty()) {
+    auto firstButton = qobject_cast<QPushButton*>(m_movPosDeviceGroup->buttons().first());
+    if (firstButton) {
+      firstButton->setChecked(true);
+      m_movPosSelectedDevice = validDevices[0];
+    }
+  } else {
+    m_movPosSelectedDevice.clear();
+  }
+
+  m_movPosDeviceListLayout->addStretch();
+}
+
+void JogPanelWindow::onMovPosDeviceSelected()
+{
+  QPushButton* btn = qobject_cast<QPushButton*>(sender());
+  if (!btn || !btn->isChecked()) return;
+  m_movPosSelectedDevice = btn->text().toStdString();
+  refreshMovPosSlotLabels();
+}
+
+void JogPanelWindow::refreshMovPosSlotLabels()
+{
+  QSettings settings("Fabrinet", "BobcatEngine");
+  for (int i = 0; i < kMovPosSlotCount; ++i) {
+    if (!m_movPosSlotButtons[i]) continue;
+    QString name;
+    if (!m_movPosSelectedDevice.empty()) {
+      name = settings.value(movPosSlotSettingsKey(m_movPosSelectedDevice, i)).toString();
+    }
+    if (name.isEmpty()) {
+      m_movPosSlotButtons[i]->setText(QString("Slot %1\n(empty)").arg(i + 1));
+      m_movPosSlotButtons[i]->setToolTip("Right-click to teach this slot.");
+    } else {
+      m_movPosSlotButtons[i]->setText(QString("Slot %1\n%2").arg(i + 1).arg(name));
+      m_movPosSlotButtons[i]->setToolTip(QString("Move to '%1'\nRight-click to retach or clear.").arg(name));
+    }
+  }
+}
+
+void JogPanelWindow::onMovPosSlotClicked(int slotIndex)
+{
+  if (m_movPosSelectedDevice.empty()) {
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Warning("MovPos: no device selected", "JogPanel");
+    }
+    return;
+  }
+  QSettings settings("Fabrinet", "BobcatEngine");
+  QString name = settings.value(movPosSlotSettingsKey(m_movPosSelectedDevice, slotIndex)).toString();
+  if (name.isEmpty()) {
+    if (m_context && m_context->logManager) {
+      m_context->logManager->Warning(
+        "MovPos: slot " + std::to_string(slotIndex + 1) + " is empty — right-click to teach",
+        "JogPanel");
+    }
+    return;
+  }
+  if (!m_context || !m_context->motionManager) return;
+
+  // Per request: set default velocity (gantry/stage = 10 mm/s, hex/PI = 2 mm/s) before moving.
+  applyDefaultVelocityFor(m_movPosSelectedDevice);
+
+  bool ok = m_context->motionManager->MoveToNamedPosition(
+    m_movPosSelectedDevice, name.toStdString(), /*blocking=*/false);
+
+  if (m_context->logManager) {
+    if (ok) {
+      m_context->logManager->Info(
+        "MovPos: moving " + m_movPosSelectedDevice + " → '" + name.toStdString() + "'",
+        "JogPanel");
+    } else {
+      m_context->logManager->Warning(
+        "MovPos: MoveToNamedPosition failed for " + m_movPosSelectedDevice + " '" + name.toStdString() + "'",
+        "JogPanel");
+    }
+  }
+}
+
+void JogPanelWindow::onMovPosSlotContextMenu(int slotIndex, const QPoint& globalPos)
+{
+  QMenu menu;
+
+  if (m_movPosSelectedDevice.empty() ||
+      !m_context || !m_context->motionManager) {
+    QAction* warn = menu.addAction("(select a device first)");
+    warn->setEnabled(false);
+    menu.exec(globalPos);
+    return;
+  }
+
+  // Pull the named-position list for the currently selected device (loaded
+  // from the active product's motor_devices file).
+  std::vector<std::string> positions =
+    m_context->motionManager->GetNamedPositionList(m_movPosSelectedDevice);
+  std::sort(positions.begin(), positions.end());
+
+  QMenu* assignMenu = menu.addMenu(
+    QString("Assign position for %1…").arg(QString::fromStdString(m_movPosSelectedDevice)));
+
+  if (positions.empty()) {
+    QAction* none = assignMenu->addAction("(no named positions for this device)");
+    none->setEnabled(false);
+  } else {
+    for (const auto& name : positions) {
+      QAction* act = assignMenu->addAction(QString::fromStdString(name));
+      const std::string captured = name;
+      connect(act, &QAction::triggered, this, [this, slotIndex, captured]() {
+        QSettings settings("Fabrinet", "BobcatEngine");
+        settings.setValue(movPosSlotSettingsKey(m_movPosSelectedDevice, slotIndex),
+                          QString::fromStdString(captured));
+        refreshMovPosSlotLabels();
+        if (m_context && m_context->logManager) {
+          m_context->logManager->Info(
+            "MovPos: slot " + std::to_string(slotIndex + 1) +
+            " on " + m_movPosSelectedDevice + " → '" + captured + "'",
+            "JogPanel");
+        }
+      });
+    }
+  }
+
+  menu.addSeparator();
+  QAction* clearAct = menu.addAction("Clear slot");
+  clearAct->setEnabled(!m_movPosSelectedDevice.empty());
+
+  QAction* chosen = menu.exec(globalPos);
+  if (chosen == clearAct) {
+    clearMovPosSlot(slotIndex);
+  }
+}
+
+void JogPanelWindow::clearMovPosSlot(int slotIndex)
+{
+  if (m_movPosSelectedDevice.empty()) return;
+  QSettings settings("Fabrinet", "BobcatEngine");
+  settings.remove(movPosSlotSettingsKey(m_movPosSelectedDevice, slotIndex));
+  refreshMovPosSlotLabels();
+  if (m_context && m_context->logManager) {
+    m_context->logManager->Info(
+      "MovPos: cleared slot " + std::to_string(slotIndex + 1) + " on " + m_movPosSelectedDevice,
+      "JogPanel");
   }
 }
 
@@ -508,8 +862,8 @@ QString JogPanelWindow::getDeviceButtonStyleSheet(const std::string& deviceId)
     "  color: white; "
     "  border: 1px solid #555; "
     "  border-radius: 3px; "
-    "  padding: 2px 2px; "
-    "  font-size: 10px; "
+    "  padding: 2px 6px; "
+    "  font-size: 14px; "
     "  font-weight: bold; "
     "  text-align: left; "
     "} "
@@ -542,6 +896,23 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
   QVBoxLayout* groupLayout = new QVBoxLayout(m_deviceGroupBox);
   groupLayout->setSpacing(3);
   groupLayout->setContentsMargins(4, 8, 4, 4);
+
+  // Scroll area: caps the visible device list to ~4 buttons; scrolls vertically beyond that.
+  // Button height (26) + groupLayout spacing (3) -> ~29px per row; 4 rows ≈ 116px + small frame.
+  QScrollArea* deviceScroll = new QScrollArea(m_deviceGroupBox);
+  deviceScroll->setWidgetResizable(true);
+  deviceScroll->setFrameShape(QFrame::NoFrame);
+  deviceScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+  deviceScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+  deviceScroll->setMaximumHeight(4 * 34 + 3 * 3 + 4);  // 4 buttons + 3 gaps + slight padding
+
+  QWidget* deviceListContainer = new QWidget();
+  m_deviceListLayout = new QVBoxLayout(deviceListContainer);
+  m_deviceListLayout->setSpacing(3);
+  m_deviceListLayout->setContentsMargins(0, 0, 0, 0);
+
+  deviceScroll->setWidget(deviceListContainer);
+  groupLayout->addWidget(deviceScroll);
 
   m_deviceButtonGroup = new QButtonGroup(this);
   m_deviceButtonGroup->setExclusive(true);
@@ -594,12 +965,12 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
-      btn->setMinimumHeight(26);
-      btn->setMaximumHeight(26);
+      btn->setMinimumHeight(34);
+      btn->setMaximumHeight(34);
       btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
-      groupLayout->addWidget(btn);
+      m_deviceListLayout->addWidget(btn);
 
       connect(btn, &QPushButton::clicked, this, &JogPanelWindow::onDeviceSelected);
     }
@@ -621,22 +992,19 @@ void JogPanelWindow::createDevicePanel(QWidget* parent)
     }
   }
 
-  groupLayout->addStretch();
+  m_deviceListLayout->addStretch();
   layout->addWidget(m_deviceGroupBox);
 }
 
 // ✅ NEW: Refresh device list when panel is shown
 void JogPanelWindow::refreshDeviceList()
 {
-  if (!m_deviceGroupBox || !m_devicePanelParent) {
+  if (!m_deviceGroupBox || !m_devicePanelParent || !m_deviceListLayout) {
     return;  // Panel not initialized yet
   }
 
-  // Get the layout of the groupBox
-  QVBoxLayout* groupLayout = qobject_cast<QVBoxLayout*>(m_deviceGroupBox->layout());
-  if (!groupLayout) {
-    return;
-  }
+  // Operate on the inner scroll-area layout that holds the device buttons.
+  QVBoxLayout* groupLayout = m_deviceListLayout;
 
   // Clear all existing device buttons
   if (m_deviceButtonGroup) {
@@ -649,10 +1017,12 @@ void JogPanelWindow::refreshDeviceList()
     }
   }
 
-  // Remove the stretch if it exists
-  QLayoutItem* stretch = groupLayout->takeAt(groupLayout->count() - 1);
-  if (stretch) {
-    delete stretch;
+  // Remove the trailing stretch if it exists
+  if (groupLayout->count() > 0) {
+    QLayoutItem* stretch = groupLayout->takeAt(groupLayout->count() - 1);
+    if (stretch) {
+      delete stretch;
+    }
   }
 
   // Rebuild device list (same logic as createDevicePanel)
@@ -703,8 +1073,8 @@ void JogPanelWindow::refreshDeviceList()
     for (const auto& deviceId : validDevices) {
       QPushButton* btn = new QPushButton(QString::fromStdString(deviceId));
       btn->setCheckable(true);
-      btn->setMinimumHeight(26);
-      btn->setMaximumHeight(26);
+      btn->setMinimumHeight(34);
+      btn->setMaximumHeight(34);
       btn->setStyleSheet(getDeviceButtonStyleSheet(deviceId));
 
       m_deviceButtonGroup->addButton(btn);
@@ -738,6 +1108,10 @@ void JogPanelWindow::refreshDeviceList()
 
   // Update velocity presets for the selected device
   updateVelocityPresets();
+
+  // Keep the MovPos tab's device list in sync as well.
+  rebuildMovPosDeviceList();
+  refreshMovPosSlotLabels();
 }
 
 void JogPanelWindow::createVelocityPanel(QWidget* /*parent*/)
@@ -859,6 +1233,19 @@ void JogPanelWindow::applyVelocity(double velocity)
     }
   }
 
+  m_currentVelocity = velocity;
+  if (m_currentVelocityLabel) {
+    QString label;
+    if (velocity == static_cast<int>(velocity)) {
+      label = QString::number(static_cast<int>(velocity));
+    } else if (velocity < 1.0) {
+      label = QString::number(velocity, 'f', 2);
+    } else {
+      label = QString::number(velocity, 'f', 1);
+    }
+    m_currentVelocityLabel->setText(label + " mm/s");
+  }
+
   if (m_context->logManager) {
     m_context->logManager->Info(
       "Velocity set to " + std::to_string(velocity) + " mm/s for " + m_selectedDevice,
@@ -883,10 +1270,12 @@ void JogPanelWindow::createStepSizePanel(QWidget* parent)
   m_currentStepLabel = new QLabel();
   m_currentStepLabel->setStyleSheet(
     "QLabel { "
-    "  font-size: 12px; "
+    "  font-size: 36px; "
     "  font-weight: bold; "
-    "  color: #14ffec; "
-    "  padding: 2px; "
+    "  color: #ffff00; "
+    "  background-color: #1565c0; "
+    "  padding: 6px; "
+    "  border-radius: 4px; "
     "}"
   );
   m_currentStepLabel->setAlignment(Qt::AlignCenter);
@@ -1126,6 +1515,21 @@ void JogPanelWindow::createMovementPanel(QWidget* parent)
   velLabel->setStyleSheet("QLabel { font-weight: bold; color: #14ffec; font-size: 10px; }");
   groupLayout->addWidget(velLabel);
 
+  // Current velocity readout — large blue/yellow display, mirrors the step-size style.
+  m_currentVelocityLabel = new QLabel("— mm/s");
+  m_currentVelocityLabel->setStyleSheet(
+    "QLabel { "
+    "  font-size: 36px; "
+    "  font-weight: bold; "
+    "  color: #ffff00; "
+    "  background-color: #1565c0; "
+    "  padding: 6px; "
+    "  border-radius: 4px; "
+    "}"
+  );
+  m_currentVelocityLabel->setAlignment(Qt::AlignCenter);
+  groupLayout->addWidget(m_currentVelocityLabel);
+
   m_velocityPresetsWidget = new QWidget();
   QGridLayout* velGrid = new QGridLayout(m_velocityPresetsWidget);
   velGrid->setSpacing(2);
@@ -1190,6 +1594,8 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
     spinBox->setMaximum(1000000);
     spinBox->setSingleStep(100);
     spinBox->setSuffix(QString(" %1s").arg(QChar(0x00B5)));
+    spinBox->setAlignment(Qt::AlignLeft);
+    spinBox->setFixedWidth(90);  // Narrow, left-aligned — leaves room for the step grid.
     spinBox->setStyleSheet(
       "QSpinBox { "
       "  background-color: #2a2a2a; "
@@ -1205,7 +1611,7 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
     auto settings = m_context->cameraManager->GetExposureSettings(cfg.cameraId);
     spinBox->setValue(static_cast<int>(settings.exposure_time));
 
-    row->addWidget(spinBox, 1);
+    row->addWidget(spinBox, 0, Qt::AlignLeft);
 
     QPushButton* applyBtn = new QPushButton("Apply");
     applyBtn->setMinimumHeight(24);
@@ -1232,6 +1638,49 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
       });
 
     row->addWidget(applyBtn);
+
+    // 3x2 step grid, coarse-to-fine top-to-bottom: -10k/+10k, -1k/+1k, -100/+100.
+    // Each click adjusts the spinbox value (clamped to its min/max) and applies immediately.
+    QGridLayout* stepGrid = new QGridLayout();
+    stepGrid->setSpacing(2);
+    stepGrid->setContentsMargins(0, 0, 0, 0);
+
+    auto makeStepButton = [this, cameraId = cfg.cameraId, spinBox](const QString& text, int delta) {
+      QPushButton* b = new QPushButton(text);
+      b->setFixedSize(40, 20);
+      b->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #3c3c3c; "
+        "  color: #d4d4d4; "
+        "  border: 1px solid #555555; "
+        "  border-radius: 3px; "
+        "  font-size: 10px; "
+        "  font-weight: bold; "
+        "} "
+        "QPushButton:hover { "
+        "  background-color: #0e639c; "
+        "  color: white; "
+        "  border-color: #1177bb; "
+        "} "
+        "QPushButton:pressed { background-color: #0c5280; }"
+      );
+      connect(b, &QPushButton::clicked, this, [this, spinBox, cameraId, delta]() {
+        int newVal = std::clamp(spinBox->value() + delta, spinBox->minimum(), spinBox->maximum());
+        spinBox->setValue(newVal);
+        applyExposure(cameraId, spinBox);
+      });
+      return b;
+    };
+
+    stepGrid->addWidget(makeStepButton("-10k", -10000), 0, 0);
+    stepGrid->addWidget(makeStepButton("+10k", +10000), 0, 1);
+    stepGrid->addWidget(makeStepButton("-1k",   -1000), 1, 0);
+    stepGrid->addWidget(makeStepButton("+1k",   +1000), 1, 1);
+    stepGrid->addWidget(makeStepButton("-100",   -100), 2, 0);
+    stepGrid->addWidget(makeStepButton("+100",   +100), 2, 1);
+
+    row->addLayout(stepGrid);
+    row->addStretch();  // Anything past the step grid is empty space on the right.
 
     layout->addLayout(row);
   }
@@ -1477,6 +1926,12 @@ void JogPanelWindow::onDeviceSelected()
       );
     }
 
+    // Reset current-velocity readout — last-applied value is per-device and now unknown.
+    m_currentVelocity = -1.0;
+    if (m_currentVelocityLabel) {
+      m_currentVelocityLabel->setText("— mm/s");
+    }
+
     // Update velocity presets based on device type
     updateVelocityPresets();
 
@@ -1719,17 +2174,21 @@ void JogPanelWindow::updatePositionDisplay()
   bool hasV = installedAxes.find('V') != std::string::npos;
   bool hasW = installedAxes.find('W') != std::string::npos;
 
-  // Get current position from motion manager
-  double x = 0.0, y = 0.0, z = 0.0, u = 0.0, v = 0.0, w = 0.0;
+  // Read from the motion manager's background-polled cache — non-blocking.
+  // The cache is refreshed every kPositionPollIntervalMs (~200ms) by a
+  // dedicated worker thread, so this never touches hardware on the UI thread.
+  PositionStruct pos;
+  const bool cacheValid = m_context->motionManager->GetCachedPosition(
+      m_selectedDevice, pos);
 
-  bool xValid = m_context->motionManager->GetPosition(m_selectedDevice, "X", x);
-  bool yValid = m_context->motionManager->GetPosition(m_selectedDevice, "Y", y);
-  bool zValid = m_context->motionManager->GetPosition(m_selectedDevice, "Z", z);
-
-  // Only query U/V/W if the device supports them
-  bool uValid = hasU && m_context->motionManager->GetPosition(m_selectedDevice, "U", u);
-  bool vValid = hasV && m_context->motionManager->GetPosition(m_selectedDevice, "V", v);
-  bool wValid = hasW && m_context->motionManager->GetPosition(m_selectedDevice, "W", w);
+  const double x = pos.x, y = pos.y, z = pos.z;
+  const double u = pos.u, v = pos.v, w = pos.w;
+  const bool xValid = cacheValid;
+  const bool yValid = cacheValid;
+  const bool zValid = cacheValid;
+  const bool uValid = cacheValid && hasU;
+  const bool vValid = cacheValid && hasV;
+  const bool wValid = cacheValid && hasW;
 
   // Update labels with formatted values (4 decimal places — 0.1 µm visible)
   if (m_posXLabel) {

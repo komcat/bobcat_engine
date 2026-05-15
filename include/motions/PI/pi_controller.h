@@ -77,6 +77,12 @@ public:
   bool MoveToPositionMultiAxis(const std::vector<std::string>& axes,
     const std::vector<double>& positions,
     bool blocking = true);
+  // Simultaneous multi-axis relative move (used by MoveRelativeGlobal so that
+  // a transformed XYZ delta is applied as a single PI_MVR call rather than
+  // sequential per-axis moves).
+  bool MoveRelativeMultiAxis(const std::vector<std::string>& axes,
+    const std::vector<double>& distances,
+    bool blocking = true);
 
   // Add to public section, around line 40 (after Status methods section)
   bool IsInMotion();

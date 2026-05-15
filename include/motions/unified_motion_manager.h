@@ -8,12 +8,17 @@
 #include "ILogger.h"
 
 class InterlockManager;
+class TransformationMatrixLoader;
 
 #include <string>
 #include <map>
 #include <vector>
 #include <memory>
 #include <queue>
+#include <atomic>
+#include <chrono>
+#include <mutex>
+#include <thread>
 
 // Forward declaration
 class SafetyWatchManager;
@@ -67,6 +72,13 @@ public:
 	 */
 	void SetInterlockManager(InterlockManager* mgr) { m_interlockManager = mgr; }
 	InterlockManager* GetInterlockManager() const { return m_interlockManager; }
+
+	/**
+	 * @brief Set transformation matrix loader for global-frame relative moves
+	 * @param loader Pointer to TransformationMatrixLoader (owned externally)
+	 */
+	void SetMatrixLoader(TransformationMatrixLoader* loader) { m_matrixLoader = loader; }
+	TransformationMatrixLoader* GetMatrixLoader() const { return m_matrixLoader; }
 
 	void SetDebugLogging(bool enable) { m_debugLogging = enable; }
 	bool IsDebugLoggingEnabled() const { return m_debugLogging; }
@@ -134,6 +146,21 @@ public:
 		double distance,
 		bool blocking = true);
 
+	// Move relative expressed in the GLOBAL frame.
+	// The (dx, dy, dz) delta is transformed into the device's local axes via
+	// the per-device 3x3 matrix from transformation_matrix.json and dispatched
+	// as a single simultaneous multi-axis relative move. Fails if the device
+	// is not registered in the matrix file.
+	[[nodiscard]] bool MoveRelativeGlobal(const std::string& deviceName,
+		double dx, double dy, double dz,
+		bool blocking = true);
+
+	// Convenience wrapper: relative move along a single GLOBAL axis ("X"|"Y"|"Z").
+	[[nodiscard]] bool MoveRelativeGlobalAxis(const std::string& deviceName,
+		const std::string& globalAxis,
+		double distance,
+		bool blocking = true);
+
 	// Emergency stop methods
 	[[nodiscard]] bool EmergencyStop(const std::string& deviceName);
 	[[nodiscard]] bool EmergencyStopAll();
@@ -145,10 +172,25 @@ public:
 	bool IsDeviceInMotion(const std::string& deviceName);
 
 	// Position queries
+	// GetPosition() / GetCurrentPosition() perform a synchronous query against
+	// the controller (Modbus/serial/USB). They block the calling thread for
+	// the duration of the round-trip and should NOT be called from the UI
+	// thread on a fast cadence. Use GetCachedPosition() instead for UI
+	// readouts — it returns the latest value the background polling thread
+	// observed (typically <kPositionPollIntervalMs old).
 	[[nodiscard]] bool GetPosition(const std::string& deviceName,
 		const std::string& axis,
 		double& position);
 	PositionStruct GetCurrentPosition(const std::string& deviceName);
+
+	// Non-blocking cached read. Returns last value observed by the background
+	// position-polling thread. If the device has never been polled (just
+	// connected) returns false. Safe to call from UI thread at any rate.
+	bool GetCachedPosition(const std::string& deviceName,
+		const std::string& axis,
+		double& position) const;
+	bool GetCachedPosition(const std::string& deviceName,
+		PositionStruct& outPosition) const;
 
 	// Velocity control
 	[[nodiscard]] bool SetVelocity(const std::string& deviceName,
@@ -521,6 +563,9 @@ private:
 	// Interlock manager (owned externally)
 	InterlockManager* m_interlockManager = nullptr;
 
+	// Transformation matrix loader (owned externally) - used by MoveRelativeGlobal
+	TransformationMatrixLoader* m_matrixLoader = nullptr;
+
 	// Debug logging flag
 	bool m_debugLogging = false;  // Set to true to enable verbose waypoint logging
 
@@ -568,4 +613,28 @@ private:
 		double& offsetY,
 		double& offsetZ);
 
+	// ============================================================================
+	// BACKGROUND POSITION POLLING (cache for non-blocking UI reads)
+	// ============================================================================
+	//
+	// A single worker thread polls each connected device's full 6-axis position
+	// every kPositionPollIntervalMs and stores it in m_cachedPositions. UI
+	// consumers (jog panel position labels, device-tracking overlay, etc.)
+	// call GetCachedPosition() which is a brief mutex+map-lookup instead of a
+	// hardware round-trip.
+	//
+	// The thread starts lazily on the first successful Connect* call and stops
+	// in the destructor (or DisconnectAll when no devices remain).
+
+	static constexpr int kPositionPollIntervalMs = 200;
+
+	std::thread                          m_positionPollThread;
+	std::atomic<bool>                    m_positionPollRunning{false};
+	mutable std::mutex                   m_cachedPositionMutex;
+	std::map<std::string, PositionStruct> m_cachedPositions;        // deviceName -> last polled
+	std::map<std::string, bool>          m_cachedPositionValid;     // deviceName -> ever filled
+
+	void StartPositionPolling();
+	void StopPositionPolling();
+	void PositionPollLoop();
 };

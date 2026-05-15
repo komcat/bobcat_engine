@@ -25,9 +25,9 @@ cmake --build out/build/x64-debug
 **Agent note:** the user compiles themselves — do not invoke `cmake --build` from an agent session. Configure (`cmake --preset ...`) is fine; trigger an actual build only on explicit request.
 
 ### Version System
-The build version auto-increments via `build_number.txt` on every configure. Override with:
+Version is `MAJOR.MINOR.MICRO`. MAJOR/MINOR are set by hand at the top of `CMakeLists.txt`. MICRO is derived at configure time from git: the number of commits since the most recent commit that changed `BOBCAT_VERSION_MINOR` in `CMakeLists.txt`. It resets to 0 on every MINOR bump and goes up by 1 with each commit on top. The short git SHA is also embedded for traceability (`BobcatVersion::SHA`, log line). Override MICRO with:
 ```bash
-cmake --preset x64-debug -DBOBCAT_VERSION_BUILD_OVERRIDE=123
+cmake --preset x64-debug -DBOBCAT_VERSION_MICRO_OVERRIDE=123
 ```
 
 ### Available Build Presets

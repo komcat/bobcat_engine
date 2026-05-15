@@ -43,6 +43,9 @@ QtCameraChartOverlay::QtCameraChartOverlay(QtCameraViewport* viewport,
 {
   setStyleSheet(kGroupStyle);
   setupUI();
+  const auto now = std::chrono::steady_clock::now();
+  m_diagWindowStart = now;
+  m_diagStartupTime = now;
 }
 
 QtCameraChartOverlay::~QtCameraChartOverlay() = default;
@@ -106,12 +109,15 @@ void QtCameraChartOverlay::setupUI()
   connect(m_channelList, &QListWidget::itemChanged,
           this, [this](QListWidgetItem* item) {
     std::string channelId = item->text().toStdString();
-    std::lock_guard<std::mutex> lock(m_chartMutex);
-    if (item->checkState() == Qt::Checked) {
-      m_chartEnabledChannels.insert(channelId);
-    } else {
-      m_chartEnabledChannels.erase(channelId);
+    {
+      std::lock_guard<std::mutex> lock(m_chartMutex);
+      if (item->checkState() == Qt::Checked) {
+        m_chartEnabledChannels.insert(channelId);
+      } else {
+        m_chartEnabledChannels.erase(channelId);
+      }
     }
+    m_pushDirty.store(true, std::memory_order_release);
     if (m_viewport) m_viewport->update();
   });
 }
@@ -142,6 +148,8 @@ void QtCameraChartOverlay::onDataStoreValueChanged(const std::string& channelId,
     if (value > ch.runningMax) ch.runningMax = value;
   }
 
+  m_diagSamplesTotal.fetch_add(1, std::memory_order_relaxed);
+
   // Auto-add new channels to the list widget (must run on Qt thread)
   if (isNewChannel) {
     QMetaObject::invokeMethod(this, [this]() {
@@ -151,17 +159,80 @@ void QtCameraChartOverlay::onDataStoreValueChanged(const std::string& channelId,
 
   // Throttle repaints to ~20fps — push fresh chart data to viewport
   if (m_chartEnabled && m_chartEnabledChannels.count(channelId)) {
+    // Mark the chart push as dirty so the camera-frame-driven updateViewport()
+    // will actually rebuild the cache. Set before the throttle check so that
+    // even dropped samples still mark the chart as dirty — the camera path
+    // (which runs independently) will pick them up.
+    m_pushDirty.store(true, std::memory_order_release);
+    m_diagSamplesEnabled.fetch_add(1, std::memory_order_relaxed);
     const auto now     = std::chrono::steady_clock::now();
     const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                              now - m_lastChartRepaint).count();
     if (elapsed >= 50) {
       m_lastChartRepaint = now;
-      QMetaObject::invokeMethod(this, [this]() {
+      m_diagThrottleKeeps.fetch_add(1, std::memory_order_relaxed);
+      const auto scheduleTime = std::chrono::steady_clock::now();
+      QMetaObject::invokeMethod(this, [this, scheduleTime]() {
+        const auto runTime = std::chrono::steady_clock::now();
+        const auto latencyUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                                   runTime - scheduleTime).count();
+        m_diagLatencyTotalUs.fetch_add(latencyUs, std::memory_order_relaxed);
+        int64_t prevMax = m_diagLatencyMaxUs.load(std::memory_order_relaxed);
+        while (latencyUs > prevMax &&
+               !m_diagLatencyMaxUs.compare_exchange_weak(
+                   prevMax, latencyUs, std::memory_order_relaxed)) {}
+        m_diagQueuedExecuted.fetch_add(1, std::memory_order_relaxed);
         pushSnapshotsToViewport();
-        if (m_viewport) m_viewport->update();
+        // No explicit update() — QtCameraWindow's 30 fps paint timer
+        // drives repaints. Calling update() here would just queue
+        // redundant paint events that Qt coalesces anyway.
       }, Qt::QueuedConnection);
+    } else {
+      m_diagThrottleDrops.fetch_add(1, std::memory_order_relaxed);
     }
   }
+
+  maybeLogDiagnostics();
+}
+
+void QtCameraChartOverlay::maybeLogDiagnostics()
+{
+  // Quick lock-free elapsed check first to avoid hammering the mutex.
+  const auto now = std::chrono::steady_clock::now();
+  std::unique_lock<std::mutex> lock(m_diagLogMutex, std::try_to_lock);
+  if (!lock.owns_lock()) return;
+  const auto windowMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now - m_diagWindowStart).count();
+  if (windowMs < kDiagLogIntervalSec * 1000) return;
+
+  const uint64_t samples   = m_diagSamplesTotal.exchange(0, std::memory_order_relaxed);
+  const uint64_t enabled   = m_diagSamplesEnabled.exchange(0, std::memory_order_relaxed);
+  const uint64_t keeps     = m_diagThrottleKeeps.exchange(0, std::memory_order_relaxed);
+  const uint64_t drops     = m_diagThrottleDrops.exchange(0, std::memory_order_relaxed);
+  const uint64_t executed  = m_diagQueuedExecuted.exchange(0, std::memory_order_relaxed);
+  const int64_t  latTotal  = m_diagLatencyTotalUs.exchange(0, std::memory_order_relaxed);
+  const int64_t  latMax    = m_diagLatencyMaxUs.exchange(0, std::memory_order_relaxed);
+  m_diagWindowStart = now;
+
+  const double seconds   = windowMs / 1000.0;
+  const double avgLatMs  = (executed > 0)
+                             ? (static_cast<double>(latTotal) / executed) / 1000.0
+                             : 0.0;
+  const double maxLatMs  = latMax / 1000.0;
+  const double sampleHz  = samples   / seconds;
+  const double paintHz   = executed  / seconds;
+  const int64_t pending  = static_cast<int64_t>(keeps) - static_cast<int64_t>(executed);
+  const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
+                         now - m_diagStartupTime).count();
+
+  std::cout << "[ChartOverlay/" << m_instanceId << "] t=" << upSec << "s"
+            << " samples=" << samples << " (" << sampleHz << "/s)"
+            << " enabledCh=" << enabled
+            << " throttle:keep=" << keeps << " drop=" << drops
+            << " painted=" << executed << " (" << paintHz << "/s)"
+            << " pending=" << pending
+            << " uiLatency: avg=" << avgLatMs << "ms max=" << maxLatMs << "ms"
+            << std::endl;
 }
 
 void QtCameraChartOverlay::refreshChannelList()
@@ -185,6 +256,15 @@ void QtCameraChartOverlay::refreshChannelList()
 void QtCameraChartOverlay::pushSnapshotsToViewport()
 {
   if (!m_viewport) return;
+
+  // Skip when nothing has changed since the last push. The camera-frame path
+  // (QtCameraWindow::updateViewport) calls this on every frame; without the
+  // dirty check it would rebuild the cache pixmap ~10 times/sec for no
+  // benefit. The DataStore-driven path sets dirty=true on every new sample,
+  // and enable/scale/channel-toggle paths also set it.
+  if (!m_pushDirty.exchange(false, std::memory_order_acquire)) {
+    return;
+  }
 
   if (m_chartEnabled) {
     std::lock_guard<std::mutex> lock(m_chartMutex);
@@ -211,12 +291,14 @@ void QtCameraChartOverlay::setChartEnabled(bool enabled)
 {
   m_chartEnabled = enabled;
   if (m_enableCheck) m_enableCheck->setChecked(enabled);
+  m_pushDirty.store(true, std::memory_order_release);
   if (m_viewport) m_viewport->update();
 }
 
 void QtCameraChartOverlay::onChartEnableToggled(bool checked)
 {
   m_chartEnabled = checked;
+  m_pushDirty.store(true, std::memory_order_release);
   if (m_viewport) m_viewport->update();
   std::cout << "[ChartOverlay] Chart overlay " << (checked ? "enabled" : "disabled") << std::endl;
 }
@@ -224,12 +306,14 @@ void QtCameraChartOverlay::onChartEnableToggled(bool checked)
 void QtCameraChartOverlay::onChartScaleIncrease()
 {
   m_chartScale = std::min(m_chartScale + 0.25f, 3.0f);
+  m_pushDirty.store(true, std::memory_order_release);
   if (m_viewport) m_viewport->update();
 }
 
 void QtCameraChartOverlay::onChartScaleDecrease()
 {
   m_chartScale = std::max(m_chartScale - 0.25f, 0.5f);
+  m_pushDirty.store(true, std::memory_order_release);
   if (m_viewport) m_viewport->update();
 }
 

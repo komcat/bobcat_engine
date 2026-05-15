@@ -146,6 +146,7 @@ std::string Load(BeamDetectionConfig& d4,
             halcon.saturationValue = static_cast<uint8_t>(hj["saturationValue"].get<int>());
         }
         getHD("micronsPerPixel", halcon.micronsPerPixel);
+        getHI("detectionDownsample", halcon.detectionDownsample);
     }
     // Halcon shares the GA quadrant labels with the d4sigma path.
     halcon.gaLabels = d4.gaLabels;
@@ -215,13 +216,14 @@ bool Save(const BeamDetectionConfig& d4,
     // Halcon detection config (HDevelop port).
     j["useHalconDetection"] = useHalcon;
     j["halcon"] = {
-        {"bgKernelSize",    halcon.bgKernelSize},
-        {"noiseThreshold",  halcon.noiseThreshold},
-        {"minBeamArea",     halcon.minBeamArea},
-        {"maxBeams",        halcon.maxBeams},
-        {"widthFactor",     halcon.widthFactor},
-        {"saturationValue", static_cast<int>(halcon.saturationValue)},
-        {"micronsPerPixel", halcon.micronsPerPixel}
+        {"bgKernelSize",        halcon.bgKernelSize},
+        {"noiseThreshold",      halcon.noiseThreshold},
+        {"minBeamArea",         halcon.minBeamArea},
+        {"maxBeams",            halcon.maxBeams},
+        {"widthFactor",         halcon.widthFactor},
+        {"saturationValue",     static_cast<int>(halcon.saturationValue)},
+        {"micronsPerPixel",     halcon.micronsPerPixel},
+        {"detectionDownsample", halcon.detectionDownsample}
     };
 
     std::ofstream ofs("config/beam_detection.local.json");

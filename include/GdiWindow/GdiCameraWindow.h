@@ -164,8 +164,14 @@ public:
     // Get native window handle
     HWND GetHwnd() const { return m_hwnd; }
 
-    // Process Windows messages (call from message loop)
-    static bool ProcessMessages();
+    // Drain pending Win32 messages for THIS window only. PeekMessage filters
+    // by m_hwnd so we never touch messages that belong to other windows on
+    // the same thread (Qt's MainWindow, JogPanel, etc.). Previously this
+    // was a static method with PeekMessage(nullptr, ...) which silently
+    // stole and re-dispatched every Qt window's messages — the root cause
+    // of QTimer slot deliveries being delayed by 50ms-38s during heavy
+    // UI activity.
+    bool ProcessMessages();
 
     // Chart overlay access
     ChartOverlay& GetChartOverlay() { return m_chartOverlay; }

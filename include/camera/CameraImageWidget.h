@@ -87,6 +87,11 @@ private:
   std::atomic<int> m_zoomPercent;
   ScalingMode m_scalingMode;
 
+  // Cache last pixmap size — resize() is no-op'd when unchanged. Calling
+  // resize unconditionally every frame posts a QResizeEvent that triggers
+  // layout invalidation up to MainWindow even when the value is the same.
+  QSize m_lastPixmapSize;
+
   // Crosshair overlay
   std::atomic<bool> m_crosshairEnabled;
   QColor m_crosshairColor;

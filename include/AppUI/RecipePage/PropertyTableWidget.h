@@ -40,6 +40,8 @@ public:
   explicit PropertyTableWidget(ApplicationContext* context, QWidget* parent = nullptr);
   virtual ~PropertyTableWidget() = default;
 
+  ApplicationContext* getContext() const { return m_context; }
+
   // Add different property types
   void addTextProperty(const std::string& key, const std::string& label,
                        const std::string& value, const std::string& tooltip = "");
@@ -55,6 +57,16 @@ public:
                           double value, double minValue, double maxValue,
                           double step = 1.0, int decimals = 1,
                           const std::string& suffix = "", const std::string& tooltip = "");
+
+  // Numeric property with a small action button next to the spinbox.
+  // The callback receives the current spinbox value when the button is clicked.
+  void addNumericActionProperty(const std::string& key, const std::string& label,
+                                double value, double minValue, double maxValue,
+                                double step, int decimals,
+                                const std::string& suffix,
+                                const std::string& buttonLabel,
+                                std::function<void(double)> onClicked,
+                                const std::string& tooltip = "");
 
   void addDeviceProperty(const std::string& key, const std::string& label,
                          const std::string& value, int deviceType,

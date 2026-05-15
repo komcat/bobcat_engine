@@ -8,12 +8,17 @@
 #include <atomic>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <vector>
 
 class BeamResultBroker {
 public:
-    using BeamCallback = std::function<void(const std::vector<BeamDetectionResult>&)>;
+    // Results are shared as immutable snapshots. Subscribers receive the
+    // shared_ptr — copying it is a refcount bump, not a deep copy of the
+    // result vector (which includes per-beam profile data).
+    using BeamResultsPtr = std::shared_ptr<const std::vector<BeamDetectionResult>>;
+    using BeamCallback = std::function<void(const BeamResultsPtr&)>;
 
     BeamResultBroker() = default;
     ~BeamResultBroker() = default;
@@ -33,8 +38,9 @@ public:
     uint32_t Subscribe(BeamCallback callback);
     void Unsubscribe(uint32_t subscriptionId);
 
-    // Polling access (alternative to callback)
-    std::vector<BeamDetectionResult> GetLatestResults() const;
+    // Polling access (alternative to callback). Returns null when no
+    // results have been published yet.
+    BeamResultsPtr GetLatestResults() const;
     bool HasResults() const;
 
 private:
@@ -47,5 +53,5 @@ private:
     std::atomic<bool> m_shuttingDown{false};
     std::vector<Subscription> m_subscribers;
     uint32_t m_nextSubId = 1;
-    std::vector<BeamDetectionResult> m_latestResults;
+    BeamResultsPtr m_latestResults;
 };

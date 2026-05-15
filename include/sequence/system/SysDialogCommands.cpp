@@ -8,6 +8,7 @@
 
 #include <string>
 #include <utility>
+#include <vector>
 
 std::optional<bool> SysDialogCommands::TryExecute(
     const std::string& /*deviceName*/,
@@ -148,6 +149,15 @@ std::optional<bool> SysDialogCommands::TryExecute(
     bool enableY = (enableYIt != params.end() && enableYIt->second == "true");
     bool enableZ = (enableZIt != params.end() && enableZIt->second == "true");
 
+    // Optional reference images (image_1, image_2, image_3). Empty entries skipped.
+    std::vector<std::string> imagePaths;
+    for (const char* key : { "image_1", "image_2", "image_3" }) {
+      auto it = params.find(key);
+      if (it != params.end() && !it->second.empty()) {
+        imagePaths.push_back(it->second);
+      }
+    }
+
     // ✅ LOOP MODE: Auto-skip manual adjustment when in loop execution mode
     if (context && context->IsLoopExecutionMode()) {
       if (logger) {
@@ -167,7 +177,7 @@ std::optional<bool> SysDialogCommands::TryExecute(
     }
 
     // Call the callback - this will show the ManualAdjustWidget and wait for user
-    bool userCompleted = manualAdjustCallback(message, adjustDeviceName, stepSizeUm, enableX, enableY, enableZ);
+    bool userCompleted = manualAdjustCallback(message, adjustDeviceName, stepSizeUm, enableX, enableY, enableZ, imagePaths);
 
     if (!userCompleted) {
       errorMessage = "User cancelled manual adjustment";

@@ -411,151 +411,8 @@ void PlacementCorrectionPage::setupUI()
     welcomeLayout->addWidget(welcomeLabel);
     m_contentStack->addWidget(m_welcomeWidget);  // index 0
 
-    // TeachPlacementLineWidget for Reference (index 1)
-    m_teachRefLineWidget = new TeachPlacementLineWidget("Reference", m_context, this);
-    m_contentStack->addWidget(m_teachRefLineWidget);
-
-    // TeachPlacementLineWidget for Target (index 2)
-    m_teachTgtLineWidget = new TeachPlacementLineWidget("Target", m_context, this);
-    m_contentStack->addWidget(m_teachTgtLineWidget);
-
-    // TeachPlacementLineWidget for Normal Placement (index 3) — v3 feature
-    m_teachNrmLineWidget = new TeachPlacementLineWidget("Normal", m_context, this);
-    m_contentStack->addWidget(m_teachNrmLineWidget);
-
-    // PlacementResultWidget (index 4)
-    m_resultWidget = new PlacementResultWidget(m_context, this);
-    m_contentStack->addWidget(m_resultWidget);
-
-    // ExposureAdjustWidget (index 5)
-    m_exposureAdjustWidget = new ExposureAdjustWidget(m_context, this);
-    m_contentStack->addWidget(m_exposureAdjustWidget);
-
-    // PlacementRetraceWidget (index 6)
-    m_retraceWidget = new PlacementRetraceWidget(m_context, this);
-    m_contentStack->addWidget(m_retraceWidget);
-
-    // ImageGalleryWidget (index 7)
-    m_imageGalleryWidget = new ImageGalleryWidget(m_context, this);
-    m_contentStack->addWidget(m_imageGalleryWidget);
-
-    // SummaryDiagramWidget (index 8)
-    m_summaryDiagramWidget = new SummaryDiagramWidget(m_context, this);
-    m_contentStack->addWidget(m_summaryDiagramWidget);
-
-    // RetraceLogViewer (index 9)
-    m_retraceLogViewer = new RetraceLogViewer(m_context, this);
-    m_contentStack->addWidget(m_retraceLogViewer);
-
-    // Wire signals
-    connect(m_teachRefLineWidget, &TeachPlacementLineWidget::lineCaptured,
-            this, [this](const PlacementLinePoints& lp) {
-        m_currentSet.referenceLine = lp;
-        m_currentSet.Recalculate();
-        updateCurrentSet();
-    });
-
-    connect(m_teachTgtLineWidget, &TeachPlacementLineWidget::lineCaptured,
-            this, [this](const PlacementLinePoints& lp) {
-        m_currentSet.targetLine = lp;
-        m_currentSet.Recalculate();
-        updateCurrentSet();
-    });
-
-    connect(m_teachNrmLineWidget, &TeachPlacementLineWidget::lineCaptured,
-            this, [this](const PlacementLinePoints& lp) {
-        m_currentSet.normalPlacementLine = lp;
-        m_currentSet.Recalculate();
-        updateCurrentSet();
-    });
-
-    connect(m_exposureAdjustWidget, &ExposureAdjustWidget::adjustEnded,
-            this, [this]() {
-        m_navList->clearSelection();
-        m_contentStack->setCurrentIndex(0);
-    });
-
-    connect(m_exposureAdjustWidget, &ExposureAdjustWidget::exposureSaved,
-            this, [this](const PlacementCorrectionSet& updatedSet) {
-        m_currentSet.referenceLine.p1Exposure = updatedSet.referenceLine.p1Exposure;
-        m_currentSet.referenceLine.p2Exposure = updatedSet.referenceLine.p2Exposure;
-        m_currentSet.targetLine.p1Exposure = updatedSet.targetLine.p1Exposure;
-        m_currentSet.targetLine.p2Exposure = updatedSet.targetLine.p2Exposure;
-        m_store.SaveSet(m_currentSet);
-    });
-
-    connect(m_retraceWidget, &PlacementRetraceWidget::retraceEnded,
-            this, [this]() {
-        m_navList->clearSelection();
-        m_contentStack->setCurrentIndex(0);
-    });
-
-    connect(m_retraceWidget, &PlacementRetraceWidget::retraceSkipped,
-            this, [this]() {
-        m_navList->clearSelection();
-        m_contentStack->setCurrentIndex(0);
-    });
-
-    connect(m_retraceWidget, &PlacementRetraceWidget::retraceCompleted,
-            this, [this](const PlacementCorrectionSet& updatedSet) {
-        m_currentSet.config.targetX = updatedSet.config.targetX;
-        m_currentSet.config.targetY = updatedSet.config.targetY;
-        m_currentSet.config.targetZ = updatedSet.config.targetZ;
-        m_currentSet.config.targetU = updatedSet.config.targetU;
-        m_currentSet.config.targetV = updatedSet.config.targetV;
-        m_currentSet.config.targetW = updatedSet.config.targetW;
-        updateTargetFromPosition();
-        updateCurrentSet();
-        m_store.SaveSet(m_currentSet);
-    });
-
-    // Manual tune offsets edited — persist immediately. m_currentSet already
-    // reflects the new values (the retrace widget holds a pointer to it).
-    connect(m_retraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
-            this, [this]() {
-        if (m_hasLoadedSet) {
-            m_store.SaveSet(m_currentSet);
-        }
-    });
-
-    connect(m_resultWidget, &PlacementResultWidget::recomputeRequested,
-            this, [this]() {
-        m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
-        m_currentSet.config.masterPositionName = m_masterPositionCombo->currentText().toStdString();
-        m_currentSet.config.targetPositionName = m_targetPositionCombo->currentText().toStdString();
-        updateMasterFromPosition();
-        updateTargetFromPosition();
-        m_currentSet.Recalculate();
-        m_resultWidget->SetData(m_currentSet);
-        updateCurrentSet();
-    });
-
-    // Manual offset tuner on the View Results page re-saved the target
-    // position — mirror the new target XYZUVW into m_currentSet, refresh
-    // the sidebar readout, and persist the training set JSON.
-    connect(m_resultWidget, &PlacementResultWidget::targetResaved,
-            this, [this](const PlacementCorrectionSet& updatedSet) {
-        m_currentSet.config.targetX = updatedSet.config.targetX;
-        m_currentSet.config.targetY = updatedSet.config.targetY;
-        m_currentSet.config.targetZ = updatedSet.config.targetZ;
-        m_currentSet.config.targetU = updatedSet.config.targetU;
-        m_currentSet.config.targetV = updatedSet.config.targetV;
-        m_currentSet.config.targetW = updatedSet.config.targetW;
-        updateTargetFromPosition();
-        updateCurrentSet();
-        if (m_hasLoadedSet) {
-            m_store.SaveSet(m_currentSet);
-        }
-    });
-
-    connect(m_summaryDiagramWidget, &SummaryDiagramWidget::thumbnailOffsetChanged,
-            this, [this](int index, double dx, double dy) {
-        if (index >= 0 && index < 4) {
-            m_currentSet.summaryThumbOffsets[index].dx = dx;
-            m_currentSet.summaryThumbOffsets[index].dy = dy;
-            m_store.SaveSet(m_currentSet);
-        }
-    });
+    // Inner workflow widgets are built lazily on first navigation —
+    // see ensureContentBuilt() called from onNavItemChanged().
 
     // Add panels to splitter
     splitter->addWidget(leftPanel);
@@ -571,9 +428,11 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
 {
     if (!m_hasLoadedSet && currentRow >= 0) {
         m_statusLabel->setText("Please create or load a training set first.");
-        m_contentStack->setCurrentIndex(0);
+        m_contentStack->setCurrentWidget(m_welcomeWidget);
         return;
     }
+
+    ensureContentBuilt(currentRow);
 
     switch (currentRow) {
     case 0:  // Teach Reference Line
@@ -581,31 +440,31 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
         m_teachRefLineWidget->SetDeviceName(m_currentSet.measureDevice);
         m_teachRefLineWidget->SetCameraId(m_currentSet.config.cameraId);
         m_teachRefLineWidget->SetLine(m_currentSet.referenceLine);
-        m_contentStack->setCurrentIndex(1);
+        m_contentStack->setCurrentWidget(m_teachRefLineWidget);
         break;
     case 1:  // Teach Target Line
         m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
         m_teachTgtLineWidget->SetDeviceName(m_currentSet.measureDevice);
         m_teachTgtLineWidget->SetCameraId(m_currentSet.config.cameraId);
         m_teachTgtLineWidget->SetLine(m_currentSet.targetLine);
-        m_contentStack->setCurrentIndex(2);
+        m_contentStack->setCurrentWidget(m_teachTgtLineWidget);
         break;
     case 2:  // Teach Normal Placement Line
         m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
         m_teachNrmLineWidget->SetDeviceName(m_currentSet.measureDevice);
         m_teachNrmLineWidget->SetCameraId(m_currentSet.config.cameraId);
         m_teachNrmLineWidget->SetLine(m_currentSet.normalPlacementLine);
-        m_contentStack->setCurrentIndex(3);
+        m_contentStack->setCurrentWidget(m_teachNrmLineWidget);
         break;
     case 3:  // View Results
         m_currentSet.Recalculate();
         m_resultWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(4);
+        m_contentStack->setCurrentWidget(m_resultWidget);
         break;
     case 4:  // Adjust Exposure
         m_currentSet.config.cameraId = m_cameraCombo->currentText().toStdString();
         m_exposureAdjustWidget->SetData(&m_currentSet);
-        m_contentStack->setCurrentIndex(5);
+        m_contentStack->setCurrentWidget(m_exposureAdjustWidget);
         break;
     case 5:  // Retrace & Review
         m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
@@ -615,23 +474,177 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
         updateTargetFromPosition();
         m_currentSet.Recalculate();
         m_retraceWidget->SetData(&m_currentSet);
-        m_contentStack->setCurrentIndex(6);
+        m_contentStack->setCurrentWidget(m_retraceWidget);
         break;
     case 6:  // Reference Images
         m_imageGalleryWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(7);
+        m_contentStack->setCurrentWidget(m_imageGalleryWidget);
         break;
     case 7:  // Summary Diagram
         m_currentSet.Recalculate();
         m_summaryDiagramWidget->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(8);
+        m_contentStack->setCurrentWidget(m_summaryDiagramWidget);
         break;
     case 8:  // View Retrace Log
         if (m_retraceLogViewer) m_retraceLogViewer->SetData(m_currentSet);
-        m_contentStack->setCurrentIndex(9);
+        if (m_retraceLogViewer) m_contentStack->setCurrentWidget(m_retraceLogViewer);
         break;
     default:
-        m_contentStack->setCurrentIndex(0);
+        m_contentStack->setCurrentWidget(m_welcomeWidget);
+        break;
+    }
+}
+
+void PlacementCorrectionPage::ensureContentBuilt(int navRow)
+{
+    switch (navRow) {
+    case 0:
+        if (!m_teachRefLineWidget) {
+            m_teachRefLineWidget = new TeachPlacementLineWidget("Reference", m_context, this);
+            m_contentStack->addWidget(m_teachRefLineWidget);
+            connect(m_teachRefLineWidget, &TeachPlacementLineWidget::lineCaptured,
+                    this, [this](const PlacementLinePoints& lp) {
+                m_currentSet.referenceLine = lp;
+                m_currentSet.Recalculate();
+                updateCurrentSet();
+            });
+        }
+        break;
+    case 1:
+        if (!m_teachTgtLineWidget) {
+            m_teachTgtLineWidget = new TeachPlacementLineWidget("Target", m_context, this);
+            m_contentStack->addWidget(m_teachTgtLineWidget);
+            connect(m_teachTgtLineWidget, &TeachPlacementLineWidget::lineCaptured,
+                    this, [this](const PlacementLinePoints& lp) {
+                m_currentSet.targetLine = lp;
+                m_currentSet.Recalculate();
+                updateCurrentSet();
+            });
+        }
+        break;
+    case 2:
+        if (!m_teachNrmLineWidget) {
+            m_teachNrmLineWidget = new TeachPlacementLineWidget("Normal", m_context, this);
+            m_contentStack->addWidget(m_teachNrmLineWidget);
+            connect(m_teachNrmLineWidget, &TeachPlacementLineWidget::lineCaptured,
+                    this, [this](const PlacementLinePoints& lp) {
+                m_currentSet.normalPlacementLine = lp;
+                m_currentSet.Recalculate();
+                updateCurrentSet();
+            });
+        }
+        break;
+    case 3:
+        if (!m_resultWidget) {
+            m_resultWidget = new PlacementResultWidget(m_context, this);
+            m_contentStack->addWidget(m_resultWidget);
+            connect(m_resultWidget, &PlacementResultWidget::recomputeRequested,
+                    this, [this]() {
+                m_currentSet.config.targetDevice = m_targetDeviceCombo->currentText().toStdString();
+                m_currentSet.config.masterPositionName = m_masterPositionCombo->currentText().toStdString();
+                m_currentSet.config.targetPositionName = m_targetPositionCombo->currentText().toStdString();
+                updateMasterFromPosition();
+                updateTargetFromPosition();
+                m_currentSet.Recalculate();
+                m_resultWidget->SetData(m_currentSet);
+                updateCurrentSet();
+            });
+            connect(m_resultWidget, &PlacementResultWidget::targetResaved,
+                    this, [this](const PlacementCorrectionSet& updatedSet) {
+                m_currentSet.config.targetX = updatedSet.config.targetX;
+                m_currentSet.config.targetY = updatedSet.config.targetY;
+                m_currentSet.config.targetZ = updatedSet.config.targetZ;
+                m_currentSet.config.targetU = updatedSet.config.targetU;
+                m_currentSet.config.targetV = updatedSet.config.targetV;
+                m_currentSet.config.targetW = updatedSet.config.targetW;
+                updateTargetFromPosition();
+                updateCurrentSet();
+                if (m_hasLoadedSet) {
+                    m_store.SaveSet(m_currentSet);
+                }
+            });
+        }
+        break;
+    case 4:
+        if (!m_exposureAdjustWidget) {
+            m_exposureAdjustWidget = new ExposureAdjustWidget(m_context, this);
+            m_contentStack->addWidget(m_exposureAdjustWidget);
+            connect(m_exposureAdjustWidget, &ExposureAdjustWidget::adjustEnded,
+                    this, [this]() {
+                m_navList->clearSelection();
+                m_contentStack->setCurrentWidget(m_welcomeWidget);
+            });
+            connect(m_exposureAdjustWidget, &ExposureAdjustWidget::exposureSaved,
+                    this, [this](const PlacementCorrectionSet& updatedSet) {
+                m_currentSet.referenceLine.p1Exposure = updatedSet.referenceLine.p1Exposure;
+                m_currentSet.referenceLine.p2Exposure = updatedSet.referenceLine.p2Exposure;
+                m_currentSet.targetLine.p1Exposure = updatedSet.targetLine.p1Exposure;
+                m_currentSet.targetLine.p2Exposure = updatedSet.targetLine.p2Exposure;
+                m_store.SaveSet(m_currentSet);
+            });
+        }
+        break;
+    case 5:
+        if (!m_retraceWidget) {
+            m_retraceWidget = new PlacementRetraceWidget(m_context, this);
+            m_contentStack->addWidget(m_retraceWidget);
+            connect(m_retraceWidget, &PlacementRetraceWidget::retraceEnded,
+                    this, [this]() {
+                m_navList->clearSelection();
+                m_contentStack->setCurrentWidget(m_welcomeWidget);
+            });
+            connect(m_retraceWidget, &PlacementRetraceWidget::retraceSkipped,
+                    this, [this]() {
+                m_navList->clearSelection();
+                m_contentStack->setCurrentWidget(m_welcomeWidget);
+            });
+            connect(m_retraceWidget, &PlacementRetraceWidget::retraceCompleted,
+                    this, [this](const PlacementCorrectionSet& updatedSet) {
+                m_currentSet.config.targetX = updatedSet.config.targetX;
+                m_currentSet.config.targetY = updatedSet.config.targetY;
+                m_currentSet.config.targetZ = updatedSet.config.targetZ;
+                m_currentSet.config.targetU = updatedSet.config.targetU;
+                m_currentSet.config.targetV = updatedSet.config.targetV;
+                m_currentSet.config.targetW = updatedSet.config.targetW;
+                updateTargetFromPosition();
+                updateCurrentSet();
+                m_store.SaveSet(m_currentSet);
+            });
+            connect(m_retraceWidget, &PlacementRetraceWidget::offsetsPersistRequested,
+                    this, [this]() {
+                if (m_hasLoadedSet) {
+                    m_store.SaveSet(m_currentSet);
+                }
+            });
+        }
+        break;
+    case 6:
+        if (!m_imageGalleryWidget) {
+            m_imageGalleryWidget = new ImageGalleryWidget(m_context, this);
+            m_contentStack->addWidget(m_imageGalleryWidget);
+        }
+        break;
+    case 7:
+        if (!m_summaryDiagramWidget) {
+            m_summaryDiagramWidget = new SummaryDiagramWidget(m_context, this);
+            m_contentStack->addWidget(m_summaryDiagramWidget);
+            connect(m_summaryDiagramWidget, &SummaryDiagramWidget::thumbnailOffsetChanged,
+                    this, [this](int index, double dx, double dy) {
+                if (index >= 0 && index < 4) {
+                    m_currentSet.summaryThumbOffsets[index].dx = dx;
+                    m_currentSet.summaryThumbOffsets[index].dy = dy;
+                    m_store.SaveSet(m_currentSet);
+                }
+            });
+        }
+        break;
+    case 8:
+        if (!m_retraceLogViewer) {
+            m_retraceLogViewer = new RetraceLogViewer(m_context, this);
+            m_contentStack->addWidget(m_retraceLogViewer);
+        }
+        break;
+    default:
         break;
     }
 }

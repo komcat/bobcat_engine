@@ -148,6 +148,12 @@ public:
   void addFileSelector(const std::string& key, const std::string& label,
     const std::string& value, const std::string& fileFilter = "All Files (*.*)");
 
+  // Helper to add image selector (QLineEdit + Browse + Clear). On Browse, copies the
+  // selected image to <product>/recipe_images/<UID>.<ext> and stores the absolute path
+  // of the copy so the recipe no longer depends on the original location.
+  void addImageSelector(const std::string& key, const std::string& label,
+    const std::string& value);
+
   // Helper to add recipe file selector (QLineEdit + Browse button using FileSelectorDialog)
   // Scans config/<product>/recipes/ for available recipe JSON files
   void addRecipeSelector(const std::string& key, const std::string& label,

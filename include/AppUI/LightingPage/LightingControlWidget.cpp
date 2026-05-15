@@ -912,50 +912,70 @@ QWidget* LightingControlWidget::createChannelWidgets()
 
 void LightingControlWidget::updateStatus()
 {
-    if (!m_lightingManager || m_currentDeviceId.empty()) {
-        m_deviceInfo->setText("No lighting controller configured");
-        m_connectionStatus->setText("N/A");
-        m_connectionStatus->setStyleSheet("color: #888; font-weight: bold; font-size: 13px;");
-        m_connectButton->setEnabled(false);
-        m_disconnectButton->setEnabled(false);
-        m_allOffButton->setEnabled(false);
-        m_refreshButton->setEnabled(false);
+    // The poll timer calls this every 500 ms. Diff against the cached visual
+    // state so we don't re-run setStyleSheet (full QSS recompute) and a fan
+    // of setEnabled calls on every tick. setText is also no-op'd when the
+    // string hasn't changed.
+    const int newStatus =
+        (!m_lightingManager || m_currentDeviceId.empty()) ? 0
+        : (m_lightingManager->IsConnected(m_currentDeviceId) ? 1 : 2);
+
+    if (newStatus == 0) {
+        if (m_lastRenderedStatus != 0) {
+            m_deviceInfo->setText("No lighting controller configured");
+            m_connectionStatus->setText("N/A");
+            m_connectionStatus->setStyleSheet("color: #888; font-weight: bold; font-size: 13px;");
+            m_connectButton->setEnabled(false);
+            m_disconnectButton->setEnabled(false);
+            m_allOffButton->setEnabled(false);
+            m_refreshButton->setEnabled(false);
+            m_lastRenderedStatus = 0;
+            m_lastDeviceInfoText.clear();
+        }
         return;
     }
 
     const auto* config = m_lightingManager->GetControllerConfig(m_currentDeviceId);
     if (config) {
-        m_deviceInfo->setText(QString("%1 (%2:%3)")
+        QString infoText = QString("%1 (%2:%3)")
             .arg(QString::fromStdString(config->deviceName))
             .arg(QString::fromStdString(config->ipAddress))
-            .arg(config->port));
+            .arg(config->port);
+        if (infoText != m_lastDeviceInfoText) {
+            m_deviceInfo->setText(infoText);
+            m_lastDeviceInfoText = infoText;
+        }
     }
 
-    m_isConnected = m_lightingManager->IsConnected(m_currentDeviceId);
+    m_isConnected = (newStatus == 1);
 
-    if (m_isConnected) {
-        m_connectionStatus->setText("Connected");
-        m_connectionStatus->setStyleSheet(
-            "color: #66ff66; font-weight: bold; font-size: 13px;"
-        );
-        m_connectButton->setEnabled(false);
-        m_disconnectButton->setEnabled(true);
-        m_allOffButton->setEnabled(true);
-        m_refreshButton->setEnabled(true);
-    } else {
-        m_connectionStatus->setText("Disconnected");
-        m_connectionStatus->setStyleSheet(
-            "color: #ff6666; font-weight: bold; font-size: 13px;"
-        );
-        m_connectButton->setEnabled(true);
-        m_disconnectButton->setEnabled(false);
-        m_allOffButton->setEnabled(false);
-        m_refreshButton->setEnabled(false);
-    }
-
-    // Enable/disable channel widgets
-    for (auto* widget : m_channelWidgets) {
-        widget->setConnected(m_isConnected);
+    if (newStatus != m_lastRenderedStatus) {
+        if (m_isConnected) {
+            m_connectionStatus->setText("Connected");
+            m_connectionStatus->setStyleSheet(
+                "color: #66ff66; font-weight: bold; font-size: 13px;"
+            );
+            m_connectButton->setEnabled(false);
+            m_disconnectButton->setEnabled(true);
+            m_allOffButton->setEnabled(true);
+            m_refreshButton->setEnabled(true);
+        } else {
+            m_connectionStatus->setText("Disconnected");
+            m_connectionStatus->setStyleSheet(
+                "color: #ff6666; font-weight: bold; font-size: 13px;"
+            );
+            m_connectButton->setEnabled(true);
+            m_disconnectButton->setEnabled(false);
+            m_allOffButton->setEnabled(false);
+            m_refreshButton->setEnabled(false);
+        }
+        // Enable/disable channel widgets only on actual transitions —
+        // setConnected unconditionally calls setEnabled(), which Qt no-ops
+        // when unchanged, but we save the iteration overhead here too.
+        for (auto* widget : m_channelWidgets) {
+            widget->setConnected(m_isConnected);
+        }
+        m_lastRenderedStatus = newStatus;
     }
 }
 

@@ -12,6 +12,7 @@
 #include <QDir>
 #include <QHBoxLayout>
 #include <QShowEvent>
+#include <QHideEvent>
 #include <QFile>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -1012,6 +1013,13 @@ void CameraView::showEvent(QShowEvent* event)
   // Sync with CameraManager state in case camera was connected while page was hidden
   syncWithManagerState();
 
+  // Restart display timer if it was stopped by hideEvent (subscriber already exists)
+  if (m_isConnected && m_subscriber && m_displayUpdateTimer && !m_displayUpdateTimer->isActive()) {
+    m_lastUpdateTime = std::chrono::steady_clock::now();
+    m_frameCounter = 0;
+    m_displayUpdateTimer->start(33);
+  }
+
   // Force repaint of the viewport when shown
   if (m_viewport) {
     m_viewport->forceRefresh();
@@ -1021,6 +1029,17 @@ void CameraView::showEvent(QShowEvent* event)
   // Force update of entire widget
   update();
   repaint();
+}
+
+void CameraView::hideEvent(QHideEvent* event)
+{
+  QWidget::hideEvent(event);
+
+  // Stop 30Hz display polling while hidden. The subscriber keeps receiving
+  // frames in the background; we just stop draining + repainting them.
+  if (m_displayUpdateTimer && m_displayUpdateTimer->isActive()) {
+    m_displayUpdateTimer->stop();
+  }
 }
 
 // ============================================================================

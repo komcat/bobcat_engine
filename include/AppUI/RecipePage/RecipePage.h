@@ -17,6 +17,7 @@
 #include <QResizeEvent>
 #include <QShowEvent>
 #include <QSplitter>
+#include <QStringList>
 #include <QTabWidget>
 #include <map>
 #include <memory>
@@ -79,7 +80,8 @@ signals:
 
   // Manual adjust signal
   void showManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                        bool enableX, bool enableY, bool enableZ);
+                        bool enableX, bool enableY, bool enableZ,
+                        QStringList imagePaths);
 
   // Manual align point signal
   void showManualAlignPoint(QString pointName, QString message,
@@ -143,7 +145,8 @@ private slots:
 
   // Manual adjust handling
   void onShowManualAdjust(QString message, QString deviceName, double stepSizeUm,
-                          bool enableX, bool enableY, bool enableZ);
+                          bool enableX, bool enableY, bool enableZ,
+                          QStringList imagePaths);
   void onManualAdjustResponse(bool completed);
 
   // Manual align point handling

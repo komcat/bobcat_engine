@@ -372,7 +372,7 @@ void PneumaticControlPage::showEvent(QShowEvent* event)
     // For now, just use the faster timer approach
   }
 
-  m_updateTimer->start(50);  // ✅ 50ms for faster updates
+  m_updateTimer->start(UPDATE_INTERVAL_MS);
 }
 
 
@@ -425,6 +425,7 @@ void PneumaticControlPage::onSlideSelected()
   }
 
   m_selectedSlide = m_slideList->currentItem()->text().toStdString();
+  m_haveLastStatus = false;  // force full redraw on next poll
 
   std::cout << "[PneumaticControlPage] Slide selected: " << m_selectedSlide << std::endl;
 
@@ -502,78 +503,108 @@ void PneumaticControlPage::updateSlideStatus()
     return;
   }
 
-  // Update position
-  std::string posStr = GetPositionString(status.Position);
-  m_positionValueLabel->setText(QString::fromStdString(posStr));
+  // Change detection — the previous version called setStyleSheet on 5+ labels
+  // and the progress bar on every 50 ms tick, which forced a full QSS recompute
+  // each time and dropped the Qt camera window to ~12 fps. Only touch widgets
+  // whose underlying value actually changed.
+  const bool positionChanged       = !m_haveLastStatus || status.Position != m_lastPosition;
+  const bool outputChanged         = !m_haveLastStatus || status.OutputActive != m_lastOutputActive;
+  const bool extendedSensorChanged = !m_haveLastStatus || status.ExtendedSensorActive != m_lastExtendedSensor;
+  const bool retractedSensorChanged= !m_haveLastStatus || status.RetractedSensorActive != m_lastRetractedSensor;
 
-  // Update position color and bar
-  updatePositionIndicator(posStr);
+  // Elapsed-time label updates whenever the position or the millisecond
+  // counter changes (the counter ticks while the slide is moving).
+  const bool elapsedChanged = positionChanged
+    || (m_haveLastStatus && status.LastMoveTimeMs != m_lastMoveTimeMs);
 
-  // Update elapsed time
-  if (status.Position == PneumaticPosition::EXTENDING ||
-    status.Position == PneumaticPosition::RETRACTING) {
-    // Currently moving - show live elapsed time in blue
-    if (status.LastMoveTimeMs > 0) {
-      m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #3498db; }");
-    }
-    else {
-      m_elapsedTimeValueLabel->setText("0 ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #3498db; }");
-    }
+  if (positionChanged) {
+    std::string posStr = GetPositionString(status.Position);
+    m_positionValueLabel->setText(QString::fromStdString(posStr));
+    updatePositionIndicator(posStr);
   }
-  else if (status.Position == PneumaticPosition::EXTENDED ||
-    status.Position == PneumaticPosition::RETRACTED) {
-    // Finished moving - show final time in green
-    if (status.LastMoveTimeMs > 0) {
-      m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+
+  if (elapsedChanged) {
+    if (status.Position == PneumaticPosition::EXTENDING ||
+      status.Position == PneumaticPosition::RETRACTING) {
+      // Currently moving - show live elapsed time in blue
+      if (status.LastMoveTimeMs > 0) {
+        m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
+      }
+      else {
+        m_elapsedTimeValueLabel->setText("0 ms");
+      }
+      if (positionChanged) {
+        m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #3498db; }");
+      }
+    }
+    else if (status.Position == PneumaticPosition::EXTENDED ||
+      status.Position == PneumaticPosition::RETRACTED) {
+      if (status.LastMoveTimeMs > 0) {
+        m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms");
+        if (positionChanged) {
+          m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+        }
+      }
+      else {
+        m_elapsedTimeValueLabel->setText("--");
+        if (positionChanged) {
+          m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+        }
+      }
+    }
+    else if (status.Position == PneumaticPosition::TIMEOUT) {
+      m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms TIMEOUT");
+      if (positionChanged) {
+        m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #e74c3c; }");
+      }
     }
     else {
       m_elapsedTimeValueLabel->setText("--");
-      m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+      if (positionChanged) {
+        m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+      }
     }
   }
-  else if (status.Position == PneumaticPosition::TIMEOUT) {
-    // Timeout - show in red
-    m_elapsedTimeValueLabel->setText(QString::number(status.LastMoveTimeMs) + " ms TIMEOUT");
-    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #e74c3c; }");
-  }
-  else {
-    // Unknown/Error - show placeholder
-    m_elapsedTimeValueLabel->setText("--");
-    m_elapsedTimeValueLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+
+  if (outputChanged) {
+    if (status.OutputActive) {
+      m_outputStatusLabel->setText("ON");
+      m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+    }
+    else {
+      m_outputStatusLabel->setText("OFF");
+      m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+    }
   }
 
-  // Update output status
-  if (status.OutputActive) {
-    m_outputStatusLabel->setText("ON");
-    m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
-  }
-  else {
-    m_outputStatusLabel->setText("OFF");
-    m_outputStatusLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
-  }
-
-  // Update extended sensor
-  if (status.ExtendedSensorActive) {
-    m_extendedSensorLabel->setText("ON");
-    m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
-  }
-  else {
-    m_extendedSensorLabel->setText("OFF");
-    m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+  if (extendedSensorChanged) {
+    if (status.ExtendedSensorActive) {
+      m_extendedSensorLabel->setText("ON");
+      m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+    }
+    else {
+      m_extendedSensorLabel->setText("OFF");
+      m_extendedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+    }
   }
 
-  // Update retracted sensor
-  if (status.RetractedSensorActive) {
-    m_retractedSensorLabel->setText("ON");
-    m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+  if (retractedSensorChanged) {
+    if (status.RetractedSensorActive) {
+      m_retractedSensorLabel->setText("ON");
+      m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #4CAF50; }");
+    }
+    else {
+      m_retractedSensorLabel->setText("OFF");
+      m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
+    }
   }
-  else {
-    m_retractedSensorLabel->setText("OFF");
-    m_retractedSensorLabel->setStyleSheet("QLabel { font-size: 12px; color: #666; }");
-  }
+
+  m_lastPosition         = status.Position;
+  m_lastOutputActive     = status.OutputActive;
+  m_lastExtendedSensor   = status.ExtendedSensorActive;
+  m_lastRetractedSensor  = status.RetractedSensorActive;
+  m_lastMoveTimeMs       = status.LastMoveTimeMs;
+  m_haveLastStatus       = true;
 }
 
 

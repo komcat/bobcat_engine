@@ -188,6 +188,57 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
   bool isStuckDetected = false;
   const int STUCK_TIMEOUT_MS = 2000;  // Fail after 2 seconds of no position change
 
+  // ✅ FIX: Scale timeout based on configured velocity and initial distance to target.
+  // At slow velocities (e.g. 0.5 mm/s) a long move can legitimately exceed the default
+  // 30s timeout. Stuck detection above already guards against actually-frozen motion,
+  // so the outer timeout only needs to bound a worst-case-but-progressing move.
+  int graceExtensionMs = 0;  // 5% one-shot extension applied if controller still moving at timeout
+  bool graceUsed = false;
+  if (effectiveTarget) {
+    struct AxisInfo { const char* name; double delta; bool present; };
+    AxisInfo axes[6] = {
+      {"X", effectiveTarget->hasX ? effectiveTarget->x - startingPos.x : 0.0, effectiveTarget->hasX},
+      {"Y", effectiveTarget->hasY ? effectiveTarget->y - startingPos.y : 0.0, effectiveTarget->hasY},
+      {"Z", effectiveTarget->hasZ ? effectiveTarget->z - startingPos.z : 0.0, effectiveTarget->hasZ},
+      {"U", effectiveTarget->hasU ? effectiveTarget->u - startingPos.u : 0.0, effectiveTarget->hasU},
+      {"V", effectiveTarget->hasV ? effectiveTarget->v - startingPos.v : 0.0, effectiveTarget->hasV},
+      {"W", effectiveTarget->hasW ? effectiveTarget->w - startingPos.w : 0.0, effectiveTarget->hasW},
+    };
+
+    double worstAxisSeconds = 0.0;
+    bool anyVelocityKnown = false;
+    for (const auto& a : axes) {
+      if (!a.present) continue;
+      double absDelta = std::abs(a.delta);
+      if (absDelta < 0.05) continue;  // already inside completion threshold
+
+      double velocity = 0.0;
+      if (motionManager->GetVelocity(deviceName, a.name, velocity) && velocity > 1e-6) {
+        anyVelocityKnown = true;
+        double axisSeconds = absDelta / velocity;
+        if (axisSeconds > worstAxisSeconds) worstAxisSeconds = axisSeconds;
+      }
+    }
+
+    if (anyVelocityKnown && worstAxisSeconds > 0.0) {
+      // 1.5x margin for accel/decel + waypoint hops, plus a 5s floor for short moves.
+      int estimatedMs = static_cast<int>(worstAxisSeconds * 1500.0) + 5000;
+      // Cap at 10 minutes to keep a hard upper bound on truly runaway waits.
+      const int MAX_DYNAMIC_TIMEOUT_MS = 600000;
+      if (estimatedMs > MAX_DYNAMIC_TIMEOUT_MS) estimatedMs = MAX_DYNAMIC_TIMEOUT_MS;
+      if (estimatedMs > timeoutMs) {
+        if (m_logger) {
+          m_logger->Debug("WaitForMotion: extending timeout to " + std::to_string(estimatedMs) +
+                          "ms based on distance/velocity (was " + std::to_string(timeoutMs) + "ms)",
+                          "MotionHandler");
+        }
+        timeoutMs = estimatedMs;
+      }
+      // Reserve a 5% grace window to grant once if the controller is still moving at timeout.
+      graceExtensionMs = static_cast<int>(estimatedMs * 0.05);
+    }
+  }
+
   // ✅ FIX: Small delay to ensure motion actually starts (avoid race condition)
   // When non-blocking motion is initiated, there's a brief window where the command
   // has been sent but the motor hasn't started moving yet
@@ -464,10 +515,29 @@ bool MotionCommandHandler::WaitForMotionWithStopCheck(
     ).count();
 
     if (elapsed > timeoutMs) {
-      if (m_logger) {
-        m_logger->Error("Timeout waiting for motion complete on: " + deviceName, "MotionHandler");
+      // ✅ One-shot 5% grace: if the estimated time has elapsed but the controller
+      // is still actively moving, extend the deadline once before declaring failure.
+      bool granted = false;
+      if (!graceUsed && graceExtensionMs > 0) {
+        bool stillMoving = motionManager->IsDeviceInMotion(deviceName) ||
+                           motionManager->IsWaypointSystemActive(deviceName);
+        if (stillMoving) {
+          timeoutMs += graceExtensionMs;
+          graceUsed = true;
+          granted = true;
+          if (m_logger) {
+            m_logger->Warning("WaitForMotion: estimated time elapsed but controller still moving - granting 5% grace (+" +
+                              std::to_string(graceExtensionMs) + "ms) on " + deviceName, "MotionHandler");
+          }
+        }
       }
-      return false;
+
+      if (!granted) {
+        if (m_logger) {
+          m_logger->Error("Timeout waiting for motion complete on: " + deviceName, "MotionHandler");
+        }
+        return false;
+      }
     }
 
     // Sleep briefly to avoid busy-waiting (50ms polling rate)

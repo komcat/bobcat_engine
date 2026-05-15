@@ -7,7 +7,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QProgressBar>
+#include <cstdint>
 #include <string>
+
+#include "Pneumatic_Types.h"
 
 struct ApplicationContext;
 class PneumaticManager;
@@ -83,6 +86,16 @@ private:
 
   // Current selection
   std::string m_selectedSlide;
+
+  // Change detection so the poll only touches widgets whose value flipped.
+  // Reset m_haveLastStatus = false to force a full repaint on the next tick
+  // (used when the selected slide changes).
+  PneumaticPosition m_lastPosition = PneumaticPosition::UNKNOWN;
+  bool     m_lastOutputActive = false;
+  bool     m_lastExtendedSensor = false;
+  bool     m_lastRetractedSensor = false;
+  uint32_t m_lastMoveTimeMs = 0;
+  bool     m_haveLastStatus = false;
 
   static constexpr int UPDATE_INTERVAL_MS = 100;
 

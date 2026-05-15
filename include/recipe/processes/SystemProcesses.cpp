@@ -122,12 +122,20 @@ public:
       {"step_size_um", "10"},
       {"enable_x", "true"},
       {"enable_y", "true"},
-      {"enable_z", "true"}
+      {"enable_z", "true"},
+      {"image_1", ""},
+      {"image_2", ""},
+      {"image_3", ""}
     };
   }
 
   void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
     const auto& params = instance->parameters;
+
+    auto getOrDefault = [&params](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : std::string();
+    };
 
     // Message field
     widget->addParameterField("message", "Instruction Message",
@@ -151,10 +159,21 @@ public:
 
     widget->addCheckboxParameter("enable_z", "Enable Z axis movement",
       params.at("enable_z"), "Allow user to jog in Z direction (up/down)");
+
+    // Optional reference images (up to 3). On Browse, the file is copied to
+    // <product>/recipe_images/<UID>.<ext> so the recipe carries its own copy.
+    widget->addImageSelector("image_1", "Image 1", getOrDefault("image_1"));
+    widget->addImageSelector("image_2", "Image 2", getOrDefault("image_2"));
+    widget->addImageSelector("image_3", "Image 3", getOrDefault("image_3"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
     const auto& params = step->parameters;
+
+    auto getOrDefault = [&params](const std::string& key) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : std::string();
+    };
 
     std::map<std::string, std::string> adjustParams = {
       {"message", params.at("message")},
@@ -162,7 +181,10 @@ public:
       {"step_size_um", params.at("step_size_um")},
       {"enable_x", params.at("enable_x")},
       {"enable_y", params.at("enable_y")},
-      {"enable_z", params.at("enable_z")}
+      {"enable_z", params.at("enable_z")},
+      {"image_1", getOrDefault("image_1")},
+      {"image_2", getOrDefault("image_2")},
+      {"image_3", getOrDefault("image_3")}
     };
 
     sequence->AddAction("system", "ManualAdjust", adjustParams);

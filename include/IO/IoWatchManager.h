@@ -15,15 +15,13 @@ class LogManager;
 /**
  * @brief Manual-override IO watch layer.
  *
- * Background thread that polls configured input pins and acts on the bound
- * output pin per the binding's `action`:
- *   - TOGGLE: on a qualifying edge, flip the output (OFF -> ON, ON -> OFF).
- *   - FOLLOW: output mirrors input level — rising edge sets ON, falling
- *             edge sets OFF (momentary / hold-while-pressed). The `trigger`
- *             field is ignored in FOLLOW mode (both edges always fire).
+ * Background thread that polls configured input pins and, on a triggering edge,
+ * executes a configurable action on a bound output pin. Actions: toggle (flip),
+ * set_on (always ON), set_off (always OFF), momentary (ON while held).
+ * Per-binding debounce suppresses switch bounce.
  *
- * Per-binding debounce suppresses switch bounce. This is a pure background
- * override — it does not interact with the recipe system or the safety cascade.
+ * This is a pure background override — it does not interact with the recipe
+ * system or the safety cascade.
  */
 class IoWatchManager : public QObject {
   Q_OBJECT
@@ -35,9 +33,11 @@ public:
     BOTH
   };
 
-  enum class Action {
-    TOGGLE,  // flip output on qualifying edge (legacy default)
-    FOLLOW   // output mirrors input level (rising=ON, falling=OFF)
+  enum class BehaviorAction {
+    TOGGLE,     // Flip output state (default)
+    SET_ON,     // Always set output ON
+    SET_OFF,    // Always set output OFF
+    MOMENTARY   // ON while input active, OFF when released
   };
 
   struct Binding {
@@ -47,7 +47,7 @@ public:
     std::string outputDevice;
     std::string outputPinName;
     TriggerEdge trigger;
-    Action action;
+    BehaviorAction behavior = BehaviorAction::TOGGLE;
     int debounceMs;
     bool enabled;
   };
@@ -97,13 +97,12 @@ private:
 
   void PollingThreadFunction();
   bool ShouldTrigger(bool prevState, bool currState, TriggerEdge edge) const;
-  void ExecuteToggle(const Binding& binding);
-  void ExecuteSet(const Binding& binding, bool desiredState);
+  void ExecuteAction(const Binding& binding, bool inputState);
   std::string MakeInputKey(const std::string& deviceName, const std::string& pinName) const;
   void LogEvent(const std::string& message, bool isError = false);
 
   static TriggerEdge ParseTriggerEdge(const std::string& edgeStr);
   static std::string TriggerEdgeToString(TriggerEdge edge);
-  static Action ParseAction(const std::string& actionStr);
-  static std::string ActionToString(Action action);
+  static BehaviorAction ParseBehavior(const std::string& behaviorStr);
+  static std::string BehaviorToString(BehaviorAction behavior);
 };

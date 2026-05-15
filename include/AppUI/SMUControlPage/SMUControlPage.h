@@ -13,6 +13,7 @@
 #include <QDoubleSpinBox>
 #include <QShowEvent>
 #include <QHideEvent>
+#include <QTimer>
 #include <vector>
 
 struct ApplicationContext;
@@ -36,6 +37,12 @@ struct SMUChannelWidgets
   QPushButton* outputOnButton = nullptr;
   QPushButton* outputOffButton = nullptr;
   QGroupBox* outputControlGroup = nullptr;
+  // Cached display state — diff before setText / setStyleSheet to avoid
+  // forcing a full QSS recompute on every measurement tick.
+  QString lastVoltageText;
+  QString lastCurrentText;
+  // -1=unknown (first paint), 0=off, 1=on, 2=disconnected
+  int lastOutputState = -1;
 };
 
 /**
@@ -94,6 +101,12 @@ private slots:
 
   // Polling measurement callback
   void onPollingMeasurement(QString deviceName, int channel, double current, QString timestamp);
+
+  // Slow-tick UI refresh for polling tab — decouples label/list redraws
+  // from the 10-20 Hz measurementReady signal so SMU polling no longer
+  // stalls the Qt camera window (see commit 8dd4ce1 for the same pattern
+  // applied to motion + chart overlay).
+  void onPollingUiTick();
 
   // Connection worker callbacks
   void onConnectionSuccess(QString deviceName, QString deviceId);
@@ -192,4 +205,11 @@ private:
   // ===== CACHED STATE (updated by worker) =====
   bool m_cachedOutputOn = false;  // Cached output state from worker
   int m_outputCommandPending = 0; // Suppress polling output updates while command in flight
+
+  // ===== POLLING UI THROTTLE =====
+  // Latest sample text cached by onPollingMeasurement; drained by onPollingUiTick.
+  QTimer* m_pollingUiTimer = nullptr;
+  QString m_pollingPendingValueText;
+  bool    m_pollingValueDirty = false;
+  int     m_pollingSessionTickCounter = 0;
 };

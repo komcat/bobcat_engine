@@ -14,6 +14,7 @@
 #include "motions/unified_motion_manager.h"
 #include "motions/MotionTypes.h"
 #include "context/ApplicationContext.h"
+#include "diagnostics/DiagVerbose.h"
 #include "VisionCommandHandler.h"
 #include "SequenceContext.h"
 #include "LogManager.h"
@@ -113,6 +114,8 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
     , m_instanceId(instanceId)
     , m_subscriberId("QtCameraWindow" + instanceId)
     , m_acqFpsTimestamp(std::chrono::steady_clock::now())
+    , m_diagUpdViewLogStart(std::chrono::steady_clock::now())
+    , m_diagUpdViewStartupTime(std::chrono::steady_clock::now())
 {
     setWindowFlags(Qt::Window);
 
@@ -133,6 +136,7 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
     // the main layout LAST so the side panel and quick-move column sit
     // to its left in display order.
     m_viewport = new QtCameraViewport(this);
+    m_viewport->setDiagName(m_instanceId);
 
     buildSidePanel();
     mainLayout->addWidget(m_sidePanelScroll);
@@ -146,6 +150,20 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
     connect(m_viewport, &QtCameraViewport::imageClicked,
             this, &QtCameraWindow::onImageClicked);
     // mouseMoved connected as no-op for now — slot may be added in Phase 2
+
+    // Paint pacing timer: drives viewport->update() at a steady 30 fps
+    // independent of camera frame arrival rate. setFrame() and overlay
+    // pushes only update state; this timer is the sole repaint trigger
+    // while the window is visible.
+    m_paintTimer = new QTimer(this);
+    m_paintTimer->setObjectName(QString("paintTimer-%1")
+        .arg(QString::fromStdString(m_instanceId.empty() ? "1" : m_instanceId)));
+    m_paintTimer->setTimerType(Qt::PreciseTimer);
+    m_paintTimer->setInterval(kPaintIntervalMs);
+    connect(m_paintTimer, &QTimer::timeout, this, [this]() {
+        ++m_diagPaintTimerFires;
+        if (m_viewport) m_viewport->update();
+    });
 }
 
 QtCameraWindow::~QtCameraWindow()
@@ -737,6 +755,8 @@ void QtCameraWindow::updateViewport()
 {
     if (!m_viewport) return;
 
+    const auto updStart = std::chrono::steady_clock::now();
+
     if (m_hasNewFrame.exchange(false)) {
         std::lock_guard<std::mutex> lock(m_frameMutex);
         if (m_frameWidth > 0 && m_frameHeight > 0 && !m_frameBuffer.empty()) {
@@ -772,6 +792,42 @@ void QtCameraWindow::updateViewport()
     // Push beam overlay data
     if (m_beamController) {
         m_beamController->pushOverlayToViewport();
+    }
+
+    const auto updEnd = std::chrono::steady_clock::now();
+    const int64_t updUs = std::chrono::duration_cast<std::chrono::microseconds>(
+                              updEnd - updStart).count();
+    m_diagUpdViewUsTotal += updUs;
+    if (updUs > m_diagUpdViewUsMax) m_diagUpdViewUsMax = updUs;
+    ++m_diagUpdViewCount;
+
+    const int64_t winMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                              updEnd - m_diagUpdViewLogStart).count();
+    if (winMs >= 5000 && m_diagUpdViewCount > 0) {
+        // Quiet by default; set BOBCAT_DIAG_VERBOSE to re-enable. Counters are
+        // still reset every window so the accumulators don't grow unbounded.
+        if (diag::VerboseEnabled()) {
+            const double seconds = winMs / 1000.0;
+            const double rate    = m_diagUpdViewCount / seconds;
+            const double avgMs   = (static_cast<double>(m_diagUpdViewUsTotal) / m_diagUpdViewCount) / 1000.0;
+            const double maxMs   = m_diagUpdViewUsMax / 1000.0;
+            const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
+                                   updEnd - m_diagUpdViewStartupTime).count();
+            const double timerRate = m_diagPaintTimerFires / seconds;
+            std::cout << "[CamWin/" << m_instanceId << "] t=" << upSec << "s"
+                      << " updateViewport: n=" << m_diagUpdViewCount
+                      << " (" << rate << "/s)"
+                      << " avg=" << avgMs << "ms"
+                      << " max=" << maxMs << "ms"
+                      << " paintTimer: fires=" << m_diagPaintTimerFires
+                      << " (" << timerRate << "/s)"
+                      << std::endl;
+        }
+        m_diagUpdViewUsTotal = 0;
+        m_diagUpdViewUsMax = 0;
+        m_diagUpdViewCount = 0;
+        m_diagPaintTimerFires = 0;
+        m_diagUpdViewLogStart = updEnd;
     }
 }
 
@@ -1391,12 +1447,18 @@ void QtCameraWindow::closeEvent(QCloseEvent* event)
 void QtCameraWindow::showEvent(QShowEvent* event)
 {
     QWidget::showEvent(event);
+    if (m_paintTimer && !m_paintTimer->isActive()) {
+        m_paintTimer->start();
+    }
     emit visibilityChanged(true);
 }
 
 void QtCameraWindow::hideEvent(QHideEvent* event)
 {
     saveSettings();
+    if (m_paintTimer && m_paintTimer->isActive()) {
+        m_paintTimer->stop();
+    }
     QWidget::hideEvent(event);
     emit visibilityChanged(false);
 }

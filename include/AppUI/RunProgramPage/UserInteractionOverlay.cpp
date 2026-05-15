@@ -133,14 +133,15 @@ bool UserInteractionOverlay::RequestUserPrompt(const QString& title,
 bool UserInteractionOverlay::RequestManualAdjust(const QString& message,
                                                   const QString& deviceName,
                                                   double stepSizeUm,
-                                                  bool enableX, bool enableY, bool enableZ)
+                                                  bool enableX, bool enableY, bool enableZ,
+                                                  const QStringList& imagePaths)
 {
     bool result = false;
 
     QMetaObject::invokeMethod(this, [&]() {
         setCurrentIndex(m_idxManualAdjust);
         m_manualAdjustWidget->showAdjustment(message, deviceName, stepSizeUm,
-                                              enableX, enableY, enableZ);
+                                              enableX, enableY, enableZ, imagePaths);
 
         QEventLoop loop;
         auto conn = connect(m_manualAdjustWidget, &ManualAdjustWidget::responseReceived,

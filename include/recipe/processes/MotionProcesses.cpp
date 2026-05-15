@@ -9,6 +9,9 @@
 #include "../../AppUI/RecipePage/ProcessConfigWidget.h"
 #include "../../AppUI/RecipePage/DeviceSelectorWidgets.h"
 #include "../../AppUI/RecipePage/PropertyTableWidget.h"
+#include "../../context/ApplicationContext.h"
+#include "../../camera/CameraManager.h"
+#include "../../camera/ICameraHardware.h"
 
 #include <iostream>
 #include <memory>
@@ -376,7 +379,7 @@ public:
       getParamOr(params, "exposure_camera", "main_camera"),
       static_cast<int>(DeviceComboBox::DeviceType::Camera));
     widget->addNumericParameter("exposure_value", "Exposure (us)",
-      getParamOr(params, "exposure_value", "1000"), 1, 10000, 1, 0, "us");
+      getParamOr(params, "exposure_value", "1000"), 1, 100000, 1, 0, "us");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -402,10 +405,21 @@ public:
       getParamOr(params, "exposure_camera", "main_camera"),
       static_cast<int>(DeviceComboBox::DeviceType::Camera),
       "Camera to set exposure on");
-    table->addNumericProperty("exposure_value", "Exposure",
+    table->addNumericActionProperty("exposure_value", "Exposure",
       std::stod(getParamOr(params, "exposure_value", "1000")),
-      1, 10000, 1, 0, "us",
-      "Exposure time in microseconds (1-10000)");
+      1, 100000, 1, 0, "us",
+      "Apply",
+      [table](double exposureUs) {
+        ApplicationContext* c = table->getContext();
+        if (!c || !c->cameraManager) return;
+        std::string cam = table->getParameter("exposure_camera");
+        if (cam.empty()) return;
+        ICameraHardware::ExposureSettings settings = c->cameraManager->GetExposureSettings(cam);
+        settings.exposure_time = exposureUs;
+        settings.auto_exposure = false;
+        c->cameraManager->ApplyExposureSettings(cam, settings);
+      },
+      "Exposure time in microseconds (1-100000). Click Apply to push this value to the selected camera now.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -618,6 +632,102 @@ public:
 
     std::cout << "[MotionProcesses] Built Move Relative Multi-Axis sequence for: " << step->userNickname
               << " (" << movesArray.size() << " axes)" << std::endl;
+  }
+};
+
+//=============================================================================
+// MOVE RELATIVE GLOBAL PLUGIN - Relative move in the GLOBAL frame
+// Uses transformation_matrix.json to transform the (dx,dy,dz) global delta
+// into the device's local axes and dispatches a simultaneous multi-axis
+// relative move on the controller.
+//=============================================================================
+
+class MoveRelativeGlobalPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "Move Relative (Global)";
+  }
+
+  std::string GetCategory() const override {
+    return "Motion Control";
+  }
+
+  std::string GetDescription() const override {
+    return "Move device relative to current position, expressed in the GLOBAL frame "
+           "(uses transformation_matrix.json)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "hex-left"},
+      {"dx", "0"},
+      {"dy", "0"},
+      {"dz", "0"},
+      {"velocity", "0"},
+      {"delay_before_ms", "0"},
+      {"delay_after_ms", "0"}
+    };
+  }
+
+  bool PrefersTableUI() const override { return true; }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addDeviceSelector("device", "Motion Device", params.at("device"),
+      static_cast<int>(DeviceComboBox::DeviceType::Motion));
+    widget->addParameterField("dx", "Global X Distance (mm)", params.at("dx"));
+    widget->addParameterField("dy", "Global Y Distance (mm)", params.at("dy"));
+    widget->addParameterField("dz", "Global Z Distance (mm)", params.at("dz"));
+    addTimingAndVelocityFormUI(widget, params);
+  }
+
+  void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    table->addCategoryHeader("Device");
+    table->addMotionDeviceProperty("device", "Motion Device", params.at("device"),
+      "Select the motion device to move (must be registered in transformation_matrix.json)");
+
+    table->addCategoryHeader("Global-Frame Distances");
+    table->addNumericProperty("dx", "Global X Distance",
+      std::stod(params.at("dx")),
+      -1000, 1000, 0.1, 3, "mm",
+      "Distance to move along the GLOBAL X axis (0 = no move)");
+    table->addNumericProperty("dy", "Global Y Distance",
+      std::stod(params.at("dy")),
+      -1000, 1000, 0.1, 3, "mm",
+      "Distance to move along the GLOBAL Y axis (0 = no move)");
+    table->addNumericProperty("dz", "Global Z Distance",
+      std::stod(params.at("dz")),
+      -1000, 1000, 0.1, 3, "mm",
+      "Distance to move along the GLOBAL Z axis (0 = no move)");
+
+    addTimingAndVelocityTableUI(table, params);
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    std::string device = params.at("device");
+    std::string dx = params.at("dx");
+    std::string dy = params.at("dy");
+    std::string dz = params.at("dz");
+
+    addVelocityAction(sequence, device, getParamOr(params, "velocity", "0"));
+    addDelayAction(sequence, getParamOr(params, "delay_before_ms", "0"));
+
+    if (!isZeroDistance(dx) || !isZeroDistance(dy) || !isZeroDistance(dz)) {
+      sequence->AddAction(device, "MoveRelativeGlobal", {
+        {"dx", dx},
+        {"dy", dy},
+        {"dz", dz}
+      });
+    }
+
+    addDelayAction(sequence, getParamOr(params, "delay_after_ms", "0"));
+
+    std::cout << "[MotionProcesses] Built Move Relative (Global) sequence for: " << step->userNickname << std::endl;
   }
 };
 
@@ -2699,6 +2809,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<MoveToPositionPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativePlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativeMultiAxisPlugin>());
+      registry.RegisterPlugin(std::make_unique<MoveRelativeGlobalPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveRelativeThetaPlugin>());
       registry.RegisterPlugin(std::make_unique<MoveToPositionWithOffsetPlugin>());
       registry.RegisterPlugin(std::make_unique<SetVelocityPlugin>());

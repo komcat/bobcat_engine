@@ -139,7 +139,7 @@ bool YawTrainerCommandHandler::HandleRunYawCorrection(
                  << "  Y=" << set.referenceLine.p1y
                  << "\n\nJog to Reference P1, then click OK.";
 
-        bool p1Ok = m_manualAdjustCallback(refP1Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool p1Ok = m_manualAdjustCallback(refP1Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!p1Ok) {
             errorMessage = "User cancelled retrace at Reference P1";
             if (context) context->SetValue("yaw_trainer.result.success", false);
@@ -172,7 +172,7 @@ bool YawTrainerCommandHandler::HandleRunYawCorrection(
                  << "System moved by taught delta to Ref P2 area.\n"
                  << "Adjust if needed, then click OK.";
 
-        bool p2Ok = m_manualAdjustCallback(refP2Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool p2Ok = m_manualAdjustCallback(refP2Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!p2Ok) {
             errorMessage = "User cancelled retrace at Reference P2";
             if (context) context->SetValue("yaw_trainer.result.success", false);
@@ -206,7 +206,7 @@ bool YawTrainerCommandHandler::HandleRunYawCorrection(
                  << "  Y=" << set.targetLine.p1y
                  << "\n\nJog to Target P1, then click OK.";
 
-        bool t1Ok = m_manualAdjustCallback(tgtP1Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool t1Ok = m_manualAdjustCallback(tgtP1Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!t1Ok) {
             errorMessage = "User cancelled retrace at Target P1";
             if (context) context->SetValue("yaw_trainer.result.success", false);
@@ -239,7 +239,7 @@ bool YawTrainerCommandHandler::HandleRunYawCorrection(
                  << "System moved by taught delta to Tgt P2 area.\n"
                  << "Adjust if needed, then click OK.";
 
-        bool t2Ok = m_manualAdjustCallback(tgtP2Msg.str(), set.deviceName, 10.0, true, true, true);
+        bool t2Ok = m_manualAdjustCallback(tgtP2Msg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!t2Ok) {
             errorMessage = "User cancelled retrace at Target P2";
             if (context) context->SetValue("yaw_trainer.result.success", false);

@@ -41,6 +41,33 @@ QString formatSI(double value, const QString& unit, int decimals = 3)
     .arg(prefix)
     .arg(unit);
 }
+
+// Apply an output-state visual (text + stylesheet) only if it differs from
+// the cached state. setStyleSheet is the expensive op (full QSS recompute) —
+// avoiding redundant calls is what fixes the per-tick MainWindow stalls.
+// states: 0 = OFF, 1 = ON, 2 = disconnected/unknown.
+void applyOutputState(SMUChannelWidgets& ctrl, int newState)
+{
+  if (ctrl.lastOutputState == newState || !ctrl.outputStateLabel) return;
+  switch (newState) {
+    case 1:
+      ctrl.outputStateLabel->setText("Output: ON");
+      ctrl.outputStateLabel->setStyleSheet(
+        "font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+      break;
+    case 0:
+      ctrl.outputStateLabel->setText("Output: OFF");
+      ctrl.outputStateLabel->setStyleSheet(
+        "font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+      break;
+    default:
+      ctrl.outputStateLabel->setText("Output: ---");
+      ctrl.outputStateLabel->setStyleSheet(
+        "font-size: 13px; font-weight: bold; color: #888888; background: transparent;");
+      break;
+  }
+  ctrl.lastOutputState = newState;
+}
 } // anonymous namespace
 
 SMUControlPage::SMUControlPage(ApplicationContext* context, QWidget* parent)
@@ -85,6 +112,13 @@ SMUControlPage::SMUControlPage(ApplicationContext* context, QWidget* parent)
 
   // Start the parameter worker thread
   m_parameterWorker->start();
+
+  // Polling UI throttle — 200 ms tick drains m_pollingPendingValueText into
+  // the label and refreshes the sessions list at 1 Hz. Started/stopped from
+  // showEvent/hideEvent so a hidden page costs nothing.
+  m_pollingUiTimer = new QTimer(this);
+  m_pollingUiTimer->setInterval(200);
+  connect(m_pollingUiTimer, &QTimer::timeout, this, &SMUControlPage::onPollingUiTick);
 }
 
 SMUControlPage::~SMUControlPage()
@@ -971,8 +1005,7 @@ void SMUControlPage::onOutputOnClicked(int channel)
   m_outputCommandPending = 5;
   for (auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
-      ctrl.outputStateLabel->setText("Output: ON");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
+      applyOutputState(ctrl, 1);
       break;
     }
   }
@@ -989,8 +1022,7 @@ void SMUControlPage::onOutputOffClicked(int channel)
   m_outputCommandPending = 5;
   for (auto& ctrl : m_channelControls) {
     if (ctrl.channel == channel) {
-      ctrl.outputStateLabel->setText("Output: OFF");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
+      applyOutputState(ctrl, 0);
       break;
     }
   }
@@ -1001,17 +1033,9 @@ void SMUControlPage::updateOutputState()
 {
   if (m_channelControls.empty()) return;
 
+  const int newState = m_currentDevice.isEmpty() ? 2 : (m_cachedOutputOn ? 1 : 0);
   for (auto& ctrl : m_channelControls) {
-    if (m_currentDevice.isEmpty()) {
-      ctrl.outputStateLabel->setText("Output: ---");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #888888; background: transparent;");
-    } else if (m_cachedOutputOn) {
-      ctrl.outputStateLabel->setText("Output: ON");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
-    } else {
-      ctrl.outputStateLabel->setText("Output: OFF");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
-    }
+    applyOutputState(ctrl, newState);
   }
 
   if (m_parameterWorker && !m_currentDevice.isEmpty()) {
@@ -1227,27 +1251,38 @@ void SMUControlPage::refreshActiveSessionsList()
   m_pollingSampleLabel->setText(QString("Total active sessions: %1").arg(sessions.size()));
 }
 
-// Polling measurement callback
+// Polling measurement callback — runs on the UI thread via queued connection
+// at ~10 Hz per channel (~20 Hz total with 2 channels). Keep this cheap:
+// stash the formatted text and let onPollingUiTick() redraw at 5 Hz. The old
+// implementation did setText() + occasional list refresh on every sample,
+// which posted 50-60 ms UpdateRequest events to MainWindow and starved the
+// Qt camera window of paint slots.
 void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString /*timestamp*/)
 {
-  // Update live display for current device
-  if (deviceName == m_currentDevice) {
-    // Determine unit - check if current or voltage
-    bool isCurrent = (value < 1.0);  // Simple heuristic, or we could track measurement type
-    QString unit = isCurrent ? " A" : " V";
+  if (deviceName != m_currentDevice) return;
 
-    // Update real-time value display
-    m_pollingValueLabel->setText(QString("%1: %2%3")
-      .arg(QString("Ch%1").arg(channel))
-      .arg(QString::number(value, 'e', 3))
-      .arg(unit));
+  const bool isCurrent = (value < 1.0);
+  const QString unit = isCurrent ? " A" : " V";
+  m_pollingPendingValueText = QString("Ch%1: %2%3")
+    .arg(channel)
+    .arg(QString::number(value, 'e', 3))
+    .arg(unit);
+  m_pollingValueDirty = true;
+}
+
+void SMUControlPage::onPollingUiTick()
+{
+  if (m_pollingValueDirty && m_pollingValueLabel) {
+    m_pollingValueLabel->setText(m_pollingPendingValueText);
+    m_pollingValueDirty = false;
   }
 
-  // Periodically refresh the active sessions list to update sample counts
-  static int updateCounter = 0;
-  if (++updateCounter >= 10) {  // Refresh every 10 measurements (~1 second at 100ms interval)
+  // Refresh the active-sessions list (which walks polling sessions + sample
+  // counts and rebuilds a QListWidget) once per second instead of every 10
+  // samples — 1 Hz is plenty for human-readable sample counters.
+  if (++m_pollingSessionTickCounter >= 5) {
+    m_pollingSessionTickCounter = 0;
     refreshActiveSessionsList();
-    updateCounter = 0;
   }
 }
 
@@ -1540,39 +1575,35 @@ void SMUControlPage::onMeasurementsUpdated(int channel, double voltage, double c
   if (m_channelControls.empty()) return;
 
   for (auto& ctrl : m_channelControls) {
-    if (ctrl.channel == channel) {
-      // Update voltage with SI prefix
-      if (voltage != -999.0) {
-        ctrl.voltageLabel->setText("V: " + formatSI(voltage, "V"));
-      } else {
-        ctrl.voltageLabel->setText("V: --- V");
-      }
-      ctrl.voltageLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
+    if (ctrl.channel != channel) continue;
 
-      // Update current with SI prefix
-      if (current != -999.0) {
-        ctrl.currentLabel->setText("A: " + formatSI(current, "A"));
-      } else {
-        ctrl.currentLabel->setText("A: --- A");
-      }
-      ctrl.currentLabel->setStyleSheet("font-size: 26px; font-weight: bold; color: #ffffff; background: transparent;");
-
-      // Skip output state while command in flight
-      if (m_outputCommandPending > 0) {
-        --m_outputCommandPending;
-        return;
-      }
-
-      m_cachedOutputOn = outputOn;
-      if (outputOn) {
-        ctrl.outputStateLabel->setText("Output: ON");
-        ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
-      } else {
-        ctrl.outputStateLabel->setText("Output: OFF");
-        ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
-      }
-      break;
+    // V/A labels: only setText when the formatted string actually changed.
+    // The label's stylesheet is set once at construction — re-applying the
+    // same QSS on every measurement tick was forcing a full style recompute
+    // even when nothing visible had changed.
+    QString voltText = (voltage != -999.0) ? ("V: " + formatSI(voltage, "V"))
+                                           : QString("V: --- V");
+    if (voltText != ctrl.lastVoltageText) {
+      ctrl.voltageLabel->setText(voltText);
+      ctrl.lastVoltageText = voltText;
     }
+
+    QString currText = (current != -999.0) ? ("A: " + formatSI(current, "A"))
+                                           : QString("A: --- A");
+    if (currText != ctrl.lastCurrentText) {
+      ctrl.currentLabel->setText(currText);
+      ctrl.lastCurrentText = currText;
+    }
+
+    // Skip output state while a command is in flight (avoids flicker).
+    if (m_outputCommandPending > 0) {
+      --m_outputCommandPending;
+      return;
+    }
+
+    m_cachedOutputOn = outputOn;
+    applyOutputState(ctrl, outputOn ? 1 : 0);
+    break;
   }
 }
 
@@ -1581,15 +1612,11 @@ void SMUControlPage::onOutputStateChangedByWorker(bool on)
   m_outputCommandPending = 0;
   m_cachedOutputOn = on;
 
-  // Update all channel displays (output state is device-wide, not per-channel)
+  // Update all channel displays (output state is device-wide, not per-channel).
+  // applyOutputState() no-ops when the cached state already matches.
+  const int newState = on ? 1 : 0;
   for (auto& ctrl : m_channelControls) {
-    if (on) {
-      ctrl.outputStateLabel->setText("Output: ON");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #4cff4c; background: transparent;");
-    } else {
-      ctrl.outputStateLabel->setText("Output: OFF");
-      ctrl.outputStateLabel->setStyleSheet("font-size: 13px; font-weight: bold; color: #ff6666; background: transparent;");
-    }
+    applyOutputState(ctrl, newState);
   }
 
   // Request refresh for active channel
@@ -1618,6 +1645,10 @@ void SMUControlPage::onParameterCommandSuccess(QString /*operation*/, QString me
 void SMUControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
+
+  if (m_pollingUiTimer && !m_pollingUiTimer->isActive()) {
+    m_pollingUiTimer->start();
+  }
 
   // Refresh connection status in case devices were connected externally
   updateConnectionStatus();
@@ -1650,6 +1681,10 @@ void SMUControlPage::showEvent(QShowEvent* event)
 void SMUControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
+
+  if (m_pollingUiTimer && m_pollingUiTimer->isActive()) {
+    m_pollingUiTimer->stop();
+  }
 
   // Disable measurement polling when page is hidden to save resources
   if (m_parameterWorker) {

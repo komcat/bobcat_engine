@@ -134,6 +134,7 @@ void CameraImageWidget::clearDisplay()
   m_displayLabel->clear();
   m_displayLabel->setText("No camera feed");
   m_displayLabel->resize(320, 240);  // Reset to minimum size
+  m_lastPixmapSize = QSize(320, 240);  // Keep cache in sync with actual size
   m_reusableBuffer = QImage();
   resetPan();
 
@@ -387,9 +388,15 @@ void CameraImageWidget::renderFrame(const QImage& image)
     painter.end();
   }
 
-  // Set pixmap and resize label to match pixmap size for scrolling
+  // setPixmap always — content changes every frame so we can't skip it.
+  // resize() is gated: posting a QResizeEvent up the parent chain (label →
+  // QScrollArea → CameraImageWidget → ... → MainWindow) for an unchanged
+  // size was a real contributor to MainWindow UpdateRequest LongEvents.
   m_displayLabel->setPixmap(pixmap);
-  m_displayLabel->resize(pixmap.size());
+  if (m_lastPixmapSize != pixmap.size()) {
+    m_displayLabel->resize(pixmap.size());
+    m_lastPixmapSize = pixmap.size();
+  }
 }
 
 void CameraImageWidget::resizeEvent(QResizeEvent* event)

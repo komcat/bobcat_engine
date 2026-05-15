@@ -131,7 +131,7 @@ bool ZOffsetCommandHandler::HandleRunZOffset(
                << "  (X=" << set.reference.x << ", Y=" << set.reference.y << ")"
                << "\n\nJog to Reference surface, then click OK.";
 
-        bool refOk = m_manualAdjustCallback(refMsg.str(), set.deviceName, 10.0, true, true, true);
+        bool refOk = m_manualAdjustCallback(refMsg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!refOk) {
             errorMessage = "User cancelled retrace at Reference surface";
             if (context) context->SetValue("z_offset.result.success", false);
@@ -164,7 +164,7 @@ bool ZOffsetCommandHandler::HandleRunZOffset(
                << "  (X=" << set.target.x << ", Y=" << set.target.y << ")"
                << "\n\nJog to Target surface, then click OK.";
 
-        bool tgtOk = m_manualAdjustCallback(tgtMsg.str(), set.deviceName, 10.0, true, true, true);
+        bool tgtOk = m_manualAdjustCallback(tgtMsg.str(), set.deviceName, 10.0, true, true, true, {});
         if (!tgtOk) {
             errorMessage = "User cancelled retrace at Target surface";
             if (context) context->SetValue("z_offset.result.success", false);

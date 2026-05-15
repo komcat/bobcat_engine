@@ -73,7 +73,7 @@ bool IoWatchManager::LoadConfig(const std::string& configPath) {
         }
 
         b.trigger = ParseTriggerEdge(bJson.value("trigger", "rising"));
-        b.action = ParseAction(bJson.value("action", "toggle"));
+        b.behavior = ParseBehavior(bJson.value("behavior", "toggle"));
         b.debounceMs = bJson.value("debounce_ms", 100);
         b.enabled = bJson.value("enabled", true);
 
@@ -90,8 +90,8 @@ bool IoWatchManager::LoadConfig(const std::string& configPath) {
         }
 
         m_bindings.push_back(b);
-        LogEvent("Loaded binding: " + b.name + " (action=" + ActionToString(b.action)
-                 + ", trigger=" + TriggerEdgeToString(b.trigger)
+        LogEvent("Loaded binding: " + b.name + " (trigger=" + TriggerEdgeToString(b.trigger)
+                 + ", behavior=" + BehaviorToString(b.behavior)
                  + ", debounce=" + std::to_string(b.debounceMs) + "ms"
                  + ", enabled=" + (b.enabled ? "yes" : "no") + ")");
       }
@@ -243,10 +243,10 @@ void IoWatchManager::PollingThreadFunction() {
 
       if (currentState == prevState) continue;
 
-      // FOLLOW always reacts to both edges; TOGGLE honors the configured edge filter.
-      if (b.action == Action::TOGGLE && !ShouldTrigger(prevState, currentState, b.trigger)) {
-        continue;
-      }
+      // Momentary fires on both edges (ON when active, OFF when released),
+      // other behaviors respect the configured trigger edge.
+      const bool isMomentary = (b.behavior == BehaviorAction::MOMENTARY);
+      if (!isMomentary && !ShouldTrigger(prevState, currentState, b.trigger)) continue;
 
       // Debounce: require elapsed time since last trigger exceeds window
       const int64_t now = NowMs();
@@ -265,11 +265,7 @@ void IoWatchManager::PollingThreadFunction() {
         continue;
       }
 
-      if (b.action == Action::FOLLOW) {
-        ExecuteSet(b, currentState);
-      } else {
-        ExecuteToggle(b);
-      }
+      ExecuteAction(b, currentState);
 
       {
         std::lock_guard<std::mutex> lock(m_mutex);
@@ -285,17 +281,33 @@ void IoWatchManager::PollingThreadFunction() {
   LogEvent("Polling thread stopped");
 }
 
-void IoWatchManager::ExecuteToggle(const Binding& b) {
-  bool currentOut = false;
-  if (!m_ioManager->GetOutputByName(b.outputDevice, b.outputPinName, currentOut)) {
-    const std::string msg = "'" + b.name + "': failed to read output " +
-                            b.outputDevice + ":" + b.outputPinName;
-    LogEvent(msg, true);
-    emit watchError(QString::fromStdString(msg));
-    return;
+void IoWatchManager::ExecuteAction(const Binding& b, bool inputState) {
+  bool newState = false;
+
+  switch (b.behavior) {
+    case BehaviorAction::TOGGLE: {
+      bool currentOut = false;
+      if (!m_ioManager->GetOutputByName(b.outputDevice, b.outputPinName, currentOut)) {
+        const std::string msg = "'" + b.name + "': failed to read output " +
+                                b.outputDevice + ":" + b.outputPinName;
+        LogEvent(msg, true);
+        emit watchError(QString::fromStdString(msg));
+        return;
+      }
+      newState = !currentOut;
+      break;
+    }
+    case BehaviorAction::SET_ON:
+      newState = true;
+      break;
+    case BehaviorAction::SET_OFF:
+      newState = false;
+      break;
+    case BehaviorAction::MOMENTARY:
+      newState = inputState;
+      break;
   }
 
-  const bool newState = !currentOut;
   const EziIOError setErr = m_ioManager->SetOutputByName(b.outputDevice, b.outputPinName, newState);
   if (setErr != EziIOError::SUCCESS) {
     const std::string msg = "'" + b.name + "': failed to set output " +
@@ -306,7 +318,8 @@ void IoWatchManager::ExecuteToggle(const Binding& b) {
     return;
   }
 
-  LogEvent("TOGGLE '" + b.name + "': " + b.outputDevice + ":" + b.outputPinName +
+  LogEvent(BehaviorToString(b.behavior) + " '" + b.name + "': " +
+           b.outputDevice + ":" + b.outputPinName +
            " -> " + (newState ? "ON" : "OFF"));
 
   emit bindingTriggered(
@@ -314,42 +327,6 @@ void IoWatchManager::ExecuteToggle(const Binding& b) {
     QString::fromStdString(b.outputDevice),
     QString::fromStdString(b.outputPinName),
     newState
-  );
-}
-
-void IoWatchManager::ExecuteSet(const Binding& b, bool desiredState) {
-  bool currentOut = false;
-  if (m_ioManager->GetOutputByName(b.outputDevice, b.outputPinName, currentOut)) {
-    if (currentOut == desiredState) {
-      // Already at desired level — skip the write but still emit so listeners stay in sync.
-      emit bindingTriggered(
-        QString::fromStdString(b.name),
-        QString::fromStdString(b.outputDevice),
-        QString::fromStdString(b.outputPinName),
-        desiredState
-      );
-      return;
-    }
-  }
-
-  const EziIOError setErr = m_ioManager->SetOutputByName(b.outputDevice, b.outputPinName, desiredState);
-  if (setErr != EziIOError::SUCCESS) {
-    const std::string msg = "'" + b.name + "': failed to set output " +
-                            b.outputDevice + ":" + b.outputPinName +
-                            " -> " + (desiredState ? "ON" : "OFF");
-    LogEvent(msg, true);
-    emit watchError(QString::fromStdString(msg));
-    return;
-  }
-
-  LogEvent("FOLLOW '" + b.name + "': " + b.outputDevice + ":" + b.outputPinName +
-           " -> " + (desiredState ? "ON" : "OFF"));
-
-  emit bindingTriggered(
-    QString::fromStdString(b.name),
-    QString::fromStdString(b.outputDevice),
-    QString::fromStdString(b.outputPinName),
-    desiredState
   );
 }
 
@@ -391,15 +368,19 @@ std::string IoWatchManager::TriggerEdgeToString(TriggerEdge edge) {
   }
 }
 
-IoWatchManager::Action IoWatchManager::ParseAction(const std::string& actionStr) {
-  if (actionStr == "follow" || actionStr == "FOLLOW") return Action::FOLLOW;
-  return Action::TOGGLE;
+IoWatchManager::BehaviorAction IoWatchManager::ParseBehavior(const std::string& behaviorStr) {
+  if (behaviorStr == "set_on"    || behaviorStr == "SET_ON")    return BehaviorAction::SET_ON;
+  if (behaviorStr == "set_off"   || behaviorStr == "SET_OFF")   return BehaviorAction::SET_OFF;
+  if (behaviorStr == "momentary" || behaviorStr == "MOMENTARY") return BehaviorAction::MOMENTARY;
+  return BehaviorAction::TOGGLE;
 }
 
-std::string IoWatchManager::ActionToString(Action action) {
-  switch (action) {
-    case Action::FOLLOW: return "follow";
-    case Action::TOGGLE: return "toggle";
-    default:             return "toggle";
+std::string IoWatchManager::BehaviorToString(BehaviorAction behavior) {
+  switch (behavior) {
+    case BehaviorAction::TOGGLE:    return "toggle";
+    case BehaviorAction::SET_ON:    return "set_on";
+    case BehaviorAction::SET_OFF:   return "set_off";
+    case BehaviorAction::MOMENTARY: return "momentary";
+    default:                        return "toggle";
   }
 }

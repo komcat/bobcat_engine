@@ -43,6 +43,7 @@ class TcpClientManager;
 class ConnectionSplashScreen;  // ✅ NEW: Splash screen for hardware connection
 class SafetyEventLog;          // Structured safety event logging
 class ScanActivityTracker;     // Scan-busy broadcaster for TopBar indicator
+class TransformationMatrixLoader;  // Per-device global<->local frame matrices
 
 class Application : public QObject
 {
@@ -160,6 +161,7 @@ private:
   std::unique_ptr<BeamOptimizerManager> m_beamOptimizerManager; // Beam optimization coordinator
   std::unique_ptr<ScanActivityTracker> m_scanActivityTracker; // Scan-busy broadcaster for TopBar indicator
   std::unique_ptr<ScriptEngine> m_scriptEngine;              // Lua 5.4 scripting engine
+  std::unique_ptr<TransformationMatrixLoader> m_transformationMatrixLoader;  // Per-device global<->local matrices
 
   ApplicationContext m_context;
 
