@@ -53,8 +53,15 @@ CameraClickToMoveWidget::CameraClickToMoveWidget(CameraManager* cameraManager,
 
   // Frame update timer - 20 FPS
   m_frameUpdateTimer = new QTimer(this);
+  m_frameUpdateTimer->setObjectName("clickToMoveFrameTimer");
   connect(m_frameUpdateTimer, &QTimer::timeout, this, &CameraClickToMoveWidget::onUpdateFrame);
-  m_frameUpdateTimer->start(50);  // 20 FPS
+  // 100ms (10 Hz) matches the typical camera frame rate. The previous 50ms
+  // tick was waking the UI thread twice per actual frame and — when a new
+  // frame did arrive — doing a heavy QPixmap::fromImage+scaled+setPixmap
+  // that triggered a 50-80ms MainWindow UpdateRequest cascade. Result: at
+  // 20 ticks/s the cascade alone consumed 1-1.6s of UI time per second
+  // and starved the Qt camera viewport's paint timer.
+  m_frameUpdateTimer->start(100);
 
   // Auto-refresh camera list every 5 seconds
   m_refreshTimer = new QTimer(this);
@@ -562,6 +569,14 @@ void CameraClickToMoveWidget::refreshCameraList()
 
 void CameraClickToMoveWidget::onUpdateFrame()
 {
+  // Skip all work when the widget isn't visible (e.g. user is on a
+  // different tab). Even if a new frame is available, painting it
+  // would cascade a MainWindow UpdateRequest of 50-80ms for content
+  // nobody can see — which was crushing the Qt camera viewport's
+  // paint rate while another tab was active.
+  if (!isVisible()) {
+    return;
+  }
   if (m_subscriber && m_subscriber->HasNewFrame()) {
     CameraFrameData frame = m_subscriber->GetLatestFrame();
 
@@ -569,12 +584,18 @@ void CameraClickToMoveWidget::onUpdateFrame()
       return;
     }
 
-    // Update gantry position for overlay rendering
+    // Update gantry position for overlay rendering. Read from the
+    // non-blocking cache — this slot fires at 20 Hz on the UI thread,
+    // and a synchronous GetCurrentPosition() was the dominant
+    // steady-state UI-thread stall (50ms+ per tick, visible in
+    // LongEvent diagnostics with parent=CameraClickToMoveWidget).
     if (m_overlayEnabled && m_motionManager) {
-      PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
-      m_gantryX = pos.x;
-      m_gantryY = pos.y;
-      m_gantryZ = pos.z;
+      PositionStruct pos;
+      if (m_motionManager->GetCachedPosition("gantry-main", pos)) {
+        m_gantryX = pos.x;
+        m_gantryY = pos.y;
+        m_gantryZ = pos.z;
+      }
     }
 
     // Convert to QImage

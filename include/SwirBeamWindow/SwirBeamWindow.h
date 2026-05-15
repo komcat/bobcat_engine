@@ -124,8 +124,10 @@ public:
     // Get native window handle
     HWND GetHwnd() const { return m_hwnd; }
 
-    // Process Windows messages
-    static bool ProcessMessages();
+    // Drain pending Win32 messages for THIS window only. Filtering by
+    // m_hwnd prevents stealing/re-dispatching Qt window messages — see
+    // the matching comment in GdiCameraWindow.h.
+    bool ProcessMessages();
 
     // PSU polling (called from manager timer)
     void PollPSUReadings();

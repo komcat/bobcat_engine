@@ -14,6 +14,7 @@
 #include <QPlainTextEdit>
 #include <QLineEdit>
 #include <QTimer>  // For periodic channel refresh
+#include <atomic>
 #include <QTabWidget>  // For tab layout
 #include <QGroupBox>  // For vision result group
 #include <vector>
@@ -302,6 +303,16 @@ private:
 
   DataStore* m_dataStore;  // Add this
   QString m_currentSubscribedChannel;  // Track subscription
+
+  // Scan-widget display throttle: SMU polling delivers up to 20 Hz, but
+  // refreshing the large styled QLabel cascades a 50-70ms MainWindow
+  // UpdateRequest each time — at 20 Hz that's >1s of UI thread per second
+  // and the Qt camera viewport drops to ~4 fps. The DataStore subscriber
+  // (worker thread) just stashes the latest value here; a 10 Hz UI-thread
+  // timer reads it and pushes it to the label.
+  std::atomic<float> m_pendingScanValue{0.0f};
+  std::atomic<bool>  m_pendingScanDirty{false};
+  QTimer*            m_scanDisplayTimer = nullptr;
 
   // Vision result image display + history navigation. The widget owns
   // its own QLabel/buttons/index label/history buffer; the page just

@@ -36,6 +36,7 @@
 #include "startup/ConnectionWorkerPool.h"
 #include "startup/ConnectionResult.h"
 #include <QApplication>
+#include "diagnostics/LongEventDetector.h"
 #include <QFont>
 #include <QFontDatabase>
 #include <QIcon>
@@ -141,7 +142,11 @@ bool Application::initialize()
   if (m_initialized) return true;
 
   try {
-    m_qApplication = std::make_unique<QApplication>(m_argc, m_argv);
+    // LongEventDetector overrides QApplication::notify() to log any event
+    // whose dispatch exceeds 50ms — used to find UI-thread hot spots that
+    // stall the event loop and cause display-fps drops. Safe to ship: only
+    // the threshold-exceeded path emits output.
+    m_qApplication = std::make_unique<LongEventDetector>(m_argc, m_argv);
     m_qApplication->setApplicationName(QString::fromStdString(getApplicationName()));
     m_qApplication->setApplicationVersion(QString::fromStdString(getVersion()));
 

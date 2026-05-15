@@ -155,6 +155,8 @@ QtCameraWindow::QtCameraWindow(const std::string& instanceId, QWidget* parent)
     // pushes only update state; this timer is the sole repaint trigger
     // while the window is visible.
     m_paintTimer = new QTimer(this);
+    m_paintTimer->setObjectName(QString("paintTimer-%1")
+        .arg(QString::fromStdString(m_instanceId.empty() ? "1" : m_instanceId)));
     m_paintTimer->setTimerType(Qt::PreciseTimer);
     m_paintTimer->setInterval(kPaintIntervalMs);
     connect(m_paintTimer, &QTimer::timeout, this, [this]() {

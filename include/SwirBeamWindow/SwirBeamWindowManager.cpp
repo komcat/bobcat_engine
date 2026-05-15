@@ -161,7 +161,7 @@ std::vector<SwirBeamSnapshot> SwirBeamWindowManager::getBeamSnapshots() const
 
 void SwirBeamWindowManager::processMessages()
 {
-    if (m_window) SwirBeamWindow::ProcessMessages();
+    if (m_window) m_window->ProcessMessages();  // instance call, filters by m_hwnd
 }
 
 void SwirBeamWindowManager::pollPSU()

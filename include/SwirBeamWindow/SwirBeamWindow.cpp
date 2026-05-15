@@ -3174,9 +3174,13 @@ void SwirBeamWindow::OnPaint()
 
 bool SwirBeamWindow::ProcessMessages()
 {
+    if (!m_hwnd) return false;
+    // CRITICAL: filter by m_hwnd — see GdiCameraWindow::ProcessMessages
+    // for the full explanation. nullptr filter here would drain Qt's
+    // window messages too, mangling Qt's event delivery.
     MSG msg;
     bool hasMessage = false;
-    for (int i = 0; i < 100 && PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE); ++i) {
+    for (int i = 0; i < 100 && PeekMessage(&msg, m_hwnd, 0, 0, PM_REMOVE); ++i) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
         hasMessage = true;

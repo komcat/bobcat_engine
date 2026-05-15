@@ -36,6 +36,7 @@ QtCameraTrackingPanel::QtCameraTrackingPanel(QtCameraViewport* viewport,
   m_matrixLoader->LoadFromFile("config/transformation_matrix.json");
 
   m_trackingTimer = new QTimer(this);
+  m_trackingTimer->setObjectName("trackingTimer");
   connect(m_trackingTimer, &QTimer::timeout, this, &QtCameraTrackingPanel::onTrackingTimerTick);
   m_trackingTimer->start(100);  // 10 Hz
 

@@ -147,6 +147,7 @@ void MotionControllerPageBase::createDeviceTable()
 void MotionControllerPageBase::setupPolling()
 {
   m_pollTimer = new QTimer(this);
+  m_pollTimer->setObjectName("motionPagePollTimer");
   connect(m_pollTimer, &QTimer::timeout, this, &MotionControllerPageBase::updatePositions);
   // Timer will start in showEvent()
 

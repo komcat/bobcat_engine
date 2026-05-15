@@ -356,8 +356,13 @@ void GdiCameraWindowManager::setWindowSize(int width, int height) {
 }
 
 void GdiCameraWindowManager::processMessages() {
-    // Process any pending Win32 messages for the GDI window
-    GdiCameraWindow::ProcessMessages();
+    // Process any pending Win32 messages for THIS window only — see the
+    // comment on GdiCameraWindow::ProcessMessages(). Without per-HWND
+    // filtering this slot was draining and re-dispatching messages for
+    // every Qt window on the thread, blocking Qt's own event delivery.
+    if (m_window) {
+        m_window->ProcessMessages();
+    }
 }
 
 void GdiCameraWindowManager::applyApplicationSettings() {

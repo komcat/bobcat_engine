@@ -74,6 +74,11 @@
 #include <cmath>
 #include <memory>  // For std::make_shared
 #include <functional>  // For std::function
+
+// Forward-declaration of the SI-prefix formatter defined in the anonymous
+// namespace lower in this file. Needed because the scan-display throttle
+// timer's lambda (in setup, ~line 740) calls it before its definition.
+namespace { QString formatWithSIPrefix(double value); }
 #include <QPointer>  // For safe widget reference
 
 #ifdef HAS_OPENCV
@@ -724,6 +729,24 @@ void RunProgramPage::createExecutionWidget()
   m_channelRefreshTimer = new QTimer(this);
   connect(m_channelRefreshTimer, &QTimer::timeout, this, &RunProgramPage::refreshDataStoreChannels);
   m_channelRefreshTimer->start(3000);  // Refresh every 3 seconds
+
+  // Scan-widget display throttle. SMU samples arrive at up to 20 Hz on the
+  // DataStore worker thread; the callback just stashes the latest into
+  // m_pendingScanValue. This 10 Hz UI-thread timer reads the latest and
+  // pushes a single setDisplayText — coalescing two samples into one paint
+  // dispatch and halving the MainWindow UpdateRequest rate. The timer also
+  // gates on isVisible(), so when the Scanning tab is not selected it does
+  // zero work.
+  m_scanDisplayTimer = new QTimer(this);
+  m_scanDisplayTimer->setObjectName("scanDisplayTimer");
+  m_scanDisplayTimer->setInterval(100);  // 10 Hz
+  connect(m_scanDisplayTimer, &QTimer::timeout, this, [this]() {
+    if (!m_scanWidget || !m_scanWidget->isVisible()) return;
+    if (!m_pendingScanDirty.exchange(false, std::memory_order_acquire)) return;
+    const float v = m_pendingScanValue.load(std::memory_order_relaxed);
+    m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(v)));
+  });
+  m_scanDisplayTimer->start();
 
   scanTabLayout->addWidget(m_scanWidget);
   scanTabLayout->addStretch();  // Push controls to top
@@ -2254,14 +2277,18 @@ void RunProgramPage::onChannelChanged(QString channel)
     return;
   }
 
-  // Subscribe to new channel
+  // Subscribe to new channel. The callback runs on a DataStore worker
+  // thread and must NOT touch Qt widgets directly. It just stashes the
+  // latest value into atomics — the 10 Hz m_scanDisplayTimer on the UI
+  // thread picks it up and pushes it to the label (see widget setup).
+  // This decouples the SMU sample rate (up to 20 Hz) from label-repaint
+  // rate (10 Hz), so the Qt camera viewport keeps its UI-thread budget
+  // while the Scanning tab stays live.
   std::string channelStd = channel.toStdString();
   m_dataStore->Subscribe(channelStd,
-    [this, channel](const std::string& /*channelId*/, float value) {
-    // Update widget on UI thread with SI formatted value
-    QMetaObject::invokeMethod(this, [this, value]() {
-      m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(value)));
-    }, Qt::QueuedConnection);
+    [this](const std::string& /*channelId*/, float value) {
+    m_pendingScanValue.store(value, std::memory_order_relaxed);
+    m_pendingScanDirty.store(true, std::memory_order_release);
   });
 
   // Show current value immediately

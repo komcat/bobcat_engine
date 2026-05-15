@@ -140,6 +140,7 @@ JogPanelWindow::JogPanelWindow(
 
   // Setup position update timer
   m_positionUpdateTimer = new QTimer(this);
+  m_positionUpdateTimer->setObjectName("jogPositionTimer");
   connect(m_positionUpdateTimer, &QTimer::timeout, this, &JogPanelWindow::updatePositionDisplay);
   // 500ms is plenty for a human-readable label and reads from the
   // motion manager's cached-position thread (non-blocking).
