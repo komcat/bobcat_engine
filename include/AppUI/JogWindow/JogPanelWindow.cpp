@@ -1639,7 +1639,7 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
 
     row->addWidget(applyBtn);
 
-    // 2x2 step grid: -1k / +1k on top, -100 / +100 on bottom.
+    // 3x2 step grid, coarse-to-fine top-to-bottom: -10k/+10k, -1k/+1k, -100/+100.
     // Each click adjusts the spinbox value (clamped to its min/max) and applies immediately.
     QGridLayout* stepGrid = new QGridLayout();
     stepGrid->setSpacing(2);
@@ -1672,10 +1672,12 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
       return b;
     };
 
-    stepGrid->addWidget(makeStepButton("-1k", -1000), 0, 0);
-    stepGrid->addWidget(makeStepButton("+1k", +1000), 0, 1);
-    stepGrid->addWidget(makeStepButton("-100", -100), 1, 0);
-    stepGrid->addWidget(makeStepButton("+100", +100), 1, 1);
+    stepGrid->addWidget(makeStepButton("-10k", -10000), 0, 0);
+    stepGrid->addWidget(makeStepButton("+10k", +10000), 0, 1);
+    stepGrid->addWidget(makeStepButton("-1k",   -1000), 1, 0);
+    stepGrid->addWidget(makeStepButton("+1k",   +1000), 1, 1);
+    stepGrid->addWidget(makeStepButton("-100",   -100), 2, 0);
+    stepGrid->addWidget(makeStepButton("+100",   +100), 2, 1);
 
     row->addLayout(stepGrid);
     row->addStretch();  // Anything past the step grid is empty space on the right.
