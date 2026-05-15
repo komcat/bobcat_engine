@@ -803,21 +803,25 @@ void QtCameraWindow::updateViewport()
     const int64_t winMs = std::chrono::duration_cast<std::chrono::milliseconds>(
                               updEnd - m_diagUpdViewLogStart).count();
     if (winMs >= 5000 && m_diagUpdViewCount > 0) {
-        const double seconds = winMs / 1000.0;
-        const double rate    = m_diagUpdViewCount / seconds;
-        const double avgMs   = (static_cast<double>(m_diagUpdViewUsTotal) / m_diagUpdViewCount) / 1000.0;
-        const double maxMs   = m_diagUpdViewUsMax / 1000.0;
-        const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
-                               updEnd - m_diagUpdViewStartupTime).count();
-        const double timerRate = m_diagPaintTimerFires / seconds;
-        std::cout << "[CamWin/" << m_instanceId << "] t=" << upSec << "s"
-                  << " updateViewport: n=" << m_diagUpdViewCount
-                  << " (" << rate << "/s)"
-                  << " avg=" << avgMs << "ms"
-                  << " max=" << maxMs << "ms"
-                  << " paintTimer: fires=" << m_diagPaintTimerFires
-                  << " (" << timerRate << "/s)"
-                  << std::endl;
+        // Quiet by default; set BOBCAT_DIAG_VERBOSE to re-enable. Counters are
+        // still reset every window so the accumulators don't grow unbounded.
+        if (diag::VerboseEnabled()) {
+            const double seconds = winMs / 1000.0;
+            const double rate    = m_diagUpdViewCount / seconds;
+            const double avgMs   = (static_cast<double>(m_diagUpdViewUsTotal) / m_diagUpdViewCount) / 1000.0;
+            const double maxMs   = m_diagUpdViewUsMax / 1000.0;
+            const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
+                                   updEnd - m_diagUpdViewStartupTime).count();
+            const double timerRate = m_diagPaintTimerFires / seconds;
+            std::cout << "[CamWin/" << m_instanceId << "] t=" << upSec << "s"
+                      << " updateViewport: n=" << m_diagUpdViewCount
+                      << " (" << rate << "/s)"
+                      << " avg=" << avgMs << "ms"
+                      << " max=" << maxMs << "ms"
+                      << " paintTimer: fires=" << m_diagPaintTimerFires
+                      << " (" << timerRate << "/s)"
+                      << std::endl;
+        }
         m_diagUpdViewUsTotal = 0;
         m_diagUpdViewUsMax = 0;
         m_diagUpdViewCount = 0;

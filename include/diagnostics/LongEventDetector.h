@@ -20,6 +20,8 @@
 #include <iostream>
 #include <string>
 
+#include "diagnostics/DiagVerbose.h"
+
 class LongEventDetector : public QApplication {
 public:
     LongEventDetector(int& argc, char** argv) : QApplication(argc, argv) {}
@@ -52,7 +54,7 @@ public:
 
         const int64_t durationUs = std::chrono::duration_cast<std::chrono::microseconds>(
                                        end - start).count();
-        if (durationUs >= kThresholdMs * 1000) {
+        if (durationUs >= kThresholdMs * 1000 && diag::VerboseEnabled()) {
             std::cout << "[LongEvent] " << (durationUs / 1000.0) << "ms"
                       << " type=" << static_cast<int>(eventType)
                       << " (" << eventTypeName(eventType) << ")"
