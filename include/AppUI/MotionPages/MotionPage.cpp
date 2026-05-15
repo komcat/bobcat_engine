@@ -1535,9 +1535,15 @@ bool MotionPage::getCurrentDevicePosition(double& x, double& y, double& z,
 		return false;
 	}
 
-	PositionStruct pos = m_motionManager->GetCurrentPosition(
-		m_currentDevice.toStdString()
-	);
+	// Use the non-blocking cached read populated by the background polling
+	// thread (see commit 8dd4ce1). GetCurrentPosition() is a synchronous
+	// serial/USB round-trip and at 10 Hz from the live-position timer it
+	// was stalling the UI thread enough to drop the Qt camera window
+	// from 28 → 8 fps each time a device was selected here.
+	PositionStruct pos;
+	if (!m_motionManager->GetCachedPosition(m_currentDevice.toStdString(), pos)) {
+		return false;
+	}
 
 	x = pos.x;
 	y = pos.y;

@@ -85,6 +85,13 @@ SMUControlPage::SMUControlPage(ApplicationContext* context, QWidget* parent)
 
   // Start the parameter worker thread
   m_parameterWorker->start();
+
+  // Polling UI throttle — 200 ms tick drains m_pollingPendingValueText into
+  // the label and refreshes the sessions list at 1 Hz. Started/stopped from
+  // showEvent/hideEvent so a hidden page costs nothing.
+  m_pollingUiTimer = new QTimer(this);
+  m_pollingUiTimer->setInterval(200);
+  connect(m_pollingUiTimer, &QTimer::timeout, this, &SMUControlPage::onPollingUiTick);
 }
 
 SMUControlPage::~SMUControlPage()
@@ -1227,27 +1234,38 @@ void SMUControlPage::refreshActiveSessionsList()
   m_pollingSampleLabel->setText(QString("Total active sessions: %1").arg(sessions.size()));
 }
 
-// Polling measurement callback
+// Polling measurement callback — runs on the UI thread via queued connection
+// at ~10 Hz per channel (~20 Hz total with 2 channels). Keep this cheap:
+// stash the formatted text and let onPollingUiTick() redraw at 5 Hz. The old
+// implementation did setText() + occasional list refresh on every sample,
+// which posted 50-60 ms UpdateRequest events to MainWindow and starved the
+// Qt camera window of paint slots.
 void SMUControlPage::onPollingMeasurement(QString deviceName, int channel, double value, QString /*timestamp*/)
 {
-  // Update live display for current device
-  if (deviceName == m_currentDevice) {
-    // Determine unit - check if current or voltage
-    bool isCurrent = (value < 1.0);  // Simple heuristic, or we could track measurement type
-    QString unit = isCurrent ? " A" : " V";
+  if (deviceName != m_currentDevice) return;
 
-    // Update real-time value display
-    m_pollingValueLabel->setText(QString("%1: %2%3")
-      .arg(QString("Ch%1").arg(channel))
-      .arg(QString::number(value, 'e', 3))
-      .arg(unit));
+  const bool isCurrent = (value < 1.0);
+  const QString unit = isCurrent ? " A" : " V";
+  m_pollingPendingValueText = QString("Ch%1: %2%3")
+    .arg(channel)
+    .arg(QString::number(value, 'e', 3))
+    .arg(unit);
+  m_pollingValueDirty = true;
+}
+
+void SMUControlPage::onPollingUiTick()
+{
+  if (m_pollingValueDirty && m_pollingValueLabel) {
+    m_pollingValueLabel->setText(m_pollingPendingValueText);
+    m_pollingValueDirty = false;
   }
 
-  // Periodically refresh the active sessions list to update sample counts
-  static int updateCounter = 0;
-  if (++updateCounter >= 10) {  // Refresh every 10 measurements (~1 second at 100ms interval)
+  // Refresh the active-sessions list (which walks polling sessions + sample
+  // counts and rebuilds a QListWidget) once per second instead of every 10
+  // samples — 1 Hz is plenty for human-readable sample counters.
+  if (++m_pollingSessionTickCounter >= 5) {
+    m_pollingSessionTickCounter = 0;
     refreshActiveSessionsList();
-    updateCounter = 0;
   }
 }
 
@@ -1619,6 +1637,10 @@ void SMUControlPage::showEvent(QShowEvent* event)
 {
   QWidget::showEvent(event);
 
+  if (m_pollingUiTimer && !m_pollingUiTimer->isActive()) {
+    m_pollingUiTimer->start();
+  }
+
   // Refresh connection status in case devices were connected externally
   updateConnectionStatus();
   updateDeviceLabels();
@@ -1650,6 +1672,10 @@ void SMUControlPage::showEvent(QShowEvent* event)
 void SMUControlPage::hideEvent(QHideEvent* event)
 {
   QWidget::hideEvent(event);
+
+  if (m_pollingUiTimer && m_pollingUiTimer->isActive()) {
+    m_pollingUiTimer->stop();
+  }
 
   // Disable measurement polling when page is hidden to save resources
   if (m_parameterWorker) {

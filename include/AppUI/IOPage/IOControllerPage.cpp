@@ -419,6 +419,7 @@ void IOControllerPage::onDeviceSelected()
   }
 
   m_selectedDevice = selectedButton->text().toStdString();
+  m_haveLastIo = false;  // force full redraw on next poll
 
   std::cout << "[IOControllerPage] Device selected: " << m_selectedDevice << std::endl;
 
@@ -472,6 +473,7 @@ void IOControllerPage::refreshIOPinTable()
   // Clear tables
   m_inputPinsTable->setRowCount(0);
   m_outputPinsTable->setRowCount(0);
+  m_haveLastIo = false;  // pin rows just rebuilt; next poll must repaint everything
 
   // Add input pins
   for (int i = 0; i < inputCount; ++i) {
@@ -577,59 +579,72 @@ void IOControllerPage::updateIOStatus()
     return;
   }
 
-  // Read inputs
+  // Read inputs and outputs first; we'll diff against the cached values and
+  // only repaint pin rows whose bit actually flipped. The previous version
+  // rewrote setText/setForeground/setBackground on every cell every 100 ms
+  // even when nothing changed, which posted enough UpdateRequest events to
+  // drop the Qt camera window to ~4 fps.
   uint64_t inputs = 0, latch = 0;
-  if (device->ReadInputs(inputs, latch) == EziIOError::SUCCESS) {
-    int inputCount = device->GetInputCount();
-    for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
-      bool state = (inputs & (1ULL << i)) != 0;
+  const bool inputsOk = (device->ReadInputs(inputs, latch) == EziIOError::SUCCESS);
 
-      // Update status text (column 2 for inputs: #, Name, Status)
+  uint64_t outputs = 0, outStatus = 0;
+  const bool outputsOk = (device->ReadOutputs(outputs, outStatus) == EziIOError::SUCCESS);
+
+  const int outputCount = device->GetOutputCount();
+  const bool is16Pin = (outputCount > 8);
+  const int outBitOffset = is16Pin ? 16 : 8;
+
+  const uint64_t inputDiff  = m_haveLastIo ? (inputs  ^ m_lastInputs)  : ~uint64_t{0};
+  const uint64_t outputDiff = m_haveLastIo ? (outputs ^ m_lastOutputs) : ~uint64_t{0};
+
+  if (m_haveLastIo && inputDiff == 0 && outputDiff == 0) {
+    return;  // hot path — nothing changed, leave the cells alone
+  }
+
+  if (inputsOk) {
+    const int inputCount = device->GetInputCount();
+    for (int i = 0; i < inputCount && i < m_inputPinsTable->rowCount(); ++i) {
+      const uint64_t mask = (1ULL << i);
+      if ((inputDiff & mask) == 0) continue;  // bit didn't change since last poll
+
+      const bool state = (inputs & mask) != 0;
+
       QTableWidgetItem* statusItem = m_inputPinsTable->item(i, 2);
       if (statusItem) {
         statusItem->setText(state ? "ON" : "OFF");
         statusItem->setForeground(state ? QColor("#4CAF50") : QColor("#666"));
       }
 
-      // Subtle row highlight for ON state
       for (int col = 0; col < m_inputPinsTable->columnCount(); ++col) {
         QTableWidgetItem* item = m_inputPinsTable->item(i, col);
-        if (item) {
-          if (state) {
-            item->setBackground(QColor("#1a2f1a"));  // Subtle green tint
-            item->setForeground(col == 2 ? QColor("#4CAF50") : QColor("#ccc"));
-          } else {
-            item->setBackground(QColor(i % 2 == 0 ? 0x1a1a1a : 0x202020));  // Alternating
-            item->setForeground(col == 2 ? QColor("#666") : QColor("#999"));
-          }
+        if (!item) continue;
+        if (state) {
+          item->setBackground(QColor("#1a2f1a"));
+          item->setForeground(col == 2 ? QColor("#4CAF50") : QColor("#ccc"));
+        } else {
+          item->setBackground(QColor(i % 2 == 0 ? 0x1a1a1a : 0x202020));
+          item->setForeground(col == 2 ? QColor("#666") : QColor("#999"));
         }
       }
     }
   }
 
-  // Read outputs
-  uint64_t outputs = 0, status = 0;
-  if (device->ReadOutputs(outputs, status) == EziIOError::SUCCESS) {
-    int outputCount = device->GetOutputCount();
-
-    // Outputs use bits 8-15 for 8-pin, or bits 16-31 for 16-pin devices
-    bool is16Pin = (outputCount > 8);
-    int bitOffset = is16Pin ? 16 : 8;
-
+  if (outputsOk) {
     for (int i = 0; i < outputCount; ++i) {
-      int row = i;
+      const int row = i;
       if (row >= m_outputPinsTable->rowCount()) break;
 
-      bool state = (outputs & (1ULL << (bitOffset + i))) != 0;
+      const uint64_t mask = (1ULL << (outBitOffset + i));
+      if ((outputDiff & mask) == 0) continue;
 
-      // Update status text (column 3 for outputs: Toggle, #, Name, Status)
+      const bool state = (outputs & mask) != 0;
+
       QTableWidgetItem* statusItem = m_outputPinsTable->item(row, 3);
       if (statusItem) {
         statusItem->setText(state ? "ON" : "OFF");
         statusItem->setForeground(state ? QColor("#4CAF50") : QColor("#666"));
       }
 
-      // Update toggle button to match actual state (column 0)
       QWidget* toggleWidget = m_outputPinsTable->cellWidget(row, 0);
       if (toggleWidget) {
         QCheckBox* toggleButton = toggleWidget->findChild<QCheckBox*>();
@@ -638,24 +653,25 @@ void IOControllerPage::updateIOStatus()
           toggleButton->setChecked(state);
           toggleButton->blockSignals(false);
         }
-        toggleWidget->setStyleSheet("background: transparent;");
       }
 
-      // Subtle row highlight for ON state (skip column 0 toggle widget)
       for (int col = 1; col < m_outputPinsTable->columnCount(); ++col) {
         QTableWidgetItem* item = m_outputPinsTable->item(row, col);
-        if (item) {
-          if (state) {
-            item->setBackground(QColor("#1a2f1a"));  // Subtle green tint
-            item->setForeground(col == 3 ? QColor("#4CAF50") : QColor("#ccc"));
-          } else {
-            item->setBackground(QColor(row % 2 == 0 ? 0x1a1a1a : 0x202020));  // Alternating
-            item->setForeground(col == 3 ? QColor("#666") : QColor("#999"));
-          }
+        if (!item) continue;
+        if (state) {
+          item->setBackground(QColor("#1a2f1a"));
+          item->setForeground(col == 3 ? QColor("#4CAF50") : QColor("#ccc"));
+        } else {
+          item->setBackground(QColor(row % 2 == 0 ? 0x1a1a1a : 0x202020));
+          item->setForeground(col == 3 ? QColor("#666") : QColor("#999"));
         }
       }
     }
   }
+
+  if (inputsOk)  m_lastInputs  = inputs;
+  if (outputsOk) m_lastOutputs = outputs;
+  if (inputsOk && outputsOk) m_haveLastIo = true;
 }
 
 void IOControllerPage::onRefreshClicked()
