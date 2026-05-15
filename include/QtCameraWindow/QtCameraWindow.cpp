@@ -14,6 +14,7 @@
 #include "motions/unified_motion_manager.h"
 #include "motions/MotionTypes.h"
 #include "context/ApplicationContext.h"
+#include "diagnostics/DiagVerbose.h"
 #include "VisionCommandHandler.h"
 #include "SequenceContext.h"
 #include "LogManager.h"
