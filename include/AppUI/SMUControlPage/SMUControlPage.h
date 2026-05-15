@@ -37,6 +37,12 @@ struct SMUChannelWidgets
   QPushButton* outputOnButton = nullptr;
   QPushButton* outputOffButton = nullptr;
   QGroupBox* outputControlGroup = nullptr;
+  // Cached display state — diff before setText / setStyleSheet to avoid
+  // forcing a full QSS recompute on every measurement tick.
+  QString lastVoltageText;
+  QString lastCurrentText;
+  // -1=unknown (first paint), 0=off, 1=on, 2=disconnected
+  int lastOutputState = -1;
 };
 
 /**

@@ -95,6 +95,12 @@ void OutputButton::setDwellMs(int ms)
 
 void OutputButton::setOutputState(bool isOn, bool isValid)
 {
+  // 5 Hz poll churns updateStyle() — which sets two stylesheets per call —
+  // even when nothing changed. Diff against the cached state and skip the
+  // QSS recompute on no-change ticks. First call always paints so the
+  // constructor's preliminary updateStyle() can't leave a stale visual.
+  if (m_styleInitialized && m_isOn == isOn && m_isValid == isValid) return;
+  m_styleInitialized = true;
   m_isOn = isOn;
   m_isValid = isValid;
   updateStyle();

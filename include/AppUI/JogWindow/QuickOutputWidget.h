@@ -46,6 +46,7 @@ private:
   size_t m_index;
   bool m_isOn;
   bool m_isValid;
+  bool m_styleInitialized = false;  // First setOutputState always paints, then diff-gated
   bool m_momentaryEnabled = false;
   int m_dwellMs = 0;
 };

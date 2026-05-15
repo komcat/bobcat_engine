@@ -5,47 +5,65 @@ if(POLICY CMP0141)
   set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "$<IF:$<AND:$<C_COMPILER_ID:MSVC>,$<CXX_COMPILER_ID:MSVC>>,$<$<CONFIG:Debug,RelWithDebInfo>:EditAndContinue>,$<$<CONFIG:Debug,RelWithDebInfo>:ProgramDatabase>>")
 endif()
 
-# ============================================================================ 
+# ============================================================================
 # Version Configuration
 # ============================================================================
+# MAJOR.MINOR are set here by hand. MICRO is derived at configure time from
+# `git`: the number of commits since the most recent commit that changed the
+# BOBCAT_VERSION_MINOR line in this file. So MICRO resets to 0 on every MINOR
+# bump and increments by 1 with every commit on top.
 set(BOBCAT_VERSION_MAJOR 1)
 set(BOBCAT_VERSION_MINOR 12)
 
-# Auto-increment build number from file
-set(BUILD_NUMBER_FILE "${CMAKE_CURRENT_SOURCE_DIR}/build_number.txt")
-
-if(EXISTS ${BUILD_NUMBER_FILE})
-    # Read current build number
-    file(READ ${BUILD_NUMBER_FILE} BOBCAT_VERSION_BUILD)
-    string(STRIP ${BOBCAT_VERSION_BUILD} BOBCAT_VERSION_BUILD)
-
-    # Increment build number
-    math(EXPR BOBCAT_VERSION_BUILD "${BOBCAT_VERSION_BUILD} + 1")
-
-    # Write new build number back to file
-    file(WRITE ${BUILD_NUMBER_FILE} "${BOBCAT_VERSION_BUILD}\n")
-
-    message(STATUS "Build number auto-incremented to: ${BOBCAT_VERSION_BUILD}")
-else()
-    # Create file if it doesn't exist
-    set(BOBCAT_VERSION_BUILD 1)
-    file(WRITE ${BUILD_NUMBER_FILE} "${BOBCAT_VERSION_BUILD}\n")
-    message(STATUS "Created build number file starting at: ${BOBCAT_VERSION_BUILD}")
+set(BOBCAT_VERSION_MICRO 0)
+find_package(Git QUIET)
+if(Git_FOUND)
+    # Find the latest commit that touched the MINOR line. -G pickaxes commits
+    # whose patch adds or removes a line matching the regex.
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} log -1 --format=%H -G "set\\(BOBCAT_VERSION_MINOR" -- CMakeLists.txt
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE _BOBCAT_MINOR_BUMP_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+        RESULT_VARIABLE _BOBCAT_GIT_RC
+    )
+    if(_BOBCAT_GIT_RC EQUAL 0 AND _BOBCAT_MINOR_BUMP_SHA)
+        execute_process(
+            COMMAND ${GIT_EXECUTABLE} rev-list --count ${_BOBCAT_MINOR_BUMP_SHA}..HEAD
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            OUTPUT_VARIABLE BOBCAT_VERSION_MICRO
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET
+        )
+    endif()
 endif()
 
-# Allow override via command line: cmake -DBOBCAT_VERSION_BUILD_OVERRIDE=123
-if(DEFINED BOBCAT_VERSION_BUILD_OVERRIDE)
-    set(BOBCAT_VERSION_BUILD ${BOBCAT_VERSION_BUILD_OVERRIDE})
-    message(STATUS "Build number overridden to: ${BOBCAT_VERSION_BUILD}")
+# Short SHA for diagnostics (not part of the numeric version)
+set(BOBCAT_VERSION_SHA "unknown")
+if(Git_FOUND)
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE BOBCAT_VERSION_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
 endif()
 
-project("bobcat_engine" VERSION ${BOBCAT_VERSION_MAJOR}.${BOBCAT_VERSION_MINOR}.${BOBCAT_VERSION_BUILD})
+# Allow override via command line: cmake -DBOBCAT_VERSION_MICRO_OVERRIDE=123
+if(DEFINED BOBCAT_VERSION_MICRO_OVERRIDE)
+    set(BOBCAT_VERSION_MICRO ${BOBCAT_VERSION_MICRO_OVERRIDE})
+    message(STATUS "MICRO overridden to: ${BOBCAT_VERSION_MICRO}")
+endif()
+
+project("bobcat_engine" VERSION ${BOBCAT_VERSION_MAJOR}.${BOBCAT_VERSION_MINOR}.${BOBCAT_VERSION_MICRO})
 
 message(STATUS "========================================")
-message(STATUS "  Bobcat Engine Version: ${PROJECT_VERSION}")
+message(STATUS "  Bobcat Engine Version: ${PROJECT_VERSION} (${BOBCAT_VERSION_SHA})")
 message(STATUS "  Major: ${BOBCAT_VERSION_MAJOR}")
 message(STATUS "  Minor: ${BOBCAT_VERSION_MINOR}")
-message(STATUS "  Build: ${BOBCAT_VERSION_BUILD}")
+message(STATUS "  Micro: ${BOBCAT_VERSION_MICRO} (commits since last MINOR bump)")
 message(STATUS "========================================")
 
 # Configure version header

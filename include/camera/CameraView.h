@@ -71,6 +71,7 @@ private slots:
 
 protected:
   void showEvent(QShowEvent* event) override;  // ✅ NEW - Force refresh on show
+  void hideEvent(QHideEvent* event) override;  // Stop display timer when hidden
 
 private:
   void setupUI();
