@@ -20,6 +20,7 @@
 #include "ScanController.h"
 #include "RollCorrectionWidget.h"
 #include "MotionInspectorWidget.h"
+#include "M4AASerialDataWidget.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -794,6 +795,13 @@ void RunProgramPage::createExecutionWidget()
   m_motionInspectorWidget = new MotionInspectorWidget();
   m_motionInspectorTabIndex = m_executionTabWidget->addTab(
     m_motionInspectorWidget, "Motion Inspector");
+
+  // === M4AA TAB ===
+  // M4AA branch-specific serial-number data viewer (replicates
+  // serverPython/view_serial_data.py). Self-contained: it polls the active
+  // product's data/{product}/ folder on its own 1 Hz timer.
+  m_m4aaSerialDataWidget = new M4AASerialDataWidget(m_context);
+  m_executionTabWidget->addTab(m_m4aaSerialDataWidget, "M4AA");
 
   // Connect roll correction signals
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH1Requested,

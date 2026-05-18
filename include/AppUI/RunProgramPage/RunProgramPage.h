@@ -32,6 +32,7 @@ class CameraClickToMoveWidget;
 class RollCorrectionWidget;
 class PlacementRetraceWidget;
 class MotionInspectorWidget;
+class M4AASerialDataWidget;
 #include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
 #include "../EdgeTransferTrainer/EdgeTransferData.h"  // EdgeTransferSet (value member)
 #include "../../sequence/EdgeTransferRetrace.h"       // EdgeTransferRetraceOutcome
@@ -229,6 +230,7 @@ private:
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   MotionInspectorWidget* m_motionInspectorWidget = nullptr;
   int m_motionInspectorTabIndex = -1;  // Index of the Motion Inspector tab in m_executionTabWidget
+  M4AASerialDataWidget* m_m4aaSerialDataWidget = nullptr;  // M4AA serial-data viewer tab
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
   std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;

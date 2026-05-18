@@ -835,6 +835,7 @@ set(SOURCES
     include/ProgramManager/RecipeExecutionStateMachine.cpp
     include/ProgramManager/ConditionExpressionEvaluator.cpp
     include/AppUI/RunProgramPage/RunProgramPage.cpp
+    include/AppUI/RunProgramPage/M4AASerialDataWidget.cpp
     include/AppUI/RunProgramPage/ProgramSettingsStore.cpp
     include/AppUI/RunProgramPage/VisionHistoryWidget.cpp
     include/AppUI/RunProgramPage/SequenceContextViewer.cpp
@@ -1174,6 +1175,7 @@ set(HEADERS
     include/ProgramManager/ProgramManager.h
     include/ProgramManager/ConditionExpressionEvaluator.h
     include/AppUI/RunProgramPage/RunProgramPage.h
+    include/AppUI/RunProgramPage/M4AASerialDataWidget.h
     include/AppUI/RunProgramPage/SequenceContextViewer.h
     include/AppUI/RunProgramPage/ScanController.h
     include/AppUI/RunProgramPage/ProgramEditPanel.h
