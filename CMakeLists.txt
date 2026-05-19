@@ -1190,6 +1190,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/CaptureConfirmWidget.h
     include/AppUI/RunProgramPage/ScanControlWidget.h
     include/AppUI/RunProgramPage/RollCorrectionWidget.h
+    include/AppUI/RunProgramPage/RollCorrectionController.h
     include/AppUI/RunProgramPage/RecipeNodeItem.h
     include/AppUI/RunProgramPage/DependencyEdgeItem.h
     include/AppUI/RunProgramPage/DependencyGraphScene.h
@@ -1197,6 +1198,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/LoopConfigDialog.h
     include/AppUI/RunProgramPage/ScanControlWidget.cpp
     include/AppUI/RunProgramPage/RollCorrectionWidget.cpp
+    include/AppUI/RunProgramPage/RollCorrectionController.cpp
     include/AppUI/RunProgramPage/MotionInspectorWidget.h
     include/AppUI/RunProgramPage/MotionInspectorWidget.cpp
     include/motions/scanning/ScanExecutor.h

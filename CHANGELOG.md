@@ -20,6 +20,14 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ### All Changes (by date)
 
+## 2026-05-19
+
+- **Roll correction: power-guarded micro-steps + extract `RollCorrectionController`**
+  - **Power-loss fix** (`RollCorrectionController::onCorrectWRequested`): the W rotation is now split into micro-steps of ≤ 0.02° (was ≤ 0.085° sub-steps). Around each micro-step the worker samples the tracking channel's optical power before and after the rotation; a > 10% drop vs. the pre-step rolling baseline triggers a 0.5 µm XY `XCANExtended` regain scan. Previously a single large W step dropped power into the background-noise floor, leaving the re-peak scan no gradient to climb. If a regain scan runs but power stays below threshold, it logs a warning and continues; a hard scan-command failure still aborts.
+  - **Refactor**: roll-correction business logic (8 slots, worker threads, `SequenceContext` stop flags, running state) moved out of `RunProgramPage` into new `RollCorrectionController.{h,cpp}` — mirrors the `ScanController` + `ScanControlWidget` split. `RunProgramPage` loses ~340 lines; it now constructs the controller with a `Deps` struct (`context`, `widget`, `appendLog` callback) and keeps only the `RollCorrectionWidget` pointer (tab body + DataStore channel feed). `RollCorrectionWidget` stays pure UI.
+  - **Warnings**: fixed C4099 `class`/`struct` mismatch on `ApplicationContext` forward declarations in `ScanController.h`, `ExecutionController.h`, `ProgramEditPanel.h`, `UserInteractionOverlay.h`, and the new `RollCorrectionController.h`.
+  - **Docs**: `docs/architecture/run_program_page.md` — helper table updated, "Roll Correction" section rewritten to document the widget/controller split and the micro-step algorithm.
+
 ## 2026-04-14
 
 - **placement correction v3: normal-placement retrace model + retrace log + UI polish**
