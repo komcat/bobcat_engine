@@ -12,6 +12,7 @@
  * - "keysight_e36103b_direct" or "keysight_direct" - Direct TCP/IP control (no Python server)
  * - "keysight_e36441a_direct" - Direct TCP/IP control for 4-channel E36441A
  * - "keysight_e36103b" or "keysight" - Server-based control (via Python server)
+ * - "unit_t_udp3305s" - UNI-T UDP3305S-E 3-channel PSU via USB/VISA (NI-VISA required)
  *
  * Expected JSON format (DIRECT control - recommended):
  * {
@@ -29,6 +30,12 @@
  *       "ip": "192.168.0.32",
  *       "port": 5025,
  *       "channels": 4
+ *     },
+ *     {
+ *       "name": "PSU3",
+ *       "type": "unit_t_udp3305s",
+ *       "visa_resource": "USB0::0x0483::0x5740::ADP3424500154::INSTR",
+ *       "channels": 3
  *     }
  *   ]
  * }
@@ -66,5 +73,6 @@ private:
     const std::string& serverHost,
     int serverPort,
     const std::string& deviceIP,
-    int devicePort);
+    int devicePort,
+    const std::string& visaResource);
 };

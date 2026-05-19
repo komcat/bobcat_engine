@@ -7,6 +7,7 @@
 #include "IPowerSupply.h"
 #include "KeysightE36103B.h"
 #include "KeysightE36441A.h"
+#include "UnitTUDP3305S.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -1140,12 +1141,17 @@ void PowerSupplyControlPage::onReadStatusClicked(int channel)
   // Try direct query for devices that support it
   auto* e36103b = dynamic_cast<KeysightE36103B*>(psu.get());
   auto* e36441a = dynamic_cast<KeysightE36441A*>(psu.get());
+  auto* udp3305s = dynamic_cast<UnitTUDP3305S*>(psu.get());
   if (e36103b) {
     ovpStr = e36103b->query("VOLT:PROT?");
     ocpStr = "(not supported on E36103B)";
   } else if (e36441a) {
     ovpStr = e36441a->query("INST CH" + std::to_string(channel) + ";VOLT:PROT?");
     ocpStr = e36441a->query("INST CH" + std::to_string(channel) + ";CURR:PROT?");
+  } else if (udp3305s) {
+    // SCPI form is unverified on hardware (see UnitTUDP3305S setOVP/setOCP notes).
+    ovpStr = udp3305s->query("SOURce" + std::to_string(channel) + ":VOLTage:PROTection?");
+    ocpStr = udp3305s->query("SOURce" + std::to_string(channel) + ":CURRent:PROTection?");
   }
 
   // Resume polling

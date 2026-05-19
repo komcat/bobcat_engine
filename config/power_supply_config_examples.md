@@ -82,10 +82,40 @@ Two control modes are supported:
 
 | Type | Description | Control Mode |
 |------|-------------|--------------|
-| `keysight_e36103b_direct` | Keysight E36103B Direct Control | Direct TCP/IP |
+| `keysight_e36103b_direct` | Keysight E36103B Direct Control (1-channel) | Direct TCP/IP |
 | `keysight_direct` | Alias for above | Direct TCP/IP |
+| `keysight_e36441a_direct` | Keysight E36441A Direct Control (4-channel) | Direct TCP/IP |
+| `unit_t_udp3305s` | UNI-T UDP3305S-E (3-channel) | USB / NI-VISA |
 | `keysight_e36103b` | Keysight E36103B via Server | Python Server |
 | `keysight` | Alias for above | Python Server |
+
+### UNI-T UDP3305S-E (USB / VISA)
+
+Unlike the Keysight LAN PSUs, the UDP3305S-E is reached over USB via NI-VISA.
+Use `visa_resource` instead of `ip`/`port`. Get the resource string by running
+the `find_visa_devices` utility (built when NI-VISA is detected) or with
+`docs/UDP3305S/check_connection.py`.
+
+```json
+{
+  "devices": [
+    {
+      "name": "PSU3",
+      "type": "unit_t_udp3305s",
+      "visa_resource": "USB0::0x0483::0x5740::<serial>::INSTR",
+      "channels": 3
+    }
+  ]
+}
+```
+
+The serial number is unique per unit, so this entry belongs in
+`power_supply_config.local.json` (gitignored), not the checked-in
+`power_supply_config.json`. UNI-T enumerates under the STMicro USB VID
+(`0x0483`) — that's expected, not a wrong device.
+
+See `docs/UDP3305S/HANDOFF.md` for the verified SCPI command set, hardware
+test scripts, and integration notes.
 
 ---
 
@@ -97,8 +127,10 @@ Two control modes are supported:
 |-----------|------|----------|---------|-------------|
 | `name` | string | Yes | - | Device identifier (e.g., "PSU1") |
 | `type` | string | Yes | - | Device type (see table above) |
-| `ip` | string | Yes | - | IP address of the PSU device |
+| `ip` | string | Cond. | - | IP address of the PSU (required for TCP types) |
 | `port` | int | No | 5025 | TCP port (5025 is SCPI standard) |
+| `visa_resource` | string | Cond. | - | VISA resource string (required for USB/VISA types like `unit_t_udp3305s`) |
+| `channels` | int | No | 1 | Number of independent output channels |
 
 ### Server Configuration (Server-based mode only)
 
