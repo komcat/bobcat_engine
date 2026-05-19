@@ -349,6 +349,37 @@ else()
 endif()
 
 # ============================================================================
+# Kinesis SDK Configuration (Local) - Thorlabs T-Cube TEC (TTC-001)
+# ============================================================================
+# Kinesis bundles the TLI_* discovery functions into each per-device DLL,
+# so we only need TCube.TEC.{h,lib,dll}. DeviceManager.dll is a runtime
+# dependency loaded by TCube.TEC.dll - it must sit next to the exe but
+# does not need to be linked at build time.
+set(KINESIS_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/kinesis")
+set(KINESIS_INCLUDE_DIR "${KINESIS_DIR}/include")
+
+if(WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    set(KINESIS_LIB_DIR "${KINESIS_DIR}/lib_x64")
+    set(KINESIS_BIN_DIR "${KINESIS_DIR}/bin_x64")
+    set(KINESIS_TCUBE_TEC_LIB "${KINESIS_LIB_DIR}/Thorlabs.MotionControl.TCube.TEC.lib")
+    set(KINESIS_TCUBE_TEC_DLL "${KINESIS_BIN_DIR}/Thorlabs.MotionControl.TCube.TEC.dll")
+    set(KINESIS_DEVMGR_DLL    "${KINESIS_BIN_DIR}/Thorlabs.MotionControl.DeviceManager.dll")
+
+    if(EXISTS ${KINESIS_INCLUDE_DIR} AND EXISTS ${KINESIS_TCUBE_TEC_LIB})
+        set(KINESIS_FOUND TRUE)
+        message(STATUS "Kinesis SDK found at: ${KINESIS_DIR}")
+        message(STATUS "  - Include: ${KINESIS_INCLUDE_DIR}")
+        message(STATUS "  - Library: ${KINESIS_TCUBE_TEC_LIB}")
+    else()
+        set(KINESIS_FOUND FALSE)
+        message(STATUS "Kinesis SDK not found at ${KINESIS_DIR} - TTC-001 adapter disabled")
+    endif()
+else()
+    set(KINESIS_FOUND FALSE)
+    message(STATUS "Kinesis SDK requires 64-bit Windows build - TTC-001 adapter disabled")
+endif()
+
+# ============================================================================
 # EziIO SDK Configuration
 # ============================================================================
 set(EZIIO_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/eziio")
@@ -539,6 +570,9 @@ if(IDS_UEYE_FOUND)
 endif()
 if(VISA_FOUND)
     set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${VISA_INCLUDE_DIR})
+endif()
+if(KINESIS_FOUND)
+    set(EXTERNAL_SDK_INCLUDES ${EXTERNAL_SDK_INCLUDES} ${KINESIS_INCLUDE_DIR})
 endif()
 
 # External SDK include directories are added as SYSTEM includes after the target
@@ -1417,6 +1451,19 @@ else()
     message(STATUS "TED4015 Direct VISA adapter disabled - NI-VISA SDK not found")
 endif()
 
+# Conditionally add TTC-001 Kinesis adapter if Kinesis SDK is found
+if(KINESIS_FOUND)
+    list(APPEND SOURCES
+        include/TEC/TTC001Adapter.cpp
+    )
+    list(APPEND HEADERS
+        include/TEC/TTC001Adapter.h
+    )
+    message(STATUS "TTC-001 Kinesis adapter enabled")
+else()
+    message(STATUS "TTC-001 Kinesis adapter disabled - Kinesis SDK not found")
+endif()
+
 
 # Conditionally add SMU system (Keithley adapters) if VISA is found
 if(VISA_FOUND)
@@ -1431,6 +1478,19 @@ if(VISA_FOUND)
     message(STATUS "SMU system enabled (Keithley 6482 + Generic SMU adapters)")
 else()
     message(STATUS "SMU system disabled - NI-VISA SDK not found")
+endif()
+
+# Conditionally add VISA-based PSU adapters (UNI-T UDP3305S over USB/VISA)
+if(VISA_FOUND)
+    list(APPEND SOURCES
+        include/PSU/UnitTUDP3305S.cpp
+    )
+    list(APPEND HEADERS
+        include/PSU/UnitTUDP3305S.h
+    )
+    message(STATUS "UNI-T UDP3305S VISA PSU adapter enabled")
+else()
+    message(STATUS "UNI-T UDP3305S VISA PSU adapter disabled - NI-VISA SDK not found")
 endif()
 
 # Conditionally add OpenCV test files if OpenCV is found
@@ -1724,6 +1784,23 @@ endif()
 if(VISA_FOUND)
     target_link_libraries(bobcat_engine PRIVATE ${VISA_LIBRARY})
     message(STATUS "Linked NI-VISA library for CLD101x Direct adapter")
+endif()
+
+# Link Kinesis SDK if found and copy DLLs to build output
+if(KINESIS_FOUND)
+    target_link_libraries(bobcat_engine PRIVATE ${KINESIS_TCUBE_TEC_LIB})
+    target_compile_definitions(bobcat_engine PRIVATE HAS_KINESIS)
+    message(STATUS "Linked Kinesis TCube.TEC library for TTC-001 adapter")
+
+    add_custom_command(TARGET bobcat_engine POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${KINESIS_TCUBE_TEC_DLL}
+            $<TARGET_FILE_DIR:bobcat_engine>
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${KINESIS_DEVMGR_DLL}
+            $<TARGET_FILE_DIR:bobcat_engine>
+        COMMENT "Copying Kinesis DLLs (TCube.TEC + DeviceManager) to output directory"
+    )
 endif()
 
 # Link OpenCV if found

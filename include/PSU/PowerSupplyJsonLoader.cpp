@@ -2,6 +2,7 @@
 #include "PowerSupplyJsonLoader.h"
 #include "KeysightE36103B.h"
 #include "KeysightE36441A.h"
+#include "UnitTUDP3305S.h"  // pulls in <visa.h>; matches SMUJsonLoader pattern
 #include <fstream>
 #include <iostream>
 #include <nlohmann/json.hpp>
@@ -54,14 +55,19 @@ bool PowerSupplyJsonLoader::loadConfiguration(const std::string& filePath, Power
       std::string deviceIP = deviceConfig.value("ip", "");
       int devicePort = deviceConfig.value("port", 5025);
       int channels = deviceConfig.value("channels", 1); // Default to 1 channel
+      std::string visaResource = deviceConfig.value("visa_resource", "");
 
-      if (deviceIP.empty()) {
-        std::cerr << "[PowerSupplyJsonLoader] Device '" << name << "' missing IP address" << std::endl;
+      // VISA-based devices use visa_resource instead of ip/port. Reject the
+      // device if neither addressing scheme is provided.
+      if (deviceIP.empty() && visaResource.empty()) {
+        std::cerr << "[PowerSupplyJsonLoader] Device '" << name
+                  << "' missing IP address or visa_resource" << std::endl;
         continue;
       }
 
       // Create power supply adapter
-      PowerSupplyPtr psu = createPowerSupply(type, name, serverHost, serverPort, deviceIP, devicePort);
+      PowerSupplyPtr psu = createPowerSupply(type, name, serverHost, serverPort,
+                                             deviceIP, devicePort, visaResource);
 
       if (psu) {
         manager->addPowerSupply(name, psu);
@@ -103,7 +109,8 @@ PowerSupplyPtr PowerSupplyJsonLoader::createPowerSupply(const std::string& type,
   const std::string& serverHost,
   int serverPort,
   const std::string& deviceIP,
-  int devicePort)
+  int devicePort,
+  const std::string& visaResource)
 {
   // Direct TCP/IP control (connects directly to PSU)
   if (type == "keysight_e36103b_direct" || type == "keysight_direct") {
@@ -115,6 +122,18 @@ PowerSupplyPtr PowerSupplyJsonLoader::createPowerSupply(const std::string& type,
   if (type == "keysight_e36441a_direct") {
     std::cout << "[PowerSupplyJsonLoader] Creating DIRECT driver (E36441A - 4 channels) for " << name << std::endl;
     return std::make_shared<KeysightE36441A>(deviceIP, devicePort, name);
+  }
+
+  // UNI-T UDP3305S-E via USB/VISA (3-channel)
+  if (type == "unit_t_udp3305s") {
+    if (visaResource.empty()) {
+      std::cerr << "[PowerSupplyJsonLoader] Device '" << name
+                << "' (unit_t_udp3305s) missing 'visa_resource'" << std::endl;
+      return nullptr;
+    }
+    std::cout << "[PowerSupplyJsonLoader] Creating VISA driver (UNI-T UDP3305S-E - 3 channels) for "
+              << name << " @ " << visaResource << std::endl;
+    return std::make_shared<UnitTUDP3305S>(visaResource, name);
   }
 
   // Server-based control (connects through Python server)
