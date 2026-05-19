@@ -19,7 +19,7 @@
 #include <QString>
 #include <functional>
 
-class ApplicationContext;
+struct ApplicationContext;
 class ScanExecutor;
 class QWidget;
 

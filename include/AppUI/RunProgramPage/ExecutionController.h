@@ -25,7 +25,7 @@
 #include <functional>
 #include <vector>
 
-class ApplicationContext;
+struct ApplicationContext;
 class ProcessSequenceFactory;
 class ProgramManager;
 class ProgramWorker;

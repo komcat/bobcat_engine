@@ -24,7 +24,7 @@
 #include <QStringList>
 #include <utility>
 
-class ApplicationContext;
+struct ApplicationContext;
 class TransformationMatrixLoader;
 class ManualAdjustWidget;
 class ManualAlignPointWidget;

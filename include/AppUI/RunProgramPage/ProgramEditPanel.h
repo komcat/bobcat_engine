@@ -16,7 +16,7 @@
 #include <QWidget>
 #include <functional>
 
-class ApplicationContext;
+struct ApplicationContext;
 class ProgramManager;
 class QPushButton;
 class QTableWidget;

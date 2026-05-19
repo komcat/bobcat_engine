@@ -30,6 +30,7 @@ class ProcessSequenceFactory;
 class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class RollCorrectionWidget;
+class RollCorrectionController;
 class PlacementRetraceWidget;
 class MotionInspectorWidget;
 class M4AngleWidget;
@@ -132,17 +133,8 @@ private slots:
   void onShowEdgeTransferRetrace(QString trainingSetName);
   void onEdgeTransferRetraceOutcome(EdgeTransferRetraceOutcome outcome);
 
-  // Roll correction handling
-  void onRegisterCH1Requested(QString deviceName);
-  void onRegisterCH2Requested(QString deviceName);
-  void onMoveToCH1Requested(QString deviceName);
-  void onMoveToCH2Requested(QString deviceName);
-  void onCorrectWRequested(QString deviceName, QString channel, double angleDeg, bool positiveW, double halfwayXmm);
-  void onFineGridScanRequested(QString deviceName);
-  void onStopGridScanRequested();
-  void onGridScanFinished(bool success, QString deviceName, QString errorMessage);
-  void onRollCorrectionFinished(bool success, QString deviceName, QString message);
-  void onRollCorrectionClearRequested(QString deviceName);
+  // Roll correction is handled by RollCorrectionController (owns the widget
+  // signal wiring, worker threads and stop flags) — see m_rollCorrectionController.
 
 private:
   void setupUI();
@@ -228,6 +220,7 @@ private:
   ScanControlWidget* m_scanWidget;
   class ScanController* m_scanController = nullptr;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
+  RollCorrectionController* m_rollCorrectionController = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   MotionInspectorWidget* m_motionInspectorWidget = nullptr;
   int m_motionInspectorTabIndex = -1;  // Index of the Motion Inspector tab in m_executionTabWidget
@@ -241,9 +234,6 @@ private:
   class EdgeRetraceWidget* m_edgeRetraceWidget = nullptr;
   EdgeTransferSet m_activeEdgeTransferSet;              // Loaded set for the widget
   EdgeTransferRetraceOutcome m_edgeRetraceResponse = EdgeTransferRetraceOutcome::Cancelled;
-  std::unique_ptr<SequenceContext> m_gridScanContext;  // Context for grid scan stop control
-  std::unique_ptr<SequenceContext> m_rollCorrectionContext;  // Context for stepwise roll correction stop control
-  bool m_rollCorrectionRunning = false;
   QTimer* m_channelRefreshTimer;  // Periodic refresh of DataStore channels
 
   // Interaction overlay: a QStackedWidget that holds the execution

@@ -17,21 +17,29 @@ The F1 "Process" page is composed from focused helpers — touch the helper for 
 | `SequenceContextViewer` | Live key/value view of `SequenceContext`. |
 | `VisionHistoryWidget` | Captured vision results history. |
 | `SlotManagerWidget` | DUT slot selection/management. |
-| `RollCorrectionWidget` | Hex W-axis roll correction (see "Roll Correction Widget" section below). |
+| `RollCorrectionController` + `RollCorrectionWidget` | Hex W-axis roll correction. Widget is pure UI; controller owns the worker threads + stop flags (see "Roll Correction" section below). |
 | `RetraceEditWidget`, `ManualAdjustWidget`, `ManualAlignPointWidget`, `UserPromptWidget`, `UserInputWidget`, `CaptureConfirmWidget` | User-interaction dialogs/widgets used during recipe execution. |
 | `MotionInspectorWidget` | Live motion state inspection. |
 | `DependencyGraphScene/Window`, `DependencyEdgeItem`, `RecipeNodeItem`, `LoopConfigDialog` | Recipe dependency graph view + loop config dialog. |
 
 When extending the run page, prefer adding/expanding a helper over enlarging `RunProgramPage.cpp`.
 
-## Roll Correction Widget
+## Roll Correction
 
-Located in `include/AppUI/RunProgramPage/RollCorrectionWidget.h/.cpp`. Corrects hexapod roll (W axis) using dual-channel peak position measurement.
+Corrects hexapod roll (W axis) using dual-channel peak position measurement. Split into two files, mirroring the `ScanController` + `ScanControlWidget` pattern:
+
+| File | Owns |
+|------|------|
+| `RollCorrectionWidget.{h,cpp}` | **Pure UI** — register/move/correct buttons, position display, spacing input, channel dropdown. Computes and displays the roll angle. Emits signals; contains no business logic. |
+| `RollCorrectionController.{h,cpp}` | **Business logic** — wires the widget's signals, runs the worker threads, owns the `SequenceContext` stop flags and the running state. Constructed by `RunProgramPage` with a `Deps` struct (`context`, `widget`, `appendLog` callback). |
+
+`RunProgramPage` keeps the `RollCorrectionWidget` pointer only because it's the tab body and the page feeds it the live DataStore channel list; all roll-correction behavior lives in the controller.
 
 ### Workflow
 
 1. Register CH1/CH2 peak X positions per hex device (hex-left, hex-right)
-2. Compute roll angle: `arctan(deltaX / spacing)`
-3. Apply 3-step correction: move to CH1 peak, shift X halfway, rotate W per direction table
-4. All moves use 1mm/s safe velocity with automatic restore
-5. "Fine Grid Scan" button runs `GridScanDualChannel` on background thread; "STOP Scan" uses SequenceContext-based stop control
+2. Compute roll angle: `arctan(deltaX / spacing)` (in `RollCorrectionWidget::computeAndDisplayResults`)
+3. **Correct W** — `RollCorrectionController::onCorrectWRequested` moves to CH1 peak, shifts X halfway, then applies the W rotation
+4. The W rotation is split into **micro-steps of ≤ 0.02°**. Around each micro-step the controller samples the tracking channel's optical power; a > 10% drop vs. the pre-step (rolling) baseline triggers a 0.5 µm XY regain scan (`XCANExtended`) so power never collapses into the noise floor
+5. All moves use a safe reduced velocity with automatic restore
+6. "Fine Grid Scan" button runs `GridScanDualChannel` on a background thread; "STOP Scan" uses `SequenceContext`-based stop control
