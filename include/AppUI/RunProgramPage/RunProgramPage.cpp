@@ -21,6 +21,7 @@
 #include "RollCorrectionWidget.h"
 #include "MotionInspectorWidget.h"
 #include "M4AASerialDataWidget.h"
+#include "M4AngleWidget.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -802,6 +803,29 @@ void RunProgramPage::createExecutionWidget()
   // product's data/{product}/ folder on its own 1 Hz timer.
   m_m4aaSerialDataWidget = new M4AASerialDataWidget(m_context);
   m_executionTabWidget->addTab(m_m4aaSerialDataWidget, "M4AA");
+
+  // === M4 ANGLE TAB ===
+  // Calculator: captures a1/a2/ma1/ma2 from gantry-main and shows the
+  // hex-right U / W delta needed to align the measured line to the baseline.
+  m_m4AngleWidget = new M4AngleWidget(m_context);
+  m_executionTabWidget->addTab(m_m4AngleWidget, "M4 Angle");
+
+  // === M4AA branch: hide tabs that aren't used in this flow ===
+  // The widgets remain constructed (their signal wiring above stays valid);
+  // setTabVisible only removes them from the tab bar. To re-expose any of
+  // them later, flip the matching line to true.
+  auto hideTabByText = [this](const QString& label) {
+    for (int i = 0; i < m_executionTabWidget->count(); ++i) {
+      if (m_executionTabWidget->tabText(i) == label) {
+        m_executionTabWidget->setTabVisible(i, false);
+        return;
+      }
+    }
+  };
+  hideTabByText("Live View");
+  hideTabByText("Scanning");
+  hideTabByText("Vision");
+  hideTabByText("Roll Correction");
 
   // Connect roll correction signals
   connect(m_rollCorrectionWidget, &RollCorrectionWidget::registerCH1Requested,
