@@ -1,8 +1,9 @@
 // DiagVerbose.h
 //
 // Single gate for verbose diagnostic stdout: the [CamWin/...] updateViewport
-// stats (QtCameraWindow) and the [LongEvent] slow-event lines
-// (LongEventDetector). Both are silenced by default — they flood the log at
+// stats (QtCameraWindow), the [Viewport/...] paint-cost stats
+// (QtCameraViewport), and the [LongEvent] slow-event lines
+// (LongEventDetector). All are silenced by default — they flood the log at
 // steady state and are only useful when chasing a UI-thread performance
 // regression.
 //

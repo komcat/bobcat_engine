@@ -1,6 +1,8 @@
 // QtCameraViewport.cpp
 #include "QtCameraViewport.h"
 
+#include "diagnostics/DiagVerbose.h"
+
 #include <QPainter>
 #include <QPainterPath>
 #include <QPaintEvent>
@@ -410,23 +412,25 @@ void QtCameraViewport::paintEvent(QPaintEvent* /*event*/)
             ? (static_cast<double>(m_chartRebuildUsTotal) / m_chartRebuildCount) / 1000.0
             : 0.0;
         const double chartRebuildMaxMs = m_chartRebuildUsMax / 1000.0;
-        std::cout << "[Viewport/" << m_diagName << "] t=" << upSec << "s"
-                  << " paints=" << m_paintWindowCount << " (" << paintsHz << "/s)"
-                  << " src=" << m_frameW << "x" << m_frameH
-                  << " dst=" << m_primaryDest.width() << "x" << m_primaryDest.height()
-                  << " rot=" << m_displayRotation
-                  << " cost: avg=" << avgMs << "ms max=" << maxMs << "ms"
-                  << " phase: rot=" << avgRotMs << "ms blit=" << avgBlitMs
-                  << "ms overlays=" << avgOverlayMs << "ms"
-                  << " chartRebuild: n=" << m_chartRebuildCount
-                  << " avg=" << chartRebuildAvgMs << "ms"
-                  << " max=" << chartRebuildMaxMs << "ms"
-                  << " overlays: chart=" << m_paintChartActiveCount
-                  << " vision=" << m_paintVisionActiveCount
-                  << " beam=" << m_paintBeamActiveCount
-                  << " tracking=" << m_paintTrackingActiveCount
-                  << " dual=" << m_paintDualCount
-                  << std::endl;
+        if (diag::VerboseEnabled()) {
+            std::cout << "[Viewport/" << m_diagName << "] t=" << upSec << "s"
+                      << " paints=" << m_paintWindowCount << " (" << paintsHz << "/s)"
+                      << " src=" << m_frameW << "x" << m_frameH
+                      << " dst=" << m_primaryDest.width() << "x" << m_primaryDest.height()
+                      << " rot=" << m_displayRotation
+                      << " cost: avg=" << avgMs << "ms max=" << maxMs << "ms"
+                      << " phase: rot=" << avgRotMs << "ms blit=" << avgBlitMs
+                      << "ms overlays=" << avgOverlayMs << "ms"
+                      << " chartRebuild: n=" << m_chartRebuildCount
+                      << " avg=" << chartRebuildAvgMs << "ms"
+                      << " max=" << chartRebuildMaxMs << "ms"
+                      << " overlays: chart=" << m_paintChartActiveCount
+                      << " vision=" << m_paintVisionActiveCount
+                      << " beam=" << m_paintBeamActiveCount
+                      << " tracking=" << m_paintTrackingActiveCount
+                      << " dual=" << m_paintDualCount
+                      << std::endl;
+        }
         m_paintDurUsTotal = 0;
         m_paintDurUsMax = 0;
         m_paintRotateUsTotal = 0;
