@@ -378,7 +378,6 @@ void ManualAdjustWidget::onUpdatePosition()
 
 void ManualAdjustWidget::sendJogCommand(const std::string& axis, double direction)
 {
-  // Debug: Check what's failing
   if (m_currentDevice.empty()) {
     std::cerr << "[ManualAdjustWidget] Invalid state: m_currentDevice is empty" << std::endl;
     return;
@@ -387,55 +386,19 @@ void ManualAdjustWidget::sendJogCommand(const std::string& axis, double directio
     std::cerr << "[ManualAdjustWidget] Invalid state: m_motionManager is null" << std::endl;
     return;
   }
-  if (!m_matrixLoader) {
-    std::cerr << "[ManualAdjustWidget] Invalid state: m_matrixLoader is null" << std::endl;
-    return;
-  }
 
-  // Create global movement vector (in microns)
-  CoordinateTransformer::Vector6D globalMove(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
-  double stepInMicrons = m_stepSizeUm * direction;
+  // Global delta in mm. MoveRelativeGlobal handles the per-device matrix
+  // transform internally and dispatches one simultaneous multi-axis move,
+  // so we avoid the 3 sequential per-axis calls that serialized on the
+  // controller's idle-wait and caused the click-to-motion lag.
+  double stepMm = (m_stepSizeUm * direction) / 1000.0;
+  double dx = (axis == "X") ? stepMm : 0.0;
+  double dy = (axis == "Y") ? stepMm : 0.0;
+  double dz = (axis == "Z") ? stepMm : 0.0;
 
-  if (axis == "X") {
-    globalMove.x = stepInMicrons;
-  }
-  else if (axis == "Y") {
-    globalMove.y = stepInMicrons;
-  }
-  else if (axis == "Z") {
-    globalMove.z = stepInMicrons;
-  }
-
-  // Get device transformation matrix
-  auto matrix = m_matrixLoader->GetMatrix(m_currentDevice);
-  if (!matrix) {
-    std::cerr << "[ManualAdjustWidget] No transformation matrix for device: "
+  if (!m_motionManager->MoveRelativeGlobal(m_currentDevice, dx, dy, dz, false)) {
+    std::cerr << "[ManualAdjustWidget] MoveRelativeGlobal failed for device: "
               << m_currentDevice << std::endl;
-    return;
-  }
-
-  // Transform to local coordinates
-  auto localMove = CoordinateTransformer::TransformGlobalToLocal(globalMove, *matrix);
-
-  // Convert microns to millimeters
-  double xMM = localMove.x / 1000.0;
-  double yMM = localMove.y / 1000.0;
-  double zMM = localMove.z / 1000.0;
-
-  // Send move commands (non-blocking)
-  bool success = true;
-  if (std::abs(xMM) > 0.0001) {
-    success &= m_motionManager->MoveRelative(m_currentDevice, "X", xMM, false);
-  }
-  if (std::abs(yMM) > 0.0001) {
-    success &= m_motionManager->MoveRelative(m_currentDevice, "Y", yMM, false);
-  }
-  if (std::abs(zMM) > 0.0001) {
-    success &= m_motionManager->MoveRelative(m_currentDevice, "Z", zMM, false);
-  }
-
-  if (!success) {
-    std::cerr << "[ManualAdjustWidget] Failed to execute jog command" << std::endl;
   }
 }
 
@@ -445,12 +408,14 @@ void ManualAdjustWidget::updatePositionDisplay()
     return;
   }
 
-  double x = 0.0, y = 0.0, z = 0.0;
-  if (!m_motionManager->GetPosition(m_currentDevice, "X", x) ||
-      !m_motionManager->GetPosition(m_currentDevice, "Y", y) ||
-      !m_motionManager->GetPosition(m_currentDevice, "Z", z)) {
-    return; // Skip UI update on position read failure
+  // Non-blocking cached read fed by UnifiedMotionManager's background poll —
+  // GetPosition() is a synchronous controller round-trip and must not run on
+  // the UI thread on a fast cadence (see unified_motion_manager.h:175).
+  PositionStruct pos;
+  if (!m_motionManager->GetCachedPosition(m_currentDevice, pos)) {
+    return; // No cached sample yet (device just connected)
   }
+  double x = pos.x, y = pos.y, z = pos.z;
 
   m_positionLabel->setText(
     QString("Position: X: %1 | Y: %2 | Z: %3 mm")
