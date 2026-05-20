@@ -20,8 +20,8 @@
 #include "ScanController.h"
 #include "RollCorrectionWidget.h"
 #include "MotionInspectorWidget.h"
-#include "M4AASerialDataWidget.h"
 #include "M4AngleWidget.h"
+#include "PoyntOptimizeWidget.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -797,18 +797,18 @@ void RunProgramPage::createExecutionWidget()
   m_motionInspectorTabIndex = m_executionTabWidget->addTab(
     m_motionInspectorWidget, "Motion Inspector");
 
-  // === M4AA TAB ===
-  // M4AA branch-specific serial-number data viewer (replicates
-  // serverPython/view_serial_data.py). Self-contained: it polls the active
-  // product's data/{product}/ folder on its own 1 Hz timer.
-  m_m4aaSerialDataWidget = new M4AASerialDataWidget(m_context);
-  m_executionTabWidget->addTab(m_m4aaSerialDataWidget, "M4AA");
-
   // === M4 ANGLE TAB ===
   // Calculator: captures a1/a2/ma1/ma2 from gantry-main and shows the
   // hex-right U / W delta needed to align the measured line to the baseline.
   m_m4AngleWidget = new M4AngleWidget(m_context);
   m_executionTabWidget->addTab(m_m4AngleWidget, "M4 Angle");
+
+  // === POYNT OPTIMIZE TAB ===
+  // DUT lifecycle / automation scripts plus hex-right jog ladder with
+  // re-measurement after each move. Runs scripts via ScriptWorker so the
+  // UI thread stays responsive; Stop button breaks the script.
+  m_poyntOptimizeWidget = new PoyntOptimizeWidget(m_context);
+  m_executionTabWidget->addTab(m_poyntOptimizeWidget, "Poynt Optimize");
 
   // === M4AA branch: hide tabs that aren't used in this flow ===
   // The widgets remain constructed (their signal wiring above stays valid);

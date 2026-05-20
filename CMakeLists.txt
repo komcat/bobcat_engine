@@ -837,6 +837,7 @@ set(SOURCES
     include/AppUI/RunProgramPage/RunProgramPage.cpp
     include/AppUI/RunProgramPage/M4AASerialDataWidget.cpp
     include/AppUI/RunProgramPage/M4AngleWidget.cpp
+    include/AppUI/RunProgramPage/PoyntOptimizeWidget.cpp
     include/AppUI/RunProgramPage/ProgramSettingsStore.cpp
     include/AppUI/RunProgramPage/VisionHistoryWidget.cpp
     include/AppUI/RunProgramPage/SequenceContextViewer.cpp
@@ -1178,6 +1179,7 @@ set(HEADERS
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/M4AASerialDataWidget.h
     include/AppUI/RunProgramPage/M4AngleWidget.h
+    include/AppUI/RunProgramPage/PoyntOptimizeWidget.h
     include/AppUI/RunProgramPage/SequenceContextViewer.h
     include/AppUI/RunProgramPage/ScanController.h
     include/AppUI/RunProgramPage/ProgramEditPanel.h

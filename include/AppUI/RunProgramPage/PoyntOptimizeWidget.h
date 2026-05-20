@@ -1,0 +1,138 @@
+// PoyntOptimizeWidget.h - Poynt-optimization helpers tab.
+//
+// Embedded as a tab ("Poynt Optimize") in the F1 Run Program page.
+// Lets the operator drive the four common scripted actions of the
+// poynt-correction flow (DUT init / close, automation, single
+// measurement) plus a translation/rotation jog ladder on hex-right
+// that re-measures after each jog by running the baseline script.
+//
+// Top action row:
+//   - DUT Init         -> dut_init.lua
+//   - DUT Close        -> dut_close.lua
+//   - Automate         -> CLAUDE_step_all.lua
+//   - Single measure   -> CLAUDE_step1_baseline.lua
+//   - Stop             -> ScriptEngine::RequestStop() to break a running script
+//
+// Translation jog group (operates on hex-right X/Y/Z, units mm):
+//   - Step display (in um); +/-0.5 buttons add/sub 0.5 um to the step
+//   - +X / -X / +Y / -Y / +Z / -Z: relative move by step then run baseline.
+//
+// Rotation jog group (operates on hex-right U/V/W, units deg):
+//   - Step display (in millideg); +/-10 buttons add/sub 10 millideg
+//   - +U/-U/+V/-V/+W/-W: relative move by step then run baseline.
+//
+// While ANY script or jog-move is in flight every other button is
+// disabled and Stop is enabled.
+#pragma once
+
+#include <QWidget>
+#include <future>
+
+class QLabel;
+class QPushButton;
+class QGroupBox;
+class QPlainTextEdit;
+class ScriptWorker;
+class M4AASerialDataWidget;
+struct ApplicationContext;
+
+class PoyntOptimizeWidget : public QWidget {
+  Q_OBJECT
+public:
+  explicit PoyntOptimizeWidget(ApplicationContext* context, QWidget* parent = nullptr);
+  ~PoyntOptimizeWidget() override;
+
+private slots:
+  void onDutInit();
+  void onDutClose();
+  void onAutomate();
+  void onSingleMeasurement();
+  void onStop();
+
+  void onTranslationStepInc();   // step += 0.5 um
+  void onTranslationStepDec();   // step -= 0.5 um (clamped at 0)
+  void onRotationStepInc();      // step += 10 millideg
+  void onRotationStepDec();      // step -= 10 millideg (clamped at 0)
+
+  // Each axis jog: relative move by current step on hex-right, then run baseline.
+  void onJogXPlus();  void onJogXMinus();
+  void onJogYPlus();  void onJogYMinus();
+  void onJogZPlus();  void onJogZMinus();
+  void onJogUPlus();  void onJogUMinus();
+  void onJogVPlus();  void onJogVMinus();
+  void onJogWPlus();  void onJogWMinus();
+
+  // ScriptWorker signal handlers.
+  void onScriptStarted();
+  void onScriptCompleted(bool success, QString errorMessage);
+  void onScriptOutput(QString message);
+
+private:
+  void setupUI();
+  // Enable/disable the whole control surface in one shot. When busy=true,
+  // only Stop stays enabled.
+  void setBusy(bool busy, const QString& whatRunning = QString());
+  // Resolve a script name (e.g. "dut_init.lua") to a path under
+  // config/{product}/scripts/ if a product is loaded, else scripts/.
+  QString resolveScriptPath(const QString& scriptFile) const;
+  // Start a ScriptWorker for the resolved script. Returns false if the
+  // engine is unavailable or another job is already running.
+  bool launchScript(const QString& scriptFile, const QString& busyLabel);
+  // Background-jog helper: relative move on hex-right, then chain into
+  // CLAUDE_step1_baseline.lua via launchScript() on success.
+  void jogThenBaseline(const QString& axis, double signedDistance,
+                       const QString& busyLabel);
+  // Repaint the step-display labels.
+  void refreshTranslationStepLabel();
+  void refreshRotationStepLabel();
+
+  void appendLog(const QString& line, const QString& color = QString());
+
+  ApplicationContext* m_context = nullptr;
+
+  // Top-row action buttons.
+  QPushButton* m_dutInitBtn   = nullptr;
+  QPushButton* m_dutCloseBtn  = nullptr;
+  QPushButton* m_automateBtn  = nullptr;
+  QPushButton* m_singleBtn    = nullptr;
+  QPushButton* m_stopBtn      = nullptr;
+  QLabel*      m_busyLabel    = nullptr;
+
+  // Translation group.
+  QGroupBox*   m_translationGroup = nullptr;
+  QLabel*      m_translationStepLabel = nullptr;     // shows "0.5 um"
+  QPushButton* m_translationStepPlusBtn  = nullptr;  // "+0.5"
+  QPushButton* m_translationStepMinusBtn = nullptr;  // "-0.5"
+  QPushButton* m_xPlusBtn  = nullptr;  QPushButton* m_xMinusBtn = nullptr;
+  QPushButton* m_yPlusBtn  = nullptr;  QPushButton* m_yMinusBtn = nullptr;
+  QPushButton* m_zPlusBtn  = nullptr;  QPushButton* m_zMinusBtn = nullptr;
+
+  // Rotation group.
+  QGroupBox*   m_rotationGroup = nullptr;
+  QLabel*      m_rotationStepLabel = nullptr;     // shows "10 millideg"
+  QPushButton* m_rotationStepPlusBtn  = nullptr;  // "+10"
+  QPushButton* m_rotationStepMinusBtn = nullptr;  // "-10"
+  QPushButton* m_uPlusBtn  = nullptr;  QPushButton* m_uMinusBtn = nullptr;
+  QPushButton* m_vPlusBtn  = nullptr;  QPushButton* m_vMinusBtn = nullptr;
+  QPushButton* m_wPlusBtn  = nullptr;  QPushButton* m_wMinusBtn = nullptr;
+
+  QPlainTextEdit* m_log = nullptr;
+
+  // M4AA serial-data panel embedded in the bottom half of this tab so the
+  // operator can see live poynt-X/Y measurements while running scripts here.
+  // The widget polls the active product's data/{product}/ folder on its own
+  // 1 Hz timer, so we don't need to push anything to it.
+  M4AASerialDataWidget* m_m4aaPanel = nullptr;
+
+  // Step state.
+  // Translation step is kept in um for display; converted to mm for motion.
+  double m_translationStepUm     = 0.5;
+  // Rotation step is kept in millideg for display; converted to deg for motion.
+  double m_rotationStepMilliDeg  = 10.0;
+
+  // Async-state: at most one script OR one move is in flight at any time.
+  bool             m_busy = false;
+  ScriptWorker*    m_scriptWorker = nullptr;
+  // Background relative-move future (auto-cleaned via QMetaObject::invokeMethod).
+  std::future<void> m_moveFuture;
+};

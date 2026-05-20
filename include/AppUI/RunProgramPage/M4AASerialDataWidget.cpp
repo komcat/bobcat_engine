@@ -338,7 +338,7 @@ void M4AASerialDataWidget::setupUI() {
     grid->addWidget(hh, 0, c);
   }
   const std::array<const char*, 2> rowLabels = {"B0 (Rx)", "B1 (Tx)"};
-  QFont valueFont("Consolas", 14, QFont::Bold);
+  QFont valueFont("Consolas", 42, QFont::Bold);  // 3x the original 14pt
   for (int section = 0; section < 2; ++section) {
     auto* rl = new QLabel(rowLabels[static_cast<size_t>(section)]);
     rl->setStyleSheet("font-weight: bold;");
@@ -348,7 +348,7 @@ void M4AASerialDataWidget::setupUI() {
         auto* lbl = new QLabel();
         lbl->setFont(valueFont);
         lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        lbl->setMinimumWidth(110);
+        lbl->setMinimumWidth(220);  // wider to fit the 3x font without clipping
         lbl->setStyleSheet(QString("color: %1;").arg(kColorNeutral));
         m_valueLabels[section][side][axis] = lbl;
         grid->addWidget(lbl, section + 1, side * 2 + axis + 1);
