@@ -59,6 +59,11 @@ using json = nlohmann::json;
 
 #ifdef HAS_OPENCV
 #include "OpenCVTest.h"
+#include <opencv2/core.hpp>     // cv::setNumThreads
+#endif
+
+#ifdef HAS_HALCON
+#include <halconcpp/HalconCpp.h>  // HSystem::SetSystem
 #endif
 
 Application::Application(int argc, char* argv[])
@@ -140,6 +145,32 @@ void Application::shutdown()
 bool Application::initialize()
 {
   if (m_initialized) return true;
+
+  // ----- SDK thread-pool clamps (memory-growth mitigation) ---------------
+  // Both OpenCV and Halcon default to multi-threaded operators with
+  // per-thread scratch caches allocated via VirtualAlloc. With many cores
+  // and many ops per detection frame, the cumulative committed memory
+  // climbs into multi-GB territory (observed: 1.5 GB → 8+ GB once B DETECT
+  // is enabled in SwirBeamWindow, with both Halcon and Blob backends
+  // showing the same growth). The C++ heap profiler shows only KB-scale
+  // growth in this period, so the leak is in SDK-internal VirtualAlloc
+  // pools, not our std:: types. Single-threaded operators eliminate the
+  // per-worker caches at the cost of some detection latency.
+#ifdef HAS_OPENCV
+  cv::setNumThreads(1);
+  std::cout << "[Application] OpenCV thread count set to 1 (memory cap)"
+            << std::endl;
+#endif
+#ifdef HAS_HALCON
+  try {
+    HalconCpp::HSystem::SetSystem("parallelize_operators", "false");
+    std::cout << "[Application] Halcon parallelize_operators=false (memory cap)"
+              << std::endl;
+  } catch (const HalconCpp::HException& e) {
+    std::cerr << "[Application] Halcon SetSystem failed: "
+              << e.ErrorMessage().Text() << std::endl;
+  }
+#endif
 
   try {
     // LongEventDetector overrides QApplication::notify() to log any event
