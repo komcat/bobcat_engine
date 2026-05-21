@@ -711,7 +711,13 @@ void RunAlignmentWidget::updatePositionDisplay()
     if (!m_context || !m_context->motionManager || !m_trainingSet) return;
 
     std::string device = m_trainingSet->deviceName;
-    auto pos = m_context->motionManager->GetCurrentPosition(device);
+    // Non-blocking cached read fed by UnifiedMotionManager's background poll —
+    // GetCurrentPosition() is a synchronous controller round-trip and must not
+    // run on the UI thread on a fast cadence (see unified_motion_manager.h:175).
+    PositionStruct pos;
+    if (!m_context->motionManager->GetCachedPosition(device, pos)) {
+        return; // No cached sample yet
+    }
 
     QString posText = QString("X: %1  Y: %2  Z: %3")
         .arg(pos.x, 10, 'f', 4)
