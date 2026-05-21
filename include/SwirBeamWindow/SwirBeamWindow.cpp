@@ -2662,6 +2662,15 @@ void SwirBeamWindow::OnEditBeamConfig()
 
 void SwirBeamWindow::OnBeamDetectToggle()
 {
+    // Ignore the click while a previous async stop is still draining — the
+    // detection thread hasn't actually exited yet, and starting a second one
+    // would race on the shared buffers.
+    if (m_detectionStopFuture.valid() &&
+        m_detectionStopFuture.wait_for(std::chrono::seconds(0)) !=
+            std::future_status::ready) {
+        return;
+    }
+
     m_beamDetectionEnabled = !m_beamDetectionEnabled;
     std::cout << "[SwirBeamWindow] Beam detection "
               << (m_beamDetectionEnabled ? "enabled" : "disabled") << std::endl;
@@ -2670,9 +2679,21 @@ void SwirBeamWindow::OnBeamDetectToggle()
         LoadBeamConfig();  // reload config each time detection starts
         StartDetectionThread();
     } else {
-        StopDetectionThread();
-        std::lock_guard<std::mutex> lock(m_beamMutex);
-        m_beamResults.clear();
+        // Async stop — the Halcon detection iteration in flight can take
+        // ~1-2 s with no interruption point. Joining on the UI thread froze
+        // the SWIR window for that duration on every disable click.
+        m_detectionShutdown.store(true);
+        m_detectionCV.notify_all();
+        m_detectionStopFuture = std::async(std::launch::async, [this]() {
+            if (m_detectionThread.joinable()) {
+                m_detectionThread.join();
+            }
+            {
+                std::lock_guard<std::mutex> lock(m_beamMutex);
+                m_beamResults.clear();
+            }
+            if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+        });
     }
     InvalidatePanel();
     if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
@@ -2914,6 +2935,13 @@ void SwirBeamWindow::StopDetectionThread()
 {
     m_detectionShutdown.store(true);
     m_detectionCV.notify_all();
+    // Drain any in-flight async stop launched by OnBeamDetectToggle — it
+    // owns the join for the click path. Waiting here serializes a double
+    // join and ensures the worker's access to members completes before we
+    // tear them down.
+    if (m_detectionStopFuture.valid()) {
+        m_detectionStopFuture.wait();
+    }
     if (m_detectionThread.joinable()) {
         m_detectionThread.join();
     }
