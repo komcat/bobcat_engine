@@ -674,7 +674,13 @@ void YawRetraceWidget::updatePositionDisplay()
 {
     if (!m_context || !m_context->motionManager || !m_set) return;
 
-    auto pos = m_context->motionManager->GetCurrentPosition(m_set->deviceName);
+    // Non-blocking cached read fed by UnifiedMotionManager's background poll —
+    // GetCurrentPosition() is a synchronous controller round-trip and must not
+    // run on the UI thread on a fast cadence (see unified_motion_manager.h:175).
+    PositionStruct pos;
+    if (!m_context->motionManager->GetCachedPosition(m_set->deviceName, pos)) {
+        return; // No cached sample yet
+    }
     QString text = QString("X: %1  Y: %2  Z: %3")
         .arg(pos.x, 10, 'f', 4)
         .arg(pos.y, 10, 'f', 4)
@@ -694,7 +700,11 @@ void YawRetraceWidget::updateHexPositionDisplay()
     if (!m_context || !m_context->motionManager || !m_set ||
         m_set->correction.targetDevice.empty()) return;
 
-    auto pos = m_context->motionManager->GetCurrentPosition(m_set->correction.targetDevice);
+    // Non-blocking cached read; see unified_motion_manager.h:175.
+    PositionStruct pos;
+    if (!m_context->motionManager->GetCachedPosition(m_set->correction.targetDevice, pos)) {
+        return;
+    }
     m_hexPositionLabel->setText(QString(
         "Current %1 position:\n"
         "  X: %2   Y: %3   Z: %4\n"

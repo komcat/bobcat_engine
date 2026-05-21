@@ -1582,7 +1582,13 @@ void MultiDeviceRunAlignmentWidget::updatePositionDisplay()
     if (!m_context || !m_context->motionManager || !m_trainingSet) return;
 
     std::string device = m_trainingSet->deviceName;
-    auto pos = m_context->motionManager->GetCurrentPosition(device);
+    // Non-blocking cached read fed by UnifiedMotionManager's background poll —
+    // GetCurrentPosition() is a synchronous controller round-trip and must not
+    // run on the UI thread on a fast cadence (see unified_motion_manager.h:175).
+    PositionStruct pos;
+    if (!m_context->motionManager->GetCachedPosition(device, pos)) {
+        return; // No cached sample yet
+    }
 
     QString posText = QString("X: %1  Y: %2  Z: %3")
         .arg(pos.x, 10, 'f', 4)
@@ -1604,13 +1610,15 @@ void MultiDeviceRunAlignmentWidget::updatePositionDisplay()
         if (m_currentBondIndex >= 0 && m_currentBondIndex < static_cast<int>(m_correctedBonds.size())) {
             const auto& cb = m_correctedBonds[m_currentBondIndex];
             if (cb.assignedHexIndex >= 0 && cb.assignedHexIndex < static_cast<int>(m_hexRegistrations.size())) {
-                auto hexPos = m_context->motionManager->GetCurrentPosition(
-                    m_hexRegistrations[cb.assignedHexIndex].deviceName);
-                posText = QString("X: %1  Y: %2  Z: %3  [%4]")
-                    .arg(hexPos.x, 10, 'f', 4)
-                    .arg(hexPos.y, 10, 'f', 4)
-                    .arg(hexPos.z, 10, 'f', 4)
-                    .arg(QString::fromStdString(cb.assignedDevice));
+                PositionStruct hexPos;
+                if (m_context->motionManager->GetCachedPosition(
+                        m_hexRegistrations[cb.assignedHexIndex].deviceName, hexPos)) {
+                    posText = QString("X: %1  Y: %2  Z: %3  [%4]")
+                        .arg(hexPos.x, 10, 'f', 4)
+                        .arg(hexPos.y, 10, 'f', 4)
+                        .arg(hexPos.z, 10, 'f', 4)
+                        .arg(QString::fromStdString(cb.assignedDevice));
+                }
             }
         }
         m_bondPositionLabel->setText(posText);

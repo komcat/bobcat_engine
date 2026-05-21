@@ -829,7 +829,13 @@ void EdgeRetraceWidget::updatePositionDisplay()
 {
     if (!m_context || !m_context->motionManager) return;
     if (m_state == Idle || m_state == Review) return;
-    auto pos = m_context->motionManager->GetCurrentPosition("gantry-main");
+    // Non-blocking cached read fed by UnifiedMotionManager's background poll —
+    // GetCurrentPosition() is a synchronous controller round-trip and must not
+    // run on the UI thread on a fast cadence (see unified_motion_manager.h:175).
+    PositionStruct pos;
+    if (!m_context->motionManager->GetCachedPosition("gantry-main", pos)) {
+        return; // No cached sample yet
+    }
     m_waitLiveLabel->setText(QString("X: %1   Y: %2   Z: %3")
         .arg(pos.x, 10, 'f', 4)
         .arg(pos.y, 10, 'f', 4)
