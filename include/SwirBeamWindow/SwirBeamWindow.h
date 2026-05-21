@@ -389,6 +389,12 @@ private:
     uint32_t m_detectionHeight = 0;
     std::atomic<bool> m_detectionReady{false};
     std::atomic<bool> m_detectionShutdown{false};
+    // Async stop worker. The detection loop can spend ~1-2 s inside a single
+    // Halcon iteration with no interruption point, so joining on the UI
+    // thread (B DETECT toggle click) freezes the window. The disable click
+    // hands the join off to this future; StopDetectionThread() (destructor
+    // path) drains it before doing its own sync join.
+    std::future<void> m_detectionStopFuture;
 
     mutable std::mutex m_beamMutex;
     std::vector<BeamDetectionResult> m_beamResults;
