@@ -22,6 +22,8 @@
 class QTreeWidget;
 class QLabel;
 class QTimer;
+class QDialog;
+class QPushButton;
 struct ApplicationContext;
 
 namespace m4aa {
@@ -32,6 +34,27 @@ struct PoyntSection {
   bool   hasY = false;
   double x    = 0.0;
   double y    = 0.0;
+  // Additional beam-detect-server fields written alongside the poynt angles.
+  bool   hasLoc   = false;
+  double locX     = 0.0;   // beam centroid X (µm)
+  double locY     = 0.0;   // beam centroid Y (µm)
+  bool   hasZ0    = false;
+  double z0       = 0.0;   // beam-waist Z (µm)
+  bool   hasWaist = false;
+  double waistX   = 0.0;   // 1/e² waist X (µm)
+  double waistY   = 0.0;
+  bool   hasM2    = false;
+  double m2X      = 0.0;   // beam-quality M² in X
+  double m2Y      = 0.0;
+};
+
+// TX-RX delta (b0 - b1) for the entry's gantry location.
+struct TxRx {
+  bool   has = false;
+  double dx  = 0.0;        // µm
+  double dy  = 0.0;        // µm
+  double dz  = 0.0;        // µm
+  double mag = 0.0;        // µm
 };
 
 // One serial-number result entry parsed from the JSON file.
@@ -41,6 +64,7 @@ struct SerialEntry {
   QString      location;   // "MOE-A1" / "MOE-A2"
   PoyntSection b0;
   PoyntSection b1;
+  TxRx         txRx;
 };
 
 // Scatter plot: A1/A2 B0/B1 poynt points on a +/-5 deg grid with an r=0.5
@@ -85,6 +109,10 @@ private:
   void    updateRight(int selIdx);
   void    clearRight();
   int     findLatestByLocation(int uptoIdx, const QString& loc) const;
+  void    ensureDetailsDialog();         // lazy-build the non-modal popup
+  void    openDetailsDialog();
+  void    refreshDetailsDialog(int selIdx, int a1Idx, int a2Idx);
+  void    clearDetailsDialog();
 
   ApplicationContext* m_context = nullptr;
 
@@ -97,6 +125,35 @@ private:
 
   // 8 poynt value labels, indexed [section 0=b0/1=b1][side 0=a1/1=a2][axis 0=x/1=y].
   QLabel* m_valueLabels[2][2][2] = {};
+
+  // Non-modal details popup (built lazily on first open).
+  QPushButton* m_detailsButton = nullptr;
+  QDialog*     m_detailsDialog = nullptr;
+
+  // Labels inside the details dialog. One section per location (MOE-A1, MOE-A2);
+  // each shows poynt X/Y for both beams + tx_rx delta + loc/waist/M².
+  struct BeamDetailLabels {
+    QLabel* poyntX = nullptr;
+    QLabel* poyntY = nullptr;
+    QLabel* locX   = nullptr;
+    QLabel* locY   = nullptr;
+    QLabel* z0     = nullptr;
+    QLabel* waistX = nullptr;
+    QLabel* waistY = nullptr;
+    QLabel* m2X    = nullptr;
+    QLabel* m2Y    = nullptr;
+  };
+  struct LocationDetailLabels {
+    QLabel* header = nullptr;   // "MOE-A1  -  <timestamp>"
+    QLabel* dx     = nullptr;
+    QLabel* dy     = nullptr;
+    BeamDetailLabels b0;
+    BeamDetailLabels b1;
+  };
+  struct DetailLabels {
+    LocationDetailLabels a1;
+    LocationDetailLabels a2;
+  } m_details;
 
   std::vector<m4aa::SerialEntry> m_entries;
   QString m_currentPath;

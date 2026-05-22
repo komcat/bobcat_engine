@@ -7,15 +7,21 @@
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
+#include <QGroupBox>
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QHeaderView>
 #include <QLabel>
+#include <QPushButton>
+#include <QDialog>
+#include <QScrollArea>
 #include <QTimer>
 #include <QPainter>
 #include <QPaintEvent>
 #include <QPen>
+#include <QPixmap>
+#include <QResizeEvent>
 #include <QCoreApplication>
 #include <QFont>
 #include <QStringList>
@@ -130,20 +136,74 @@ QString cellTip(int cellNum, double value) {
   return lines.join('\n');
 }
 
+// QLabel that scales its source pixmap to fit while preserving the aspect
+// ratio. Used for the M4AA diagram in the Chart tab. No Q_OBJECT macro, so
+// no moc registration needed.
+class AspectPixmapLabel : public QLabel {
+public:
+  using QLabel::QLabel;
+  void setSourcePixmap(const QPixmap& pix) {
+    m_src = pix;
+    rescale();
+  }
+protected:
+  void resizeEvent(QResizeEvent* e) override {
+    QLabel::resizeEvent(e);
+    rescale();
+  }
+private:
+  void rescale() {
+    if (m_src.isNull() || width() <= 4 || height() <= 4) return;
+    setPixmap(m_src.scaled(size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+  }
+  QPixmap m_src;
+};
+
 // Pull a poynt section ("b0"/"b1") out of an entry's "value" object.
 m4aa::PoyntSection parseSection(const json& value, const char* name) {
   m4aa::PoyntSection s;
   if (!value.contains(name) || !value[name].is_object()) return s;
   const json& sec = value[name];
-  if (sec.contains("poynt_x_deg") && sec["poynt_x_deg"].is_number()) {
-    s.hasX = true;
-    s.x = sec["poynt_x_deg"].get<double>();
-  }
-  if (sec.contains("poynt_y_deg") && sec["poynt_y_deg"].is_number()) {
-    s.hasY = true;
-    s.y = sec["poynt_y_deg"].get<double>();
-  }
+  auto readNum = [&](const char* k, bool& has, double& out) {
+    if (sec.contains(k) && sec[k].is_number()) {
+      has = true;
+      out = sec[k].get<double>();
+    }
+  };
+  readNum("poynt_x_deg", s.hasX, s.x);
+  readNum("poynt_y_deg", s.hasY, s.y);
+  // Beam-detect-server extras (per CLAUDE_step*.lua dut.insertJson schema).
+  bool locXHas = false, locYHas = false;
+  readNum("loc_x_um", locXHas, s.locX);
+  readNum("loc_y_um", locYHas, s.locY);
+  s.hasLoc = locXHas && locYHas;
+  readNum("z0_um", s.hasZ0, s.z0);
+  bool wxHas = false, wyHas = false;
+  readNum("waist_x_um", wxHas, s.waistX);
+  readNum("waist_y_um", wyHas, s.waistY);
+  s.hasWaist = wxHas && wyHas;
+  bool m2xHas = false, m2yHas = false;
+  readNum("m2_x", m2xHas, s.m2X);
+  readNum("m2_y", m2yHas, s.m2Y);
+  s.hasM2 = m2xHas && m2yHas;
   return s;
+}
+
+// Pull the "tx_rx" sub-object from an entry's "value" object.
+m4aa::TxRx parseTxRx(const json& value) {
+  m4aa::TxRx t;
+  if (!value.contains("tx_rx") || !value["tx_rx"].is_object()) return t;
+  const json& tr = value["tx_rx"];
+  auto pick = [&](const char* k, double& out) -> bool {
+    if (tr.contains(k) && tr[k].is_number()) { out = tr[k].get<double>(); return true; }
+    return false;
+  };
+  const bool a = pick("dx_um", t.dx);
+  const bool b = pick("dy_um", t.dy);
+  const bool c = pick("dz_um", t.dz);
+  const bool d = pick("mag_um", t.mag);
+  t.has = a && b && c && d;
+  return t;
 }
 
 }  // namespace
@@ -335,10 +395,12 @@ void M4AASerialDataWidget::setupUI() {
   for (int c = 0; c < headers.size(); ++c) {
     auto* hh = new QLabel(headers[c]);
     hh->setStyleSheet("font-weight: bold;");
+    // Right-align value-column headers so their right edge lines up with the
+    // right-aligned number underneath. Column 0 (row label) stays default-left.
+    if (c > 0) hh->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     grid->addWidget(hh, 0, c);
   }
   const std::array<const char*, 2> rowLabels = {"B0 (Rx)", "B1 (Tx)"};
-  QFont valueFont("Consolas", 42, QFont::Bold);  // 3x the original 14pt
   for (int section = 0; section < 2; ++section) {
     auto* rl = new QLabel(rowLabels[static_cast<size_t>(section)]);
     rl->setStyleSheet("font-weight: bold;");
@@ -346,10 +408,14 @@ void M4AASerialDataWidget::setupUI() {
     for (int side = 0; side < 2; ++side) {
       for (int axis = 0; axis < 2; ++axis) {
         auto* lbl = new QLabel();
-        lbl->setFont(valueFont);
         lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        lbl->setMinimumWidth(220);  // wider to fit the 3x font without clipping
-        lbl->setStyleSheet(QString("color: %1;").arg(kColorNeutral));
+        lbl->setMinimumWidth(150);  // fits 7-char values like "-1.1359" at 21pt
+        // Bake font-family/size/weight into the stylesheet so subsequent
+        // setStyleSheet() calls in updateRight() don't reset them (setting
+        // a stylesheet replaces the prior style — setFont() doesn't survive).
+        lbl->setStyleSheet(QString(
+          "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
+          .arg(kColorNeutral));
         m_valueLabels[section][side][axis] = lbl;
         grid->addWidget(lbl, section + 1, side * 2 + axis + 1);
       }
@@ -357,13 +423,251 @@ void M4AASerialDataWidget::setupUI() {
   }
   rightLayout->addLayout(grid);
 
+  // Bottom area: scatter on the left, reference diagram (assets/M4AA/diagram.png,
+  // copied to the build output by the CMake POST_BUILD step) on the right.
+  auto* chartRow = new QHBoxLayout();
+  chartRow->setContentsMargins(0, 0, 0, 0);
+  chartRow->setSpacing(8);
+
   m_scatter = new m4aa::PoyntScatterWidget();
-  rightLayout->addWidget(m_scatter, 1);
+  chartRow->addWidget(m_scatter, 1);
+
+  auto* diagram = new AspectPixmapLabel();
+  diagram->setAlignment(Qt::AlignCenter);
+  diagram->setMinimumSize(120, 120);
+  const QString diagramPath =
+      QCoreApplication::applicationDirPath() + "/assets/M4AA/diagram.png";
+  QPixmap pix(diagramPath);
+  if (!pix.isNull()) {
+    diagram->setSourcePixmap(pix);
+  } else {
+    diagram->setText(QStringLiteral("(diagram.png missing at %1)").arg(diagramPath));
+    diagram->setStyleSheet("color: #888;");
+    diagram->setWordWrap(true);
+  }
+  chartRow->addWidget(diagram, 1);
+
+  rightLayout->addLayout(chartRow, 1);
+
+  // Footer row with the "See details..." button — opens the non-modal popup.
+  auto* footerRow = new QHBoxLayout();
+  footerRow->setContentsMargins(0, 4, 0, 0);
+  footerRow->addStretch(1);
+  m_detailsButton = new QPushButton("See details...");
+  m_detailsButton->setToolTip(
+      "Open a separate window with poynt angles, tx_rx delta, and per-beam "
+      "loc / waist / M\xc2\xb2 for MOE-A1 and MOE-A2.");
+  connect(m_detailsButton, &QPushButton::clicked,
+          this, &M4AASerialDataWidget::openDetailsDialog);
+  footerRow->addWidget(m_detailsButton);
+  rightLayout->addLayout(footerRow);
 
   splitter->addWidget(rightWrap);
   splitter->setStretchFactor(0, 2);
   splitter->setStretchFactor(1, 3);
   root->addWidget(splitter, 1);
+}
+
+// Lazily builds the non-modal details popup on first open. The dialog owns
+// two location sections (MOE-A1, MOE-A2); each shows poynt X/Y for B0 and B1,
+// the tx_rx delta, and per-beam loc / waist / M².
+void M4AASerialDataWidget::ensureDetailsDialog() {
+  if (m_detailsDialog) return;
+
+  m_detailsDialog = new QDialog(this, Qt::Window);
+  m_detailsDialog->setAttribute(Qt::WA_DeleteOnClose, false);
+  m_detailsDialog->setWindowTitle("M4AA - beam details");
+  m_detailsDialog->resize(720, 560);
+
+  auto* dlgRoot = new QVBoxLayout(m_detailsDialog);
+  dlgRoot->setContentsMargins(10, 10, 10, 10);
+
+  auto* scroll = new QScrollArea(m_detailsDialog);
+  scroll->setWidgetResizable(true);
+  auto* inner = new QWidget();
+  scroll->setWidget(inner);
+  dlgRoot->addWidget(scroll, 1);
+
+  auto* outer = new QVBoxLayout(inner);
+  outer->setContentsMargins(8, 8, 8, 8);
+  outer->setSpacing(12);
+
+  const auto valueStyle = QStringLiteral(
+      "color: #e3f2fd; font-family: Consolas; font-weight: bold;");
+  const auto labelStyle = QStringLiteral("color: #cfd8dc;");
+  const auto unitStyle  = QStringLiteral("color: #90a4ae; font-family: Consolas;");
+  const auto sectionHeaderStyle = QStringLiteral(
+      "color: #64b5f6; font-weight: bold; padding-top: 4px;");
+  const auto subHeaderStyle = QStringLiteral(
+      "color: #64b5f6; font-weight: bold; padding-top: 4px;");
+
+  auto buildLocationSection = [&](const QString& locName,
+                                  LocationDetailLabels& out) {
+    auto* dl = new QGridLayout();
+    dl->setHorizontalSpacing(14);
+    dl->setVerticalSpacing(4);
+    // Columns: 0=label0, 1=value0, 2=unit0, 3=gap, 4=label1, 5=value1, 6=unit1.
+    dl->setColumnStretch(1, 1);
+    dl->setColumnStretch(5, 1);
+    dl->setColumnMinimumWidth(3, 24);
+
+    auto makeCell = [&](int row, int colBase, const QString& label,
+                        const QString& unit, QLabel*& valueOut) {
+      auto* l = new QLabel(label);
+      l->setStyleSheet(labelStyle);
+      auto* v = new QLabel("-");
+      v->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+      v->setStyleSheet(valueStyle);
+      auto* u = new QLabel(unit);
+      u->setStyleSheet(unitStyle);
+      dl->addWidget(l, row, colBase + 0);
+      dl->addWidget(v, row, colBase + 1);
+      dl->addWidget(u, row, colBase + 2);
+      valueOut = v;
+    };
+    auto makeSubHeader = [&](int row, int colBase, int colSpan,
+                             const QString& text) {
+      auto* h = new QLabel(text);
+      h->setStyleSheet(subHeaderStyle);
+      dl->addWidget(h, row, colBase, 1, colSpan);
+    };
+
+    int r = 0;
+    out.header = new QLabel(locName);
+    out.header->setStyleSheet(sectionHeaderStyle);
+    dl->addWidget(out.header, r, 0, 1, 7);
+    ++r;
+
+    // Poynt angles: B0 row then B1 row, X on the left, Y on the right.
+    makeSubHeader(r, 0, 7, "  Poynt X / Y  (deg)");
+    ++r;
+    makeCell(r, 0, "  B0 (Rx) X", "deg", out.b0.poyntX);
+    makeCell(r, 4, "  B0 (Rx) Y", "deg", out.b0.poyntY);
+    ++r;
+    makeCell(r, 0, "  B1 (Tx) X", "deg", out.b1.poyntX);
+    makeCell(r, 4, "  B1 (Tx) Y", "deg", out.b1.poyntY);
+    ++r;
+
+    makeSubHeader(r, 0, 7, "  TX-RX delta (B0 - B1)");
+    ++r;
+    makeCell(r, 0, "  dx_um", "um", out.dx);
+    makeCell(r, 4, "  dy_um", "um", out.dy);
+    ++r;
+
+    makeSubHeader(r, 0, 3, "  B0 (Rx)");
+    makeSubHeader(r, 4, 3, "  B1 (Tx)");
+    ++r;
+
+    struct FieldRow { const char* label; const char* unit;
+                      QLabel** b0; QLabel** b1; };
+    const FieldRow rows[] = {
+      {"  loc X",   "um", &out.b0.locX,   &out.b1.locX  },
+      {"  loc Y",   "um", &out.b0.locY,   &out.b1.locY  },
+      {"  z0",      "um", &out.b0.z0,     &out.b1.z0    },
+      {"  waist X", "um", &out.b0.waistX, &out.b1.waistX},
+      {"  waist Y", "um", &out.b0.waistY, &out.b1.waistY},
+      {"  M\xc2\xb2 X", "", &out.b0.m2X,  &out.b1.m2X   },
+      {"  M\xc2\xb2 Y", "", &out.b0.m2Y,  &out.b1.m2Y   },
+    };
+    for (const FieldRow& fr : rows) {
+      makeCell(r, 0, fr.label, fr.unit, *fr.b0);
+      makeCell(r, 4, fr.label, fr.unit, *fr.b1);
+      ++r;
+    }
+    outer->addLayout(dl);
+  };
+
+  buildLocationSection("MOE-A1", m_details.a1);
+  buildLocationSection("MOE-A2", m_details.a2);
+  outer->addStretch(1);
+}
+
+void M4AASerialDataWidget::openDetailsDialog() {
+  ensureDetailsDialog();
+  // Push the current selection's data into the freshly built (or already
+  // visible) dialog so it doesn't show stale "-" placeholders.
+  if (QTreeWidgetItem* item = m_tree->currentItem()) {
+    const int selIdx = item->data(0, Qt::UserRole).toInt();
+    refreshDetailsDialog(selIdx,
+                        findLatestByLocation(selIdx, "MOE-A1"),
+                        findLatestByLocation(selIdx, "MOE-A2"));
+  } else {
+    clearDetailsDialog();
+  }
+  m_detailsDialog->show();
+  m_detailsDialog->raise();
+  m_detailsDialog->activateWindow();
+}
+
+void M4AASerialDataWidget::clearDetailsDialog() {
+  if (!m_detailsDialog) return;
+  LocationDetailLabels* locs[2] = {&m_details.a1, &m_details.a2};
+  const char* locNames[2] = {"MOE-A1", "MOE-A2"};
+  for (int i = 0; i < 2; ++i) {
+    LocationDetailLabels& d = *locs[i];
+    if (d.header) d.header->setText(locNames[i]);
+    QLabel* fields[] = {
+      d.dx, d.dy,
+      d.b0.poyntX, d.b0.poyntY,
+      d.b0.locX, d.b0.locY, d.b0.z0, d.b0.waistX, d.b0.waistY, d.b0.m2X, d.b0.m2Y,
+      d.b1.poyntX, d.b1.poyntY,
+      d.b1.locX, d.b1.locY, d.b1.z0, d.b1.waistX, d.b1.waistY, d.b1.m2X, d.b1.m2Y,
+    };
+    for (QLabel* l : fields) if (l) l->setText("-");
+  }
+}
+
+void M4AASerialDataWidget::refreshDetailsDialog(int selIdx, int a1Idx, int a2Idx) {
+  // No-op if the dialog has never been opened — labels don't exist yet.
+  if (!m_detailsDialog) return;
+
+  auto setNum = [](QLabel* lbl, bool has, double v, int prec) {
+    if (!lbl) return;
+    lbl->setText(has ? QString::number(v, 'f', prec) : QStringLiteral("-"));
+  };
+
+  const int locIdx[2] = {a1Idx, a2Idx};
+  const char* locNames[2] = {"MOE-A1", "MOE-A2"};
+  LocationDetailLabels* locRefs[2] = {&m_details.a1, &m_details.a2};
+  for (int i = 0; i < 2; ++i) {
+    LocationDetailLabels& d = *locRefs[i];
+    if (locIdx[i] < 0) {
+      if (d.header) d.header->setText(QString("%1  -  (no entry)").arg(locNames[i]));
+      QLabel* fields[] = {
+        d.dx, d.dy,
+        d.b0.poyntX, d.b0.poyntY,
+        d.b0.locX, d.b0.locY, d.b0.z0, d.b0.waistX, d.b0.waistY, d.b0.m2X, d.b0.m2Y,
+        d.b1.poyntX, d.b1.poyntY,
+        d.b1.locX, d.b1.locY, d.b1.z0, d.b1.waistX, d.b1.waistY, d.b1.m2X, d.b1.m2Y,
+      };
+      for (QLabel* l : fields) if (l) l->setText("-");
+      continue;
+    }
+    const m4aa::SerialEntry& e = m_entries[static_cast<size_t>(locIdx[i])];
+    if (d.header) {
+      const bool isPrev = (locIdx[i] != selIdx);
+      d.header->setText(QString("%1  -  %2%3")
+                           .arg(locNames[i], e.timestamp,
+                                isPrev ? "  (prev)" : ""));
+    }
+    setNum(d.dx, e.txRx.has, e.txRx.dx, 3);
+    setNum(d.dy, e.txRx.has, e.txRx.dy, 3);
+    const m4aa::PoyntSection* beams[2] = {&e.b0, &e.b1};
+    BeamDetailLabels* brefs[2] = {&d.b0, &d.b1};
+    for (int b = 0; b < 2; ++b) {
+      const m4aa::PoyntSection& s = *beams[b];
+      BeamDetailLabels& r = *brefs[b];
+      setNum(r.poyntX, s.hasX,     s.x,      4);
+      setNum(r.poyntY, s.hasY,     s.y,      4);
+      setNum(r.locX,   s.hasLoc,   s.locX,   3);
+      setNum(r.locY,   s.hasLoc,   s.locY,   3);
+      setNum(r.z0,     s.hasZ0,    s.z0,     3);
+      setNum(r.waistX, s.hasWaist, s.waistX, 2);
+      setNum(r.waistY, s.hasWaist, s.waistY, 2);
+      setNum(r.m2X,    s.hasM2,    s.m2X,    3);
+      setNum(r.m2Y,    s.hasM2,    s.m2Y,    3);
+    }
+  }
 }
 
 QString M4AASerialDataWidget::watchDir() const {
@@ -468,6 +772,7 @@ void M4AASerialDataWidget::reload(const QString& path, bool jumpToNewest) {
           entry.location = QString::fromStdString(v["location"].get<std::string>());
         entry.b0 = parseSection(v, "b0");
         entry.b1 = parseSection(v, "b1");
+        entry.txRx = parseTxRx(v);
       }
       m_entries.push_back(entry);
     }
@@ -555,6 +860,7 @@ void M4AASerialDataWidget::clearRight() {
         lbl->setToolTip(QString());
       }
   m_scatter->setPoints({});
+  clearDetailsDialog();
 }
 
 void M4AASerialDataWidget::updateRight(int selIdx) {
@@ -593,7 +899,11 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
         const double v = !sec ? 0.0 : (axis == 0 ? sec->x : sec->y);
         QLabel* lbl = m_valueLabels[section][side][axis];
         lbl->setText(fmtNumber(has, v));
-        lbl->setStyleSheet(QString("color: %1;").arg(poyntColor(has, v)));
+        // Re-apply the full stylesheet (font + color) — setStyleSheet replaces
+        // the prior style, so we have to include the font properties here too.
+        lbl->setStyleSheet(QString(
+          "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
+          .arg(poyntColor(has, v)));
         lbl->setToolTip(has ? cellTip(cellNumber(section, side, axis), v)
                             : QString());
       }
@@ -619,4 +929,7 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
     }
   }
   m_scatter->setPoints(pts);
+
+  // Push the same A1/A2 entries into the popup (no-op if it hasn't been opened).
+  refreshDetailsDialog(selIdx, a1Idx, a2Idx);
 }
