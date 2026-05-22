@@ -62,6 +62,9 @@ private slots:
   void onJogVPlus();  void onJogVMinus();
   void onJogWPlus();  void onJogWMinus();
 
+  void onMoveToMoeA1();
+  void onMoveToMoeA2();
+
   // ScriptWorker signal handlers.
   void onScriptStarted();
   void onScriptCompleted(bool success, QString errorMessage);
@@ -82,6 +85,9 @@ private:
   // CLAUDE_step1_baseline.lua via launchScript() on success.
   void jogThenBaseline(const QString& axis, double signedDistance,
                        const QString& busyLabel);
+  // Background absolute move on gantry-main to a saved named position.
+  // No baseline chain. Used by Move to MOE-A1 / MOE-A2.
+  void moveToNamedGantryPosition(const char* name);
   // Repaint the step-display labels.
   void refreshTranslationStepLabel();
   void refreshRotationStepLabel();
@@ -115,6 +121,11 @@ private:
   QPushButton* m_uPlusBtn  = nullptr;  QPushButton* m_uMinusBtn = nullptr;
   QPushButton* m_vPlusBtn  = nullptr;  QPushButton* m_vMinusBtn = nullptr;
   QPushButton* m_wPlusBtn  = nullptr;  QPushButton* m_wMinusBtn = nullptr;
+
+  // Saved-position quick-move group.
+  QGroupBox*   m_positionsGroup  = nullptr;
+  QPushButton* m_moveToMoeA1Btn  = nullptr;
+  QPushButton* m_moveToMoeA2Btn  = nullptr;
 
   QPlainTextEdit* m_log = nullptr;
 

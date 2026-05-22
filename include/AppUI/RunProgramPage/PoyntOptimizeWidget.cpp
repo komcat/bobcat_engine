@@ -210,6 +210,36 @@ void PoyntOptimizeWidget::setupUI() {
     connect(m_wMinusBtn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onJogWMinus);
   }
   jogRow->addWidget(m_rotationGroup);
+
+  // Saved-position quick-move group.
+  m_positionsGroup = new QGroupBox("positions (gantry-main)");
+  m_positionsGroup->setStyleSheet(
+    "QGroupBox { background-color: #2a2230; border: 1px solid #563f6a; border-radius: 4px; margin-top: 8px; padding-top: 8px; }"
+    "QGroupBox::title { subcontrol-origin: margin; left: 8px; padding: 0 4px; }");
+  {
+    auto* g = new QGridLayout(m_positionsGroup);
+    g->setHorizontalSpacing(6);
+    g->setVerticalSpacing(6);
+
+    m_moveToMoeA1Btn = new QPushButton("Move to MOE-A1");
+    m_moveToMoeA1Btn->setMinimumWidth(150);
+    m_moveToMoeA1Btn->setToolTip(
+      "Move gantry-main to the saved 'MOE-A1' named position. "
+      "Save it from the M4 Angle tab first.");
+    g->addWidget(m_moveToMoeA1Btn, 0, 0);
+
+    m_moveToMoeA2Btn = new QPushButton("Move to MOE-A2");
+    m_moveToMoeA2Btn->setMinimumWidth(150);
+    m_moveToMoeA2Btn->setToolTip(
+      "Move gantry-main to the saved 'MOE-A2' named position. "
+      "Save it from the M4 Angle tab first.");
+    g->addWidget(m_moveToMoeA2Btn, 1, 0);
+
+    connect(m_moveToMoeA1Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onMoveToMoeA1);
+    connect(m_moveToMoeA2Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onMoveToMoeA2);
+  }
+  jogRow->addWidget(m_positionsGroup);
+
   jogRow->addStretch(1);
   root->addLayout(jogRow);
 
@@ -277,6 +307,7 @@ void PoyntOptimizeWidget::setBusy(bool busy, const QString& whatRunning) {
     m_xPlusBtn, m_xMinusBtn, m_yPlusBtn, m_yMinusBtn, m_zPlusBtn, m_zMinusBtn,
     m_rotationStepPlusBtn, m_rotationStepMinusBtn,
     m_uPlusBtn, m_uMinusBtn, m_vPlusBtn, m_vMinusBtn, m_wPlusBtn, m_wMinusBtn,
+    m_moveToMoeA1Btn, m_moveToMoeA2Btn,
   };
   for (QPushButton* b : gated) if (b) b->setEnabled(!busy);
   if (m_stopBtn) m_stopBtn->setEnabled(busy);
@@ -474,6 +505,50 @@ void PoyntOptimizeWidget::onJogVPlus()  { jogThenBaseline("V", +rotationStepDeg(
 void PoyntOptimizeWidget::onJogVMinus() { jogThenBaseline("V", -rotationStepDeg(m_rotationStepMilliDeg), "V- jog"); }
 void PoyntOptimizeWidget::onJogWPlus()  { jogThenBaseline("W", +rotationStepDeg(m_rotationStepMilliDeg), "W+ jog"); }
 void PoyntOptimizeWidget::onJogWMinus() { jogThenBaseline("W", -rotationStepDeg(m_rotationStepMilliDeg), "W- jog"); }
+
+void PoyntOptimizeWidget::onMoveToMoeA1() { moveToNamedGantryPosition("MOE-A1"); }
+void PoyntOptimizeWidget::onMoveToMoeA2() { moveToNamedGantryPosition("MOE-A2"); }
+
+void PoyntOptimizeWidget::moveToNamedGantryPosition(const char* name) {
+  if (m_busy) {
+    appendLog("[busy] another job is already running", "#ef5350");
+    return;
+  }
+  if (!m_context || !m_context->motionManager) {
+    appendLog("[error] motion manager unavailable", "#ef5350");
+    return;
+  }
+
+  PositionStruct target;
+  if (!m_context->motionManager->GetNamedPosition("gantry-main", name, target)) {
+    appendLog(QStringLiteral(
+        "[error] no saved gantry-main position '%1'. "
+        "Save it from the M4 Angle tab first.").arg(QString::fromUtf8(name)),
+      "#ef5350");
+    return;
+  }
+
+  const QString tag = QString::fromUtf8(name);
+  setBusy(true, QStringLiteral("Move to %1").arg(tag));
+  appendLog(QStringLiteral("[move] gantry-main -> %1 (X=%2 Y=%3 Z=%4 mm)")
+              .arg(tag)
+              .arg(target.x, 0, 'f', 4)
+              .arg(target.y, 0, 'f', 4)
+              .arg(target.z, 0, 'f', 4),
+            "#60a5fa");
+
+  auto* motionMgr = m_context->motionManager;
+  m_moveFuture = std::async(std::launch::async,
+    [this, motionMgr, target, tag]() {
+      const bool ok = motionMgr->MoveToAbs6("gantry-main", target, true);
+      QMetaObject::invokeMethod(this, [this, ok, tag]() {
+        appendLog(ok ? QStringLiteral("[move] arrived at %1").arg(tag)
+                     : QStringLiteral("[move] move to %1 FAILED").arg(tag),
+                  ok ? "#4caf50" : "#ef5350");
+        setBusy(false);
+      }, Qt::QueuedConnection);
+    });
+}
 
 void PoyntOptimizeWidget::onScriptStarted() {
   appendLog("[script] started", "#888");
