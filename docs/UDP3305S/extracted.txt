@@ -1,0 +1,932 @@
+===== PAGE 1 =====
+UDP3305S Series 
+Programmable DC Power Supply 
+User Manual 
+
+===== PAGE 2 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Preface 
+Thank you for purchasing this brand new product. In order to use this product safely and correctly, please read this 
+manual thoroughly, especially the safety notes. 
+After reading this manual, it is recommended to keep the manual at an easily accessible place, preferably close to 
+the device, for future reference. 
+Limited Warranty and Liability 
+Uni-Trend guarantees that the product is free from any defect in material and workman ship within three years 
+from the purchase date. This warranty does not apply to damages caused by accident, negligence, misuse, 
+modification, contamination or improper handling. The dealer shall not be entitled to give any other warranty on 
+behalf of Uni-Trend. If you need warranty service within the warranty period, please contact your seller directly. 
+Uni-Trend will not be responsible for any special, indirect, incidental or subsequent damage or loss caused by using 
+this device.  
+Copyright Information 
+Copyright is owned by Uni-Trend Technology (China) Co., Ltd. 
+UNI-T products are protected by patent rights in China and other countries, including issued and pending patents. Uni - 
+Trend reserves the rights to any product specification and pricing changes. 
+Uni-Trend Technology (China) Co., Ltd. all rights reserved. Trend reserves all rights. Information in this manual supersedes 
+all previously published versions. No part of this manual may be copied, extracted or translated by any means without 
+the prior permission of Uni Trend. 
+UNI-T is the registered trademark of Uni Trend Technology (China) Co., Ltd. 
+Warranty Service 
+The instrument has a warranty period of one year from the date of purchase. If the instrument is damaged due to 
+improper operation by the user d uring the warranty period, the maintenance fee and the costs caused by the 
+maintenance shall be borne by the user, and the instrument shall be maintained by the company for life. 
+If the original purchaser sells or transfers the product to a third party wi thin one year from the date of purchase 
+of the product, the warranty period of one year shall be from the date of the original purchase from UNI -T or an 
+authorized UNl-T distributor. Power cords, accessories and fuses, etc. are not included in this warranty. 
+If the product is proved to be defective within the warranty period, UNI-T reserves the rights to either repair the 
+defective product without charging of parts and labor, or exchange the defected product to a working equivalent 
+product (determined by UNI-T). Replacement parts, modules and products may be brand new, or perform at the 
+===== PAGE 3 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+same specifications as brand new products. All original parts, modules, or products which were defective become 
+the property of UNI-T. 
+The "customer" refers to the individual or entity that is declared in the guarantee. In order to obtain the warranty 
+service, “customer “must inform the defects within the applicable warranty period to UNI -T, and perform 
+appropriate arrangements for the warranty service. 
+The customer shall be responsible for packing and shipping the defective products to the individual or entity that 
+is declared in the guarantee. In order obtain the warranty service, customer must inform the defects within the 
+applicable warranty period to UNI -T, and perform appropriate arrangements for the warranty service. The 
+customer shall be responsible for packing and shipping the defective products to the designated maintenance 
+center of UNI-T, pay the shipping cost, and provide a copy of the purchase receipt of the original purchaser. If the 
+products is shipped domestically to the purchase receipt of the original purchaser. If the product is shipped to the 
+location of the UNI -T service center, UNI-T shall pay the return shipping fee. If the product is sent to any other 
+location, the customer shall be responsible for all shipping, duties, taxes, and any other expenses. 
+Limited Warranty and Liability 
+The warranty is inapplicable to any defects, failures or damages caused by accident, normal wear of components, 
+use beyond specified scope or improper use of product, or improper or insufficient maintenance. UNI -T is not 
+obliged to provide the services below as prescribed by the warranty: 
+a) Repair damage caused by installation, repair or maintenance of personnel other than service representatives of
+UNI-T;
+b) Repair damage caused by improper use or connection to incompatible equipment;
+c) Repair any damages or failures caused by using power source not provided by UNI-T;
+d) Repair products that have been changed or integrated w ith other products (if such change or integration
+increases time or difficulty of repair).
+The warranty is formulated by UNI-T for this product, replacing any other express or implied warranties. UNI-T and 
+its distributors refuse to give any implied warra nty for marketability or applicability for special purpose. For 
+violation of the warranty, repair or replacement of defective products is the only and all remedial measure UNI-T 
+provides for customers. No matter whether UNI-T and its distributors are informed of any possible indirect, special, 
+occasional or inevitable damage in advance, they assume no responsibility for such damage. 
+Safety Information 
+Warning Danger:  
+To avoid electric shock and personal injury, please follow the following guidelines. 
+Disclaimer 
+Please read the following safety information carefully before using the instrument. UNI-T will not be liable for the 
+
+===== PAGE 4 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+personal injury and property losses caused by the user's failure to comply with the following terms. 
+Correct connection of ground wire 
+To avoid electric shock, please use the provided cable to connect and make sure that the product is properly 
+grounded before use. 
+Operating voltage 
+Please ensure that the main supply does not exceed 10% of rated operating range to prevent product damage. 
+Input voltage 
+Please notice the product symbols before connecting. The instrument supports 2 kinds of AC input method: 110V 
+and 220V. Please check if the switch of load matches with the input power source and if the fuse is correctly 
+installed. 
+Leads 
+Check whether the insulation layer of the test leads is damaged or whether the leads are exposed or conducting. 
+If the leads are damaged, replace them. 
+Fuses 
+Only fuses specified for this product are allowed. 
+Overvoltage protection 
+Please ensure that no exc essive voltage (such as the voltage caused by lightning) reaches the product to avoid 
+electric shock. 
+Do not open the housing of the product. 
+Do not operate the product when the instrument case is open. Do not alter the internal circuit of the instrument. 
+Do not touch live parts. 
+Do not touch exposed connectors, unused input terminals, or circuits being measured while the instrument is in 
+use. 
+Please do not use the instrument in inflammable and explosive environment. 
+Do not use or store the instrument in high temperature, high humidity, flammable, explosive and strong magnetic 
+field environments. 
+Grounding Power on 
+Protective grounding Power off 
+Signal grounding Ground terminal for chassis 
+Danger 
+
+===== PAGE 5 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Environment-Friendly Use Period (EFUP) 
+Waste Electrical and Electronic Equipment (WEEE) Instruction 2002/96/EC 
+Product Overview 
+This chapter includes: 
+Product Series (Features and Specifications) 
+Front Panel 
+Rear Panel 
+3.11 Product Series 
+UDP3305S series programmable DC power supply includes two models: UDP3305S and UDP3305S-E. The output 
+ranges are shown in the table below: 
+Model Maximum output voltage Maximum output current 
+UDP3305S CH1: 33V 
+CH2: 33V 
+CH3: 6.2V 
+CH4: 5V 
+CH1: 5.2A 
+CH2: 5.2A 
+CH3: 3.2A 
+CH4: 2A UDP3305S-E 
+UDP3305S seri es is a high -performance programmable DC power supply with a clear interface, excellent 
+performance indexes, multiple analysis functions and communication interfaces, which can meet diverse testing 
+requirements. 
+1.1.1 Features 
+ The maximum power can reach 373W, and the output of each channel is individually controllable.
+This product contains certain hazardous substances and can be used safely 
+during its environmental-friendly use period (EFUP) of 40 years, as shown 
+in the symbol on the left. If the specified time is exceeded, the product 
+should be recovered. 
+Do not dispose the product and its accessories in trash bin. 
+===== PAGE 6 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+ Four-channel independent output: CH1/CH2: 0~30V/5A, CH3: 0~6V/3A, CH4: 5V/2A (USB)
+ Multi-protection: over voltage/over current/over temperature protection
+ CH1/CH2/CH3 independent output switch
+ Excellent load regulation and line regulation
+ Ultra-low output ripple and noise
+ Internal series and parallel connection output function
+ Voltage and current linear programmable functions
+ 4.3" TFT display, which can display multiple parameters and three-channel status at the same time
+ List mode/delayer, can control voltage and current output according to users' needs
+ External trigger function to realize industrial automation control
+ USB Host, USB Device, LAN, RS232, Digital IO interfaces
+ With a waveform display function, the instrument can display the output voltage/current waveform in real
+time, and cooperate with the digital display of the voltage, current and power values, which is convenient for
+users to know the output status and trend of the instrument.
+ The instrument can automatically control the fan speed according to the operating conditions to reduce the
+noise.
+ Fan fault detection and alarm function
+ 10 sets of settings to save and recall, supports U disk read and storage
+ Five-digit voltage/four-digit current high-precision display, resolution: 1mV/1mA
+ Key lock function to prevent accidental touch
+ Supports SCPI remote command control
+1.1.2 Specifications 
+Technical indexes 
+Models UDP3305S-E UDP3305S 
+Output rating 
+Voltage 
+CH1&CH2：0～32V×2  
+CH3：0～6V 
+CH4：5V（USB output） 
+CH1&CH2：0～32V×2  
+CH3：0～6V 
+CH4：5V（USB output） 
+Current 
+CH1&CH2：0～5A×2 
+CH3：0～3A×1  
+CH4：2A（USB output） 
+CH1&CH2：0～5A×2 
+CH3：0～3A×1  
+CH4：2A（USB output） 
+Power 348W 348W 
+Constant 
+voltage mode 
+Regulation 
+Power supply regulation: 
+≤0.01%+2mV 
+Power supply regulation: 
+≤0.01%+2mV 
+Load regulation: ≤0.01%+2mV Load regulation: ≤0.01%+2mV 
+Ripple and 
+noise ＜350μVrms/2mVpp(5Hz~1MHz) ＜350μVrms/2mVpp(5Hz~1MHz) 
+Response 
+time 
+≤50μs(50% load variation, minimum 
+load 0.5A) 
+≤50μs(50% load variation, 
+minimum load 0.5A) 
+===== PAGE 7 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Command 
+processing 
+time ＜100ms ＜100ms 
+Output range Adjustable continuously from 0 to 
+rated voltage 
+Adjustable continuously from 0 to 
+rated voltage 
+Constant 
+current mode 
+Regulation 
+Power supply regulation: 
+≤0.01%+250μA 
+Power supply regulation: 
+≤0.01%+250μA 
+Load regulation: ≤0.01%+250μA Load regulation: ≤0.01%+250μA 
+Ripple 
+current ≤2mArms ≤2mArms 
+Output range Adjustable continuously from 0 to 
+rated current 
+Adjustable continuously from 0 to 
+rated current 
+Tracking 
+mode 
+Parallel 
+connection 
+Power supply regulation: 
+≤0.01%+2mV  
+Power supply regulation: 
+≤0.01%+2mV  
+Load regulation: ≤0.01%+2mV Load regulation: ≤0.01%+2mV 
+Series 
+connection 
+Power supply regulation: 
+≤0.01%+3mV 
+Power supply regulation: 
+≤0.01%+3mV 
+Load regulation: ≤300mV Load regulation: ≤300mV 
+Tracking 
+error 
+≤0.5%+10mV（10~30V no load） 
+≤0.5%+30mV（0~9.99V no load） 
+Connected load ≤300mV 
+≤0.5%+10mV（10~30V no load） 
+≤0.5%+30mV（0~9.99V no 
+load） 
+Connected load ≤300mV 
+Measurement 
+Display 
+Voltage full scale, 4 digits display；
+LCD 
+Voltage full scale, 5 digits 
+display；LCD 
+Current full scale, 4 digits display；
+LCD 
+Current full scale, 4 digits 
+display；LCD 
+Programming 
+resolution 
+Voltage: 10mV Voltage: 1mV 
+Current: 1mA Current: 1mA 
+Read back 
+resolution 
+Voltage: 10mV Voltage: 1mV 
+Current: 1mA Current: 1mA 
+Programming 
+accuracy 
+（25±5℃） 
+Voltage: ±（0.3%+20mV） Voltage: ±（0.03%+10mV） 
+Current: ±（0.2%+5mA） Current: ±（0.2%+5mA） 
+Read back 
+accuracy 
+（25±5℃） 
+Voltage: ±（0.1%+20mV） Voltage: ±（0.03%+10mV） 
+Current: ±（0.15%+5mA） Current: ±（0.15%+5mA） 
+===== PAGE 8 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Voltage 
+programmed 
+speed (1% of 
+total variation 
+range) 
+CH1 
+Rise: full load＜50ms; no-load＜
+30ms 
+Rise: full load＜50ms; no-load＜
+30ms 
+Fall: full load＜45ms; no-load＜
+400ms 
+Fall: full load＜45ms; no-load＜
+400ms 
+CH2 
+Rise: full load＜50ms; no-load＜
+30ms 
+Rise: full load＜50ms; no-load＜
+30ms 
+Fall: full load＜45ms; no-load＜
+400ms 
+Fall: full load＜45ms; no-load＜
+400ms 
+CH3 
+Rise: full load＜15ms; no-load＜
+13ms 
+Rise: full load＜15ms; no-load＜
+13ms 
+Fall: full load＜22ms; no-load＜
+100ms 
+Fall: full load＜22ms; no-load＜
+100ms 
+Temperature 
+coefficient 
+per℃
+CH1 Voltage: 0.01%+5mV；Current: 
+0.01%+2mA 
+Voltage: 0.01%+5mV；Current: 
+0.01%+2mA 
+CH2 Voltage: 0.01%+5mV；Current: 
+0.01%+2mA 
+Voltage: 0.01%+5mV；Current: 
+0.01%+2mA 
+CH3 Voltage: 0.01%+2mV；Current: 
+0.01%+2mA 
+Voltage: 0.01%+2mV；Current: 
+0.01%+2mA 
+Channel 4 (USB 
+output) 
+indicator 
+Output 
+voltage 5V ±0.25V 5V ±0.25V 
+Output 
+current 2A 2A 
+===== PAGE 9 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+3.12 Front Panel 
+1.2.1 Keys 
+Key Function 
+WAVE Enable the waveform display function 
+Output channels and status indicators
+power switch
+5V/2A USB output
+LCD
+power switch
+CH3 voltage selection and
+LOCK(key lock) 
+UTILTY(system settungs)
+PRESET(PRESET)
+Code switch
+Numeric
+Menu keys
+SER(series connectio),PARA(parallel 
+connection),waveform LIST,STORAGE
+
+===== PAGE 10 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+SER Enable or disable the series connection function 
+PARA Enable or disable the parallel connection function 
+LIST/DELAYER Enable and switch between list mode or delayer 
+STORAGE Internal and external storage and recall 
+Numeric keys Input the number or decimal point 
+ESC Exit the current interface and return to the previous interface 
+CH1 Select channel 1 
+CH2 Select channel 2 
+CH3 Select channel 3 and switch between 1.8V, 2.5V, 3.3V, 5V 
+ON OFF 
+Enable or disable the output of the corresponding 
+channel 
+ALL ON OFF Enable or disable the outputs of all the channels 
+Knob Select or edit the parameter, press it to confirm 
+← Step through parameters towards the left 
+→ Step through parameters towards the right 
+LOCK Push to lock, long push to unlock 
+PRESET Preset parameters of channels, series, parallel connection 
+UTILITY 
+System settings; set backlight, trigger detector, upper 
+connection 
+🏠 Return to the system main interface 
+Multi-function 
+buttons 
+According to the prompt at the bottom of the display, press 
+to select the corresponding function 
+===== PAGE 11 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+3.13 Rear Panel 
+Inspection and Installation 
+This chapter includes: 
+Packing List 
+Requirements for Power Supply 
+Operating Environment 
+Cleaning 
+3.11 Packing List 
+Before using the instrument: 
+1. Check whether the appearance of the product is damaged, scratched or has other defects;
+2. Check whether the instrument accessories are missing according to the packing list.
+If it is damaged or the accessories are missing, please contact Uni-Trend Instrument Sales Department or the
+distributor immediately.
+Accessories Quantity Remarks 
+Programmable DC power 
+supply 1 The model is subject to the actual 
+order. 
+3C power cord 1 
+250V/4A spare fuse 1 Only applicable to 220V input 
+voltage 
+User manual/ upper 1 Users can download them from 
+
+===== PAGE 12 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+computer software UNI-T’s official website. 
+1 
+3.12 Requirements for Power Supply 
+UDP3305S series can only be used in following conditions: 
+Parameters Requirements 
+Voltage AC 100V/120V/220V/230V±10% 
+Frequency 50/60Hz 
+Power MAX 600W 
+Fuse 
+AC220V input voltage: T4AL250V 
+AC110V input voltage: T8AL250V 
+ Three-core power cord is provided. Please make sure that the ground wire of three-phase socket is properly
+grounded before use.
+ 250V/4A (5x20mm) fuse is selected and installed for the instrument (220V) with a spare fuse in the fuse case.
+ When replacing the fuse, please remove the external power cord first, then open the fuse slot under the
+power interface, take out the old fuse and replace it with a new one, and install the fuse slot back after
+completion.
+Warning: Please do not use the damaged power cord. 
+3.13 Operating Environment 
+UDP3305S series can only be used in normal temperature and low condensing zone. The general environment 
+requirements are listed as follows.  
+Environment Requirements 
+Operating temperature 0° C~40° C 
+Operating humidity 20%~80% (non-condensing) 
+Storage temperature -10° C~60° C
+Altitude ≤2000m 
+Degree of pollution II 
+3.14 Cleaning 
+To avoid electric shock, please unplug the power cord before cleaning.  
+Clean the housing and the panel with a soft damp cloth, and make sure it is completely dry. 
+Note: Do not use solvents like alcohol and gasoline. 
+USB cable 
+===== PAGE 13 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+3. Preparation for Start-Up
+This chapter includes: 
+Power on and Run 
+Output Terminals 
+User Interface 
+3.1 Power on and Run 
+Before connecting the power supply, make sure that the power supply voltage switch on the rear panel is consistent 
+with the actual connected voltage, and the frequency is 50Hz or 60Hz. 
+Note: If the instrument is damaged due to the wrong power supply, it will not be covered by the product 
+warranty. 
+Before plugging in the power cord, make sure that the power switch on the front panel is off. 
+Connect the power cord to the AC power input terminal and the three-hole AC power output terminal on the rear 
+panel (AC power supply with grounding wire). 
+Warning: The three-hole power cord that comes with the instrument has an independent grounding terminal. The 
+power supply used must be three-hole and grounded, otherwise, it may cause electric shock. 
+Press the power switch to power on the instrument. 
+3.2 Output Terminals 
+1. Each channel can be used as an independent channel.
+2. When CH1 and CH2 are connected in series or in parallel, pay attention to the wiring method.
+3. The green indicator of each channel indicates the constant voltage mode, and the red indicates the constant
+current mode.
+3.3 User Interface 
+3.3.1 Layout 
+After turning on the instrument, it will enter the user interface, as shown in the figure below. 
+
+===== PAGE 14 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+3.3.2 Explanation 
+NO. Name Explanation 
+① Channel output status ON/OFF 
+② Channel output mode CV/CC mode 
+③ 
+Output voltage/current 
+/power Display the actual voltage/current/ power 
+④ 
+Voltage and current setting 
+window Voltage and current setting 
+⑤ 
+Voltage and current limit 
+setting window 
+Overvoltage and overcurrent protection 
+setting values 
+4 Front Panel Operations 
+This chapter includes: 
+Constant Voltage Output 
+Constant Current Output 
+Power Supply Series and Parallel Connections 
+List Mode and Delayer 
+Advanced Functions 
+Display Setting 
+Store and Recall 
+System Settings 
+4.1 Constant Voltage Output 
+UDP3305S series power supply provides two output modes: constant voltage output (CV) and constant current 
+output (CC). In CV mode, the output voltage equals the voltage setting value and the output current is determined 
+by the load. In CC mode, the output current equals the current setting value and the output voltage is determined 
+by the load (When the power supply setting limit current value is less than the current value consumed by the load, 
+
+===== PAGE 15 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+the power supply is in constant current mode). 
+This section introduces the operation method in constant voltage output mode. 
+Setting Interface 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Select the channel:
+Select the channel according to the voltage and current required by the load. Press the corresponding channel
+selection key; at this point, this channel and its output state are high-lighted on the screen.
+3. Connect the load:
+Use thick wires to connect the load to the selected channel.
+4. As shown in the figure below, connect the load with the channel output terminals of the corresponding channel
+at the front panel.
+  Caution 
+   Pay attention to the polarity when connecting them to avoid damaging the instrument and the devices 
+connected to the instrument. 
+5. Set the voltage and current:
+Method 1 
+Press the "Voltage" or "Current" key, and the cursor will be displayed at the end of the voltage or current setting 
+value. Press  or  to select the voltage digit to be adjusted, and rotate the knob to set the value of each 
+digit. 
+Method 2 
+Press the "Voltage" or "Current" key, and the cursor will be displayed at the end of the voltage setting value. Input 
+the desired voltage by using the numeric keys, and press  to delete. The voltage can be set by pressing the 
+
+===== PAGE 16 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+corresponding key through the prompt unit V or mV at the bottom of the screen. 
+6. Set overvoltage and overcurrent protection:
+The method is the same as the voltage and current setting. After setting the values, press the "Overvoltage" or
+"Overcurrent" key to turn on/off the overvoltage and overcurrent protection.
+Note: ☑ means turning on the protection, and ☐ means turning off the protection. 
+7. Turn on the output:
+Press the  key to turn on the output of the corresponding channel and the actual output voltage, output
+current, ON/OFF state, output power as well as the output mode (CV/CC) are high-lighted in the user interface.
+8. Check the output mode:
+In constant voltage output mode, the output mode displayed should be "CV"; if
+"CC" is displayed, users can increase the current setting value properly and the power supply will switch to CV
+mode automatically.
+4.2 Constant Current Output 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Select the channel:
+Select the channel according to the voltage and current required by the load. Press the corresponding channel
+selection key; at this point, this channel and its output state are high-lighted on the screen.
+3. Connect the load:
+Connect the load to the selected channel.
+4. Set the voltage:
+It is the same as setting voltage in constant voltage mode.
+5. Set the current:
+It is the same as setting current in constant voltage mode.
+6. Set overvoltage and overcurrent protection:
+It is the same as setting overvoltage and overcurrent protection in constant voltage mode.
+7. Turn on the output:
+Turn on the output of the corresponding channel and the actual output voltage, output current, output power
+as well as the output mode (CC) are high-lighted in the user interface.
+8. Check the output mode:
+In constant current output mode, the output mode displayed should be "CC"; if
+"CV" is displayed, users can decrease the current setting value properly and the power supply will switch to CC
+mode automatically.
+4.3 Power Supply Series and Parallel Connections 
+Higher voltages can be provided when two or more insulated channels (the channels can be from a single power 
+supply or multiple power supplies) are connected in  series. Higher currents can be provided when two or more 
+insulated channels (the channels can be from a single power supply or multiple power supplies) are connected in 
+parallel. UDP3305S series power supply's series and parallel connections do not require external wiring. Press "
+" or " " to realize the connections, but it is limited to the series and parallel connections between CH1 and CH2. 
+If users need to connect the UDP3305S series power supply in series and parallel with other power supply channels, 
+they can only realize it through external wiring, as shown in the figure below, but pay attention to the following 
+points. 
+
+===== PAGE 17 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Note: 
+1. Only insulated channels can be connected in series or in parallel.
+2. In power supply series and parallel connections, the settings of the corresponding parameters must comply with
+the safety requirements.
+When two insulated channels are connected in series: VL=V1+V2 
+When two insulated channels are connected in parallel: IL=I1+I2 
+Power Supply Series Connection 
+Higher voltages can be provided by connecting power supplies in series. In this case, the output voltage is the sum 
+of the output voltages of all the channels. When the UDP3305S series power supply enters the series mode, users 
+only need to set its output voltage, output current, and the overvoltage and overcurrent protection values. 
+Series Connection Setting Interface 
+
+===== PAGE 18 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Enter series mode:
+Press “ ”, and the screen will display that CH1 and CH2 enter the series mode. The key backlight lights up, and
+SER appears on the screen with a wiring diagram.
+3. Connect the load:
+Connect the load according to the wirin g diagram on the screen. Connect the positive pole of the load to the
+positive pole (red) of the CH1 output terminal, and connect the negative pole of the load to the negative pole
+(black) of the CH2 output terminal.
+4. Set the voltage, current, overvoltage and overcurrent protection:
+Refer to chapter "Constant Voltage Output" . All the channels in series connection should be operating in
+constant voltage mode.
+5. Turn on the output:
+Press the  key of CH1or CH2 to enter the series connection output mode. At this time, the CH1 and CH2
+output indicators are all green (CV mode). If the indicator is red, please check whether the set current meets
+the load requirements.
+Power Supply Parallel Connection 
+High currents can be provided by connecting power supplies in parallel. In this case, the output current is the sum 
+of the output currents of all the channels. When the UDP3305S series power supply enters the parallel mode, users 
+only need to set its output voltage, output current, and the overvoltage and overcurrent protection values. 
+Parallel Connection Setting Interface 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Enter parallel mode:
+Press “ ”, and the screen will display that CH1 and CH2 enter the parallel mode. The key backlight lights up, 
+and PARA appears on the screen with a wiring diagram. 
+3. Connect the load:
+Connect the load according to the wiring diagram on the screen. Connect the positive pole of the load to the
+positive pole (red) of the CH1 output terminal, and connect t he negative pole of the load to the negative pole
+
+===== PAGE 19 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+(black) of the CH1 output terminal. 
+4. Set the voltage, current, overvoltage and overcurrent protection:
+Refer to chapter "Constant Voltage Output". All the channels in parallel connection should be operating in
+constant voltage mode.
+5. Turn on the output:
+Press the  key of CH1 or CH2 to enter the parallel connection output mode. At this time, the CH1 and CH2
+output indicators are green (CV mode) and red (parallel connection or CC mode) respectively. If the CH1 indicator
+is red too, please check whether the set current meets the load requirements.
+4.4 List Mode (Timer) and Delayer 
+UDP3305S series power supply provides the timer and delayer functions. 
+When the timer is enabled, the instrument outputs the preset parameter groups (at most 2048 groups): voltage, 
+current and timing time. Besides, users can define the parameter groups by calling the template that comes with 
+the system. 
+When the delayer is enabled, he instrument outputs the preset parameter groups (at most 2048 groups): enable 
+or disable output and delay time. Besides, users can define the parameter groups by calling the system's automatic 
+generation function. 
+The output parameters of the list mode and the delayer can be saved in the internal memory of the system. 10 
+groups can be stored each, and users can define the file name. Users can also store list mode parameters (list mode 
+file, with the suffix ". LST") and delayer parameters (delay file, with the suffix ".DLY ") in external  memory. The 
+number of external storage files is not limited by the system, only limited by the size of the external storage space. 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Enter the timer/delayer mode:
+Press to step through the list mode and delayer setting interface. 
+Note: For the same channel , the timer function and delayer function are mutually exclusive. When the timer is  
+enabled, delayer is disabled. For different channels, they can be enabled or disabled at the same time.  
+3. Select the channel:
+In timer/delayer mode, CH1, CH2, CH3, series and parallel can be selected as output channels.
+When selecting CH1, CH2 or CH3, they can all work independently at the same time.
+When selecting series or parallel mode, it can work independently with CH3, but CH1 and CH2 channels cannot
+be used independently.
+4. Connect the load:
+Connect the load according to  the selected load. Refer to chapter "Power Supply Series and Parallel
+Connections" for the connection method.
+5. Set list mode/delayer parameters:
+Refer to the following chapters "List Mode Parameter Setting" and "Delayer Parameter Setting".
+6. Turn on the output:
+Press of the corresponding channel to turn on the timing output. 
+List Mode Parameter Setting 
+
+===== PAGE 20 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+The interface of list mode is as follows: 
+To set the list mode parameters manually: 
+Press “Basic parameter” key to enter the setting interface. Users can edit the starting group number, the required 
+number of output groups (maximum 2048 groups), the number of cycles (maximum 99999 times) and the output 
+status after the timing time expires. Set parameters for each group: Set voltage, current, and time parameters for 
+each group based on the required number of output groups. 
+To set the list mode parameters using template: 
+Press “Template” to open the template editing menu. 
+1. Press “Type” to select the desired template;
+2. Press “Edit object” to select "Voltage" or "Current";
+3. Define waveform start group values and total points;
+4. Press “More” to set the waveform parameters such as the voltage, maximum and minimum current, high and
+low levels, pulse width, period and inversion;
+5. Press “Construct” to complete the waveform output setting;
+6. Press several times until the instrument returns to the initial interface of the list mode. Press the "Enable" 
+key, the timing output function is set up. 
+Note: Press to return to the previous menu. 
+
+===== PAGE 21 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Delayer Parameter Setting 
+The interface of delayer is as follows: 
+To set the delayer parameters manually: 
+Press “Basic parameter” key to enter the setting interface. Users can edit the starting group number, the required 
+number of output groups (maximum 2048 groups), the number of cycles (maximum 99999 times), and conditions 
+for terminating the output state and stopping the delayer. Set parameters for each group: Set voltage, current, and 
+time parameters for each group based on the required number of output groups. 
+To set the list mode parameters using template: 
+Press “Auto generation” to open the template editing menu. 
+1. Press “Type” to select the desired template;
+2. Press “Start group” to edit the start group number;
+3. Press "Total points" to set the number of points required for this delay (maximum 2048 points);
+4. Press "Mode" or "Time” to set parameters for each template. Press "Mode" to select 01 code (off/on cycle) or
+10 code (on/off cycle). Press "Time” to edit time base value, step value, open time and close time, etc. (the menu
+varies according to different templates).
+5. After all parameters are set, press "Generate" to complete the delayer template output setting.
+6. Press "Enable", the delayer will control the automatic output of the corresponding channel.
+Templates 
+
+===== PAGE 22 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+The list mode and delayer are equipped with multiple output templates. The purpose is to facilitate users to 
+operate and save time. The following sections describe the parameters of each template. 
+4.5 List Mode Templates 
+The optional list mode templates include: sine, pulse, ramp, stair up, stair down, stair up down, exponential rise 
+and exponential fall. 
+1. Sine
+The Sine waveform is as shown in the figure below.
+The instrument determines the Sine amplitude according to the maximum and minimum  currently set and
+determines the Sine period according to the total number  of points ( maximum 2048) and the time interval
+(maximum 99999) currently set.
+After the waveform is constructed, set the number of cycles in the list mode interface to continuously output
+Sine waveforms. The output time is determined by the product of the period and the number of cycles.
+Sine waveform 
+2. Pulse
+The Pulse waveform is as shown in the figure below.
+The pulse width t determines the high level duration. The period T determines the Pulse duration. The low level
+time equals the period T minus the pulse width t (T-t).
+The high and low level values determine the maximum and minimum amplitudes of the pulse.
+Pulse waveform 
+3. Ramp
+The Ramp waveform is as shown in the figure below.
+The difference between the set maximum and minimum values and the time interval (maximum 99999) will
+determine the slope of the Ramp waveform.
+Symmetry indicates the proportion of Ramp waveform rise time to the whole cycle. The ramp -down time is
+equal to the period minus the product of period and symmetry.
+Ramp waveform 
+Symmetry =t/T*100% 
+
+===== PAGE 23 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+4. Stair Up
+The Stair Up waveform is as shown in the figure below.
+The instrument determines the amplitude of the Ramp according to the maximum and minimum currently set.
+The total number of points (N) will divide the amplitude into N-1 steps.
+The time interval (maximum 99999) indicates the duration of each step, and determines the waveform period
+together with the total number of points.
+Stair up 
+5. Stair Down
+The Stair Down waveform is as shown in the figure below.
+The instrument determines the amplitude of the Ramp according to the maximum and minimum currently set.
+The total number of points (N) will divide the amplitude into N-1 steps.
+The time interval (maximum 99999) indicates the duration of each step, and determines the waveform period
+together with the total number of points.
+Stair down 
+6. Stair Up Down
+The Stair Up Down waveform is as shown in the figure below.
+The instrument determines the amplitude of the Ramp according to the maximum and minimum currently set.
+The total number of points (N) will divide the amplitude into N -1 steps. When N is an odd, the num ber of
+ascending steps is (N-1)/2 and descending steps is (N-1)/2+1. When N is an even, the number of ascending steps
+is N/2 and descending steps is N/2.
+The time interval (maximum 99999) indicates the duration of each step, and determines the waveform period
+together with the total number of points.
+Stair up down 
+7. Exponential Rise
+The Exponential Rise waveform is as shown in the figure below.
+The instrument determines the amplitude of the waveform according to the maximum (M) and minimum (N)
+currently set and determines the waveform period according to the total number  of points ( P) and the time
+interval (maximum 99999).
+The rise index (R) is the independent variable of the rise function, which is an integer from 0 to 10. It determines
+the rising speed of the waveform, and the base is Euler number (e=2.718281828).
+The waveform function is 𝑓(𝑥) = (𝑀 − 𝑁)(1 − 𝑒−𝑥𝑅
+𝑃 ) (X is the independent variable, an integer from 0 to P-1).
+===== PAGE 24 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Exponential rise 
+8. Exponential Fall
+The Exponential Fall waveform is as shown in the figure below.
+The instrument determines the amplitude of the waveform according to the maximum (M) and minimum (N)
+currently set and determines the waveform period according to the total number  of points ( P) and the time
+interval (maximum 99999).
+The fall index (R) is the independent variable of the fall function, which is an integer from 0 to 10. It determines
+the falling speed of the waveform, and the base is Euler number (e=2.718281828).
+The waveform function is 𝑓(𝑥) = (𝑀 − 𝑁)𝑒−𝑥𝑅
+𝑃  (X is the independent variable, an integer from 0 to P-1). 
+Exponential fall 
+4.6 Delayer Templates 
+The optional delayer templates include: state generation, fix time, increase, and decline. 
+1. State Generation
+The state generation mode is a template that controls the On/Off state of the output terminal.  "0" means off
+and "1" means on.
+0 1 Pattern: the state is set to "Off" and "On" alternately.
+1 0 Pattern: the state is set to "On" and "Off" alternately.
+2. Fix Time
+Fix time mode is a template for setting the output terminal on time (Max. 99999s) and off time (Max. 99999s).
+Users set the output on delay time (the duration when the output status is "On") and the output off delay time
+(the duration when the output status is "Off").
+The default initial state of the group data generated by this template is the output off state.
+3. Increase
+Generate the on/off delay time by increasing from the time base value at the specified step (△t<99999s).
+Delay time of next state = delay time of current state + step value;
+The default initial state of the group data generated by this template is the output off state.
+4. Decline
+Generate the on/off delay time by declining from the time base value at the specified step (△t<99999s).
+The default initial state of the group data generated by this template is the output off state.
+
+===== PAGE 25 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+4.7 Save and Read the Timer/Delay File 
+Users can store the timer/delay parameters edited manually or using the template in internal or external memory 
+and recall them when required. 
+Save 
+The instrument can store 10 groups of setting values of the three functions of list mode, delayer and state file 
+respectively, and also supports external storage. 
+Press to enter the state storage interface. The storage contents include the present setting values of voltage 
+and current of each channel, overvoltage and overcurrent values, the setting values of triggers and monitors, upper 
+computer connection baud rate and IP address, etc.: 
+State file storage interface (the file suffix is STA) 
+After entering the list mode function, press “storage” to save/read.  
+List mode storage interface (the file suffix is LIST) 
+After entering the delayer function, press “storage” to save/read.  
+
+===== PAGE 26 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Delayer storage interface (the file suffix is DLY) 
+Save and name files by using the knob. The suffix of a list mode file is .LST, and the suffix of a delayer file is .DLY. 
+The files can also be saved on an external storage medium, such as a U disk. 
+4.8 Read 
+Turn on the list mode/delayer function, and press “Storage” to enter the storage interface.  
+Press the knob to select the parameter group file to be recalled. After pressing the "Read" key, the screen displays 
+"Load succeeded". 
+Press the "ESC" key twice to return to the initial interface of list mode/delayer. 
+Press the "Enable" key to read the stored files. 
+File read interface 
+4.9 Waveform Display 
+UDP3305S series power supply has waveform display function, which can display the output voltage, current and 
+power of each channel on the screen. 
+When each channel operates indepen dently, voltage, current and power waveforms of three channels can be 
+displayed on the screen at the same time. When CH1 and CH2 are in series/parallel mode, only the waveforms of 
+
+===== PAGE 27 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+CH3 and series/parallel channel can be displayed simultaneously. To view the output waveforms of the list mode 
+and delayer, set and enable the list mode and delayer functions first, and then turn on the waveform display 
+function. 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Turn on the waveform display function:
+Press 3 to enter the waveform display interface. 
+3. Select the channel:
+Select the channel according to the load and connect the load  (refer to chapter "Constant Voltage Output",
+"Constant Current Output" , "Power Supply Series and Parallel Connections" ), set the voltage, current, over
+voltage and over current protection values.
+For list mode and delayer waveforms, refer to chapter "List Mode (Timer) and Delayer".
+4. View the waveform:
+Turn on the selected output channel to view the waveform.
+To view the list mode and delayer waveforms, press again. 
+4.10 Preset 
+UDP3305S series power supply provides 5 sets of output presets that can be freely edited and stored. Users can 
+set the voltage, current, limit voltage and limit current parameters of each channel and series and parallel channel 
+in advance, and load the parameters when using, so as to avoid the step of resetting parameters every time when 
+turning on the instrument. 
+
+===== PAGE 28 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Preset interfere 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Press to enter the preset interface. 
+3. Select a preset group:
+Rotate the knob or press  or to switch between the preset groups. Press the Edit key or the knob to 
+select a preset group and enter its editing interface. 
+4. Edit preset group parameters:
+In the editing interface, rotate the knob to select the channel. Then edit the voltage, current, overvoltage and
+overcurrent values of each channel by pressing the keys at the bottom of the screen.
+5. Load preset group parameters:
+Press  or press the knob twice to exit the editing interface. Press the "Load" key, the interface automatically
+jumps back to the power on interface, and the parameters of each channel are displayed as the preset parameter
+values.
+4.11 Monitor 
+The monitor monitors the voltage, current and power of each independent channel, series and parallel channel, 
+and gives alarm to the output of each channel and determines whether to close the output according to the set 
+conditions. 
+Operating mechanism: 
+When the monitored voltage, current and power is greater than or less than the set value, control the output 
+according to the combination (or/and) of current, voltage and power. The alarm and prompt can be set.  Each 
+independent channel can be monitored at the same time. In series and parallel mode, the independent channel 
+will stop monitoring, and only the CH3 channel can be monitored synchronously. 
+Operation steps: 
+1. Press the power switch to power on the instrument.
+2. Enter the monitor interface:
+
+===== PAGE 29 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Press , select “Monitor”, and then press the “Enter” key or the knob to enter the monitor setting interface. 
+3. Select the monitor channel and set the parameters:
+Select a channel and connect the load.
+Set the monitoring conditions: voltage, current and power; > or <; combination (or/and) of current, voltage and
+power.
+Set the monitor processing mode: output off, warning, beeper.
+4. Turn on the monitor:
+Press the “Enable” key to turn on the monitor function.
+4.12 Trigger 
+The trigger can be used as a trigger source to output high and low level signals to the external instrument, or as a 
+source under control to trigger the on and off of the instrument output through the external input level. 
+When triggered by an external signal, the trigger operates in trigger i nput mode. When the digital I/O interface 
+detects the trigger signal, the power supply controls the channel action. When the external instrument is triggered, 
+the digital I/O interface outputs high or low level signals when the trigger conditions are met. 
+The digital I/O interface on the rear panel needs to be connected, and the high level of IO input should not be 
+higher than 3.3V to avoid damage to the instrument. 
+Note: When the trigger operates in trigger input mode, D0~D3 is high level by default, and low level signal needs 
+to be connected to trigger. 
+Trigger input 
+Trigger output 
+
+===== PAGE 30 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+Operation steps: 
+1. Connect the digital I/O interface on the rear panel to the external trigger source.
+2. Press the power switch to power on the instrument.
+3. Enter the trigger interface:
+Press , select “Trigger”, and then press the “Enter” key or the knob to enter the trigger setting interface. 
+4. Select the trigger channel and set the parameters:
+Press "Data line" to select D0, D1, D2 or D3.
+Press "In/Out" to select trigger input or trigger output.
+Trigger Input 
+Source under control: Press or to select one or more of CH1, CH2 and CH3 as the source under control. 
+Press the knob to confirm. 
+Trigger type: Press the "Left" or "Right" key and rotate the knob to select to trigger on the rising edge, falling edge, 
+high level or low level of the input signal. 
+Sensitivity: Users can set the sensitivity to high, middle or low. 
+Response mode: Users can set the output response type to "Output on", "Output off" or "Output toggle". 
+Trigger Output 
+Control source: Press or to select any of CH1, CH2 and CH3 as the control source.  Press the knob to 
+confirm. 
+Trigger condition: Rotate the knob to select and set the trigger condition. 
+Polarity: Set the polarity of the trigger output signal to "Positive" or "Negative". 
+5. Enable:
+Press Enable to enable the trigger function.
+4.13 System Settings 
+In the system settings interface, users can view and modify system parameters, such as the IP address, baud rate 
+of RS232 interface, current system software version, and screen brightness. 
+System settings interface 
+
+===== PAGE 31 =====
+UDP3305S Series Programmable DC Power Supply User Manual
+System software version 
