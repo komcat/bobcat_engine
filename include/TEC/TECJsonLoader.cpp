@@ -80,16 +80,29 @@ void TECJsonLoader::LoadDevices(TECManager& manager, const json& config) {
 
       // Check controller type to determine required fields
       // Direct VISA adapters: CLD101x_Direct, TED4015_Direct, TED4015
+      // Kinesis (USB) adapters: TTC001, TTC-001
       std::string typeUpper = device.TypeController;
       std::transform(typeUpper.begin(), typeUpper.end(), typeUpper.begin(), ::toupper);
 
       bool isDirect = (typeUpper == "CLD101X_DIRECT" ||
                        typeUpper == "TED4015_DIRECT" ||
                        typeUpper == "TED4015");
+      bool isKinesis = (typeUpper == "TTC001" || typeUpper == "TTC-001");
 
+      // For Kinesis adapters, require serial_number
       // For direct VISA adapters, require visa_resource
       // For TCP-based adapters, require ip_address
-      if (isDirect) {
+      if (isKinesis) {
+        if (deviceJson.contains("serial_number")) {
+          device.SerialNumber = deviceJson["serial_number"].get<std::string>();
+        }
+        else {
+          std::cerr << "[ERROR] TECJsonLoader: Device '" << device.Name
+            << "' (type: " << device.TypeController << ") missing 'serial_number' field" << std::endl;
+          continue;
+        }
+      }
+      else if (isDirect) {
         if (deviceJson.contains("visa_resource")) {
           device.VISAResource = deviceJson["visa_resource"].get<std::string>();
         }
@@ -140,6 +153,23 @@ void TECJsonLoader::LoadDevices(TECManager& manager, const json& config) {
 
       if (deviceJson.contains("default_laser_current")) {
         device.DefaultLaserCurrent = deviceJson["default_laser_current"].get<double>();
+      }
+
+      // Thermistor parameters (currently only consumed by TTC-001 in thermistor mode).
+      if (deviceJson.contains("thermistor_beta")) {
+        device.ThermistorBeta = deviceJson["thermistor_beta"].get<double>();
+      }
+      if (deviceJson.contains("thermistor_r0_ohms")) {
+        device.ThermistorR0Ohms = deviceJson["thermistor_r0_ohms"].get<double>();
+      }
+      if (deviceJson.contains("thermistor_t0_celsius")) {
+        device.ThermistorT0Celsius = deviceJson["thermistor_t0_celsius"].get<double>();
+      }
+
+      // TTC-001 sensor mode (transducer / thermistor_20k / thermistor_200k).
+      // Validation happens in the adapter; here we just pass the string through.
+      if (deviceJson.contains("sensor_mode")) {
+        device.SensorMode = deviceJson["sensor_mode"].get<std::string>();
       }
 
       // Add device to manager

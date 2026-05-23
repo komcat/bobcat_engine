@@ -3,6 +3,9 @@
 #include "CLD101xAdapter.h"
 #include "CLD101xDirectAdapter.h"
 #include "TED4015DirectAdapter.h"
+#ifdef HAS_KINESIS
+#include "TTC001Adapter.h"
+#endif
 #include <iostream>
 #include <algorithm>
 
@@ -373,6 +376,16 @@ std::unique_ptr<ITECDevice> TECManager::CreateDeviceAdapter(const TECDevice& con
   else if (normalizedType == "TED4015" || normalizedType == "TED4015_DIRECT") {
     // TED4015 TEC-only controller (Direct VISA)
     return std::make_unique<TED4015DirectAdapter>(config);
+  }
+  else if (normalizedType == "TTC001" || normalizedType == "TTC-001") {
+#ifdef HAS_KINESIS
+    // Thorlabs TTC-001 T-Cube TEC (Kinesis SDK over USB)
+    return std::make_unique<TTC001Adapter>(config);
+#else
+    std::cerr << "[ERROR] TECManager: TTC-001 requested but Kinesis SDK was not "
+                 "available at build time (HAS_KINESIS undefined)" << std::endl;
+    return nullptr;
+#endif
   }
 
   // Add more device types here in the future:
