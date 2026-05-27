@@ -15,6 +15,7 @@
 #include <QSpinBox>
 #include <QDoubleSpinBox>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QVBoxLayout>
@@ -53,6 +54,7 @@ private:
     int m_maxLines = 10;            // Maximum number of lines to detect
     int m_polarity = 0;             // 0 = All edges, 1 = Dark to Bright, 2 = Bright to Dark
     int m_fitMethod = 0;            // 0 = regression, 1 = tukey (robust)
+    bool m_showEdgeOverlay = false; // Render Canny edges as green overlay for tuning
 
     // Configuration widget (not owned)
     QWidget* m_configWidget = nullptr;
@@ -63,6 +65,7 @@ private:
     QSpinBox* m_maxLinesSpin = nullptr;
     QComboBox* m_polarityCombo = nullptr;
     QComboBox* m_fitMethodCombo = nullptr;
+    QCheckBox* m_showEdgeOverlayCheck = nullptr;
 };
 
 #endif // HAS_OPENCV && HAS_HALCON

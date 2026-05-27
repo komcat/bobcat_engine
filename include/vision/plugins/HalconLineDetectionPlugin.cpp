@@ -84,6 +84,41 @@ bool HalconLineDetectionPlugin::execute(const cv::Mat& input, cv::Mat& output, V
         HObject edges;
         EdgesSubPix(halconImage, &edges, "canny", m_sigma, m_lowThreshold, m_highThreshold);
 
+        // Optional: render the raw Canny edges as a green overlay for live tuning
+        if (m_showEdgeOverlay) {
+            HTuple numEdges;
+            CountObj(edges, &numEdges);
+            const int edgeCount = static_cast<int>(numEdges.D());
+            // Cap to avoid swamping the overlay renderer with tens of thousands of contours
+            const int maxEdgeOverlays = 2000;
+            const int edgesToDraw = (edgeCount < maxEdgeOverlays) ? edgeCount : maxEdgeOverlays;
+            for (int i = 1; i <= edgesToDraw; ++i) {
+                try {
+                    HObject singleEdge;
+                    SelectObj(edges, &singleEdge, i);
+
+                    HTuple rows, cols;
+                    GetContourXld(singleEdge, &rows, &cols);
+
+                    const int n = static_cast<int>(rows.Length());
+                    if (n < 2) continue;
+
+                    OverlayCommand cmd;
+                    cmd.type = OverlayCommand::DrawContour;
+                    cmd.color = cv::Scalar(0, 255, 0);
+                    cmd.thickness = 1;
+                    cmd.contour.reserve(static_cast<size_t>(n));
+                    for (int j = 0; j < n; ++j) {
+                        cmd.contour.emplace_back(static_cast<int>(cols[j].D()),
+                                                 static_cast<int>(rows[j].D()));
+                    }
+                    result.overlays.push_back(std::move(cmd));
+                } catch (HException& /*e*/) {
+                    continue;
+                }
+            }
+        }
+
         // Segment contours into straight line segments
         HObject lineSegments;
         SegmentContoursXld(edges, &lineSegments, "lines", 5, 4, 2);
@@ -266,8 +301,11 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_configWidget = new QWidget(parent);
     QVBoxLayout* mainLayout = new QVBoxLayout(m_configWidget);
 
-    QGroupBox* groupBox = new QGroupBox("Line Detection Parameters");
-    QFormLayout* formLayout = new QFormLayout(groupBox);
+    // ============================================================
+    // Canny Edge Filter group (tunable filter step + live overlay)
+    // ============================================================
+    QGroupBox* cannyGroup = new QGroupBox("Canny Edge Filter");
+    QFormLayout* cannyForm = new QFormLayout(cannyGroup);
 
     // Polarity selection
     m_polarityCombo = new QComboBox();
@@ -276,7 +314,7 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_polarityCombo->addItem("Bright to Dark", 2);
     m_polarityCombo->setCurrentIndex(m_polarity);
     m_polarityCombo->setToolTip("Edge transition type to detect");
-    formLayout->addRow("Polarity:", m_polarityCombo);
+    cannyForm->addRow("Polarity:", m_polarityCombo);
 
     // Sigma for Gaussian smoothing
     m_sigmaSpin = new QDoubleSpinBox();
@@ -285,7 +323,7 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_sigmaSpin->setDecimals(1);
     m_sigmaSpin->setValue(m_sigma);
     m_sigmaSpin->setToolTip("Gaussian smoothing sigma for edge detection");
-    formLayout->addRow("Sigma:", m_sigmaSpin);
+    cannyForm->addRow("Sigma:", m_sigmaSpin);
 
     // Low threshold
     m_lowThresholdSpin = new QDoubleSpinBox();
@@ -294,7 +332,7 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_lowThresholdSpin->setDecimals(1);
     m_lowThresholdSpin->setValue(m_lowThreshold);
     m_lowThresholdSpin->setToolTip("Canny low threshold");
-    formLayout->addRow("Low Threshold:", m_lowThresholdSpin);
+    cannyForm->addRow("Low Threshold:", m_lowThresholdSpin);
 
     // High threshold
     m_highThresholdSpin = new QDoubleSpinBox();
@@ -303,21 +341,36 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_highThresholdSpin->setDecimals(1);
     m_highThresholdSpin->setValue(m_highThreshold);
     m_highThresholdSpin->setToolTip("Canny high threshold");
-    formLayout->addRow("High Threshold:", m_highThresholdSpin);
+    cannyForm->addRow("High Threshold:", m_highThresholdSpin);
+
+    // Edge overlay toggle (tuning aid)
+    m_showEdgeOverlayCheck = new QCheckBox("Show Canny Edge Overlay (green)");
+    m_showEdgeOverlayCheck->setChecked(m_showEdgeOverlay);
+    m_showEdgeOverlayCheck->setToolTip("Draw the raw Canny edges in green over the image. "
+                                       "Use to tune Sigma / Low / High threshold for line detection.");
+    cannyForm->addRow("", m_showEdgeOverlayCheck);
+
+    mainLayout->addWidget(cannyGroup);
+
+    // ============================================================
+    // Line Fitting group
+    // ============================================================
+    QGroupBox* lineGroup = new QGroupBox("Line Detection Parameters");
+    QFormLayout* lineForm = new QFormLayout(lineGroup);
 
     // Minimum line length
     m_minLengthSpin = new QSpinBox();
     m_minLengthSpin->setRange(10, 1000);
     m_minLengthSpin->setValue(m_minLength);
     m_minLengthSpin->setToolTip("Minimum line length in pixels");
-    formLayout->addRow("Min Length (px):", m_minLengthSpin);
+    lineForm->addRow("Min Length (px):", m_minLengthSpin);
 
     // Maximum lines
     m_maxLinesSpin = new QSpinBox();
     m_maxLinesSpin->setRange(1, 100);
     m_maxLinesSpin->setValue(m_maxLines);
     m_maxLinesSpin->setToolTip("Maximum number of lines to detect");
-    formLayout->addRow("Max Lines:", m_maxLinesSpin);
+    lineForm->addRow("Max Lines:", m_maxLinesSpin);
 
     // Fit method
     m_fitMethodCombo = new QComboBox();
@@ -325,9 +378,9 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
     m_fitMethodCombo->addItem("Tukey (robust)", 1);
     m_fitMethodCombo->setCurrentIndex(m_fitMethod);
     m_fitMethodCombo->setToolTip("Line fitting algorithm");
-    formLayout->addRow("Fit Method:", m_fitMethodCombo);
+    lineForm->addRow("Fit Method:", m_fitMethodCombo);
 
-    mainLayout->addWidget(groupBox);
+    mainLayout->addWidget(lineGroup);
     mainLayout->addStretch();
 
     // Connect signals
@@ -345,6 +398,8 @@ QWidget* HalconLineDetectionPlugin::createConfigWidget(QWidget* parent) {
                      [this](int value) { m_maxLines = value; });
     QObject::connect(m_fitMethodCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
                      [this](int index) { m_fitMethod = index; });
+    QObject::connect(m_showEdgeOverlayCheck, &QCheckBox::toggled,
+                     [this](bool checked) { m_showEdgeOverlay = checked; });
 
     return m_configWidget;
 }
@@ -358,6 +413,7 @@ nlohmann::json HalconLineDetectionPlugin::getParameters() const {
     params["maxLines"] = m_maxLines;
     params["polarity"] = m_polarity;
     params["fitMethod"] = m_fitMethod;
+    params["showEdgeOverlay"] = m_showEdgeOverlay;
     return params;
 }
 
@@ -369,6 +425,7 @@ void HalconLineDetectionPlugin::setParameters(const nlohmann::json& params) {
     if (params.contains("maxLines")) m_maxLines = params["maxLines"].get<int>();
     if (params.contains("polarity")) m_polarity = params["polarity"].get<int>();
     if (params.contains("fitMethod")) m_fitMethod = params["fitMethod"].get<int>();
+    if (params.contains("showEdgeOverlay")) m_showEdgeOverlay = params["showEdgeOverlay"].get<bool>();
 
     // Update UI if widget exists
     if (m_sigmaSpin) m_sigmaSpin->setValue(m_sigma);
@@ -378,6 +435,7 @@ void HalconLineDetectionPlugin::setParameters(const nlohmann::json& params) {
     if (m_maxLinesSpin) m_maxLinesSpin->setValue(m_maxLines);
     if (m_polarityCombo) m_polarityCombo->setCurrentIndex(m_polarity);
     if (m_fitMethodCombo) m_fitMethodCombo->setCurrentIndex(m_fitMethod);
+    if (m_showEdgeOverlayCheck) m_showEdgeOverlayCheck->setChecked(m_showEdgeOverlay);
 }
 
 nlohmann::json HalconLineDetectionPlugin::getDefaultParameters() const {
@@ -389,6 +447,7 @@ nlohmann::json HalconLineDetectionPlugin::getDefaultParameters() const {
     params["maxLines"] = 10;
     params["polarity"] = 0;
     params["fitMethod"] = 0;
+    params["showEdgeOverlay"] = false;
     return params;
 }
 
@@ -452,6 +511,15 @@ ParameterSchema HalconLineDetectionPlugin::getParameterSchema() const {
         {"Regression", "Tukey (robust)"}, {0, 1}, 0,
         "Line fitting algorithm. Tukey is more robust to outliers.",
         "Line Fitting"
+    ));
+
+    // Tuning aids
+    schema.parameters.push_back(ParameterDescriptor::createBool(
+        "showEdgeOverlay", "Show Canny Edge Overlay",
+        false,
+        "Draw the raw Canny edges in green over the image. "
+        "Use to tune Sigma / Low / High threshold for line detection.",
+        "Tuning"
     ));
 
     return schema;
