@@ -211,25 +211,21 @@ void QtCameraVisionController::threadLoop()
     const nlohmann::json pluginParams = profileJson["plugin"].value("parameters",
                                                                      nlohmann::json::object());
 
-    // Handle ROI if present and enabled
+    // Hand the FULL frame to VisionManager and let it apply the ROI itself.
+    // (Previously we pre-cropped here and also enabled the ROI on VisionManager,
+    // which double-applied the ROI and failed once the second crop fell off the
+    // already-cropped image.)
+    VisionManager::instance().setInputImage(bgrImage);
+
     if (profileJson.contains("roi") && profileJson["roi"].value("enabled", false)) {
       VisionROI roi = VisionROI::fromJson(profileJson["roi"]);
       if (roi.isValid()) {
-        cv::Mat cropped = roi.cropImage(bgrImage);
-        if (!cropped.empty()) {
-          VisionManager::instance().setInputImage(cropped);
-          VisionManager::instance().setROI(roi);
-          VisionManager::instance().setROIEnabled(true);
-        } else {
-          VisionManager::instance().setInputImage(bgrImage);
-          VisionManager::instance().setROIEnabled(false);
-        }
+        VisionManager::instance().setROI(roi);
+        VisionManager::instance().setROIEnabled(true);
       } else {
-        VisionManager::instance().setInputImage(bgrImage);
         VisionManager::instance().setROIEnabled(false);
       }
     } else {
-      VisionManager::instance().setInputImage(bgrImage);
       VisionManager::instance().setROIEnabled(false);
     }
 
