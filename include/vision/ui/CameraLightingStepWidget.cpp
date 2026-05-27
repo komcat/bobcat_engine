@@ -153,7 +153,7 @@ void CameraLightingStepWidget::setupCameraSection(QVBoxLayout* col)
     // Row 0: Exposure
     grid->addWidget(new QLabel("Exp:"), 0, 0);
     m_exposureSpinBox = new QSpinBox();
-    m_exposureSpinBox->setRange(1, 100000);
+    m_exposureSpinBox->setRange(1, 1000000);
     m_exposureSpinBox->setSingleStep(50);
     m_exposureSpinBox->setValue(1000);
     m_exposureSpinBox->setSuffix(" us");
@@ -384,8 +384,8 @@ void CameraLightingStepWidget::loadCurrentCameraSettings()
     m_autoGainCheck->setChecked(settings.auto_gain);
 
     int exposureValue = static_cast<int>(settings.exposure_time);
-    if (exposureValue < 1)      exposureValue = 1;
-    if (exposureValue > 100000) exposureValue = 100000;
+    if (exposureValue < 1)       exposureValue = 1;
+    if (exposureValue > 1000000) exposureValue = 1000000;
 
     if (m_exposureSpinBox)  m_exposureSpinBox->setValue(exposureValue);
     if (m_gainSpinBox)      m_gainSpinBox->setValue(settings.gain);
