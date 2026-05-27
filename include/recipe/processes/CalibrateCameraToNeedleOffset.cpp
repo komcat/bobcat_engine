@@ -388,15 +388,22 @@ public:
         {"velocity", "0.1"}
       });
 
-      // Step 13.4: Move relative Z the final 1mm to Z_cal at 0.1mm/s
-      sequence->AddAction(device, "MoveRelative", {
-        {"axis", "Z"},
-        {"distance", "1.0"},  // Final 1mm approach
-        {"blocking", "true"}
+      // Step 13.4: User teaches final Z by jogging until needle touches surface
+      // (replaces the previous blind +1mm move — saved Z_cal may drift, so the
+      // user confirms surface contact visually instead.)
+      sequence->AddAction("system", "ManualAdjust", {
+        {"message", "Needle is 1 mm above previous Z calibration.\n\n"
+                    "Jog Z DOWN until needle just touches the surface.\n"
+                    "Fine-tune XY if needed.\n\n"
+                    "Click OK when touching."},
+        {"device_name", device},
+        {"step_size_um", "10"},
+        {"enable_x", "true"},
+        {"enable_y", "true"},
+        {"enable_z", "true"}
       });
-      sequence->AddAction(device, "WaitForMotionComplete", {});
 
-      // Step 13.5: Capture needle position at Z_cal
+      // Step 13.5: Capture needle position at taught touch point
       sequence->AddAction("calibration", "CapturePosition", {
         {"device", device},
         {"key_prefix", "needle"}
