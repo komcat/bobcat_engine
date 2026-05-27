@@ -10,6 +10,8 @@
 #include "SequencePromptDialog.h"
 #include "M4AASerialDataWidget.h"
 
+#include <QMessageBox>
+
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -235,8 +237,26 @@ void PoyntOptimizeWidget::setupUI() {
       "Save it from the M4 Angle tab first.");
     g->addWidget(m_moveToMoeA2Btn, 1, 0);
 
+    m_saveMoeA1Btn = new QPushButton("Save MOE-A1");
+    m_saveMoeA1Btn->setMinimumWidth(150);
+    m_saveMoeA1Btn->setToolTip(
+      "Overwrite the saved 'MOE-A1' named position with the current gantry-main "
+      "position. Shows a confirmation dialog with the delta vs. the existing "
+      "saved value before writing.");
+    g->addWidget(m_saveMoeA1Btn, 0, 1);
+
+    m_saveMoeA2Btn = new QPushButton("Save MOE-A2");
+    m_saveMoeA2Btn->setMinimumWidth(150);
+    m_saveMoeA2Btn->setToolTip(
+      "Overwrite the saved 'MOE-A2' named position with the current gantry-main "
+      "position. Shows a confirmation dialog with the delta vs. the existing "
+      "saved value before writing.");
+    g->addWidget(m_saveMoeA2Btn, 1, 1);
+
     connect(m_moveToMoeA1Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onMoveToMoeA1);
     connect(m_moveToMoeA2Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onMoveToMoeA2);
+    connect(m_saveMoeA1Btn,   &QPushButton::clicked, this, &PoyntOptimizeWidget::onSaveMoeA1);
+    connect(m_saveMoeA2Btn,   &QPushButton::clicked, this, &PoyntOptimizeWidget::onSaveMoeA2);
   }
   jogRow->addWidget(m_positionsGroup);
 
@@ -308,6 +328,7 @@ void PoyntOptimizeWidget::setBusy(bool busy, const QString& whatRunning) {
     m_rotationStepPlusBtn, m_rotationStepMinusBtn,
     m_uPlusBtn, m_uMinusBtn, m_vPlusBtn, m_vMinusBtn, m_wPlusBtn, m_wMinusBtn,
     m_moveToMoeA1Btn, m_moveToMoeA2Btn,
+    m_saveMoeA1Btn, m_saveMoeA2Btn,
   };
   for (QPushButton* b : gated) if (b) b->setEnabled(!busy);
   if (m_stopBtn) m_stopBtn->setEnabled(busy);
@@ -508,6 +529,111 @@ void PoyntOptimizeWidget::onJogWMinus() { jogThenBaseline("W", -rotationStepDeg(
 
 void PoyntOptimizeWidget::onMoveToMoeA1() { moveToNamedGantryPosition("MOE-A1"); }
 void PoyntOptimizeWidget::onMoveToMoeA2() { moveToNamedGantryPosition("MOE-A2"); }
+
+void PoyntOptimizeWidget::onSaveMoeA1() { saveCurrentToNamedGantryPosition("MOE-A1"); }
+void PoyntOptimizeWidget::onSaveMoeA2() { saveCurrentToNamedGantryPosition("MOE-A2"); }
+
+void PoyntOptimizeWidget::saveCurrentToNamedGantryPosition(const char* name) {
+  if (m_busy) {
+    appendLog("[busy] another job is already running", "#ef5350");
+    return;
+  }
+  if (!m_context || !m_context->motionManager) {
+    appendLog("[error] motion manager unavailable", "#ef5350");
+    return;
+  }
+
+  auto* motionMgr  = m_context->motionManager;
+  auto* productMgr = m_context->productPositionManager;
+  const QString tag = QString::fromUtf8(name);
+
+  const PositionStruct cur = motionMgr->GetCurrentPosition("gantry-main");
+
+  // Look up the existing saved position so the dialog can show the delta.
+  PositionStruct prev;
+  const bool hadPrev = motionMgr->GetNamedPosition("gantry-main", name, prev);
+
+  QString deltaText;
+  if (hadPrev) {
+    const double dx = cur.x - prev.x;
+    const double dy = cur.y - prev.y;
+    const double dz = cur.z - prev.z;
+    const double du = cur.u - prev.u;
+    const double dv = cur.v - prev.v;
+    const double dw = cur.w - prev.w;
+    deltaText = QStringLiteral(
+      "<b>Current vs. saved '%1':</b><br>"
+      "<pre>"
+      "          new           old           delta\n"
+      "X    %2  %3  %4 mm\n"
+      "Y    %5  %6  %7 mm\n"
+      "Z    %8  %9  %10 mm\n"
+      "U    %11  %12  %13 deg\n"
+      "V    %14  %15  %16 deg\n"
+      "W    %17  %18  %19 deg"
+      "</pre>")
+      .arg(tag)
+      .arg(cur.x, 12, 'f', 4).arg(prev.x, 12, 'f', 4).arg(dx, 12, 'f', 4)
+      .arg(cur.y, 12, 'f', 4).arg(prev.y, 12, 'f', 4).arg(dy, 12, 'f', 4)
+      .arg(cur.z, 12, 'f', 4).arg(prev.z, 12, 'f', 4).arg(dz, 12, 'f', 4)
+      .arg(cur.u, 12, 'f', 4).arg(prev.u, 12, 'f', 4).arg(du, 12, 'f', 4)
+      .arg(cur.v, 12, 'f', 4).arg(prev.v, 12, 'f', 4).arg(dv, 12, 'f', 4)
+      .arg(cur.w, 12, 'f', 4).arg(prev.w, 12, 'f', 4).arg(dw, 12, 'f', 4);
+  } else {
+    deltaText = QStringLiteral(
+      "<b>No previous saved value for '%1'.</b><br>"
+      "<pre>"
+      "X = %2 mm\n"
+      "Y = %3 mm\n"
+      "Z = %4 mm\n"
+      "U = %5 deg\n"
+      "V = %6 deg\n"
+      "W = %7 deg"
+      "</pre>")
+      .arg(tag)
+      .arg(cur.x, 0, 'f', 4)
+      .arg(cur.y, 0, 'f', 4)
+      .arg(cur.z, 0, 'f', 4)
+      .arg(cur.u, 0, 'f', 4)
+      .arg(cur.v, 0, 'f', 4)
+      .arg(cur.w, 0, 'f', 4);
+  }
+
+  QMessageBox box(this);
+  box.setWindowTitle(QStringLiteral("Save %1").arg(tag));
+  box.setIcon(QMessageBox::Question);
+  box.setTextFormat(Qt::RichText);
+  box.setText(QStringLiteral("Overwrite gantry-main named position '<b>%1</b>' "
+                             "with the current position?").arg(tag));
+  box.setInformativeText(deltaText);
+  box.setStandardButtons(QMessageBox::Save | QMessageBox::Cancel);
+  box.setDefaultButton(QMessageBox::Cancel);
+  if (box.exec() != QMessageBox::Save) {
+    appendLog(QStringLiteral("[save %1] cancelled").arg(tag), "#888");
+    return;
+  }
+
+  // Persist using the same flow as M4 Angle's Save MOE-A{1,2}: update the
+  // motion manager's in-memory map, import into the product manager, then
+  // SaveProduct to flush positions.{product}.json.
+  motionMgr->AddNamedPosition("gantry-main", name, cur);
+
+  QString status;
+  const char* color = "#888";
+  if (productMgr && productMgr->HasLoadedProduct()) {
+    productMgr->ImportFromMotionManager(*motionMgr);
+    const bool saved = productMgr->SaveProduct();
+    status = saved
+      ? QStringLiteral("[save %1] saved gantry-main current position as '%1'.").arg(tag)
+      : QStringLiteral("[save %1] updated in memory, but SaveProduct() FAILED.").arg(tag);
+    color = saved ? "#4caf50" : "#ef5350";
+  } else {
+    status = QStringLiteral(
+      "[save %1] no product loaded; named position updated in memory only "
+      "(not written to disk).").arg(tag);
+  }
+  appendLog(status, color);
+}
 
 void PoyntOptimizeWidget::moveToNamedGantryPosition(const char* name) {
   if (m_busy) {

@@ -65,6 +65,12 @@ private slots:
   void onMoveToMoeA1();
   void onMoveToMoeA2();
 
+  // Capture current gantry-main position as the named MOE-A1 / MOE-A2 named
+  // position. Always shows a confirmation dialog with the delta between the
+  // existing saved position (if any) and the current position.
+  void onSaveMoeA1();
+  void onSaveMoeA2();
+
   // ScriptWorker signal handlers.
   void onScriptStarted();
   void onScriptCompleted(bool success, QString errorMessage);
@@ -88,6 +94,11 @@ private:
   // Background absolute move on gantry-main to a saved named position.
   // No baseline chain. Used by Move to MOE-A1 / MOE-A2.
   void moveToNamedGantryPosition(const char* name);
+  // Save current gantry-main position as the given named position. Always
+  // shows a modal dialog with the delta vs. the existing saved value (or
+  // "(no previous value)" when the name is unknown) and only writes on
+  // confirmation. Same persistence flow as M4 Angle's Save MOE-A{1,2}.
+  void saveCurrentToNamedGantryPosition(const char* name);
   // Repaint the step-display labels.
   void refreshTranslationStepLabel();
   void refreshRotationStepLabel();
@@ -126,6 +137,8 @@ private:
   QGroupBox*   m_positionsGroup  = nullptr;
   QPushButton* m_moveToMoeA1Btn  = nullptr;
   QPushButton* m_moveToMoeA2Btn  = nullptr;
+  QPushButton* m_saveMoeA1Btn    = nullptr;
+  QPushButton* m_saveMoeA2Btn    = nullptr;
 
   QPlainTextEdit* m_log = nullptr;
 
