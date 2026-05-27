@@ -35,6 +35,7 @@ private:
   struct BackupResult {
     bool localOk  = false;
     bool remoteOk = false;
+    bool skipped  = false;
     QString localPath;
     QString remotePath;
     QString error;
@@ -60,7 +61,14 @@ private:
                                                 const std::filesystem::path& localBase,
                                                 const std::filesystem::path& remoteBase,
                                                 const QString& folderName);
+  [[nodiscard]] BackupResult performAutoBackupWork(
+      const std::filesystem::path& productDir,
+      const std::filesystem::path& localBase,
+      const std::filesystem::path& remoteBase,
+      const QString& folderName,
+      const std::filesystem::path& latestManifestPath);
   void startBackupAsync(const QString& type, const QString& name, const QString& description);
+  void startAutoBackupAsync();
   [[nodiscard]] bool restoreFromBackup(const QString& backupPath);
   [[nodiscard]] bool copyDirectoryRecursive(const std::filesystem::path& src,
                                              const std::filesystem::path& dst);
@@ -77,7 +85,6 @@ private:
     QStringList modified;   // files in both but hash differs
     QStringList deleted;    // files in backup but not in current product
   };
-  FileChangeSet computeChanges() const;
   FileChangeSet computeChangesVsBackup(int backupIndex) const;
 
   void refreshBackupList();
@@ -89,7 +96,6 @@ private:
   std::filesystem::path getBackupBasePath() const;
   std::filesystem::path getAppDataBackupPath() const;
   QString getCurrentProductName() const;
-  bool hasChangedSinceLastBackup();
   void saveAutoBackupSettings();
   void loadAutoBackupSettings();
 

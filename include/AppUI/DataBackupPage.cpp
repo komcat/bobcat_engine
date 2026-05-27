@@ -570,12 +570,8 @@ void DataBackupPage::onAutoBackupTimer()
     if (getCurrentProductName().isEmpty() || m_backupInProgress) {
         return;
     }
-    if (hasChangedSinceLastBackup()) {
-        startBackupAsync(QStringLiteral("auto"), QString(), QString());
-    } else {
-        m_autoStatusLabel->setText("No changes — skipped " +
-            QDateTime::currentDateTime().toString("hh:mm:ss"));
-    }
+    // Change detection + backup all happen on a worker thread to keep the UI responsive.
+    startAutoBackupAsync();
 }
 
 void DataBackupPage::onBackupSelected(int row)
@@ -850,11 +846,132 @@ DataBackupPage::BackupResult DataBackupPage::performBackupWork(
     return result;
 }
 
+void DataBackupPage::startAutoBackupAsync()
+{
+    QString productName = getCurrentProductName();
+    if (productName.isEmpty()) {
+        return;
+    }
+
+    fs::path productDir = getProductDirPath();
+    fs::path localBase  = getBackupBasePath();
+    fs::path remoteBase = getAppDataBackupPath();
+
+    QString timestamp  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
+    QString folderName = timestamp + "_auto";
+
+    // m_backups is sorted newest-first; latest manifest is cheap to grab on the UI thread.
+    fs::path latestManifest;
+    if (!m_backups.empty()) {
+        latestManifest = fs::path(m_backups[0].folderPath.toStdString()) / "manifest.json";
+    }
+
+    m_backupInProgress = true;
+    m_createBtn->setEnabled(false);
+    m_showChangesBtn->setEnabled(false);
+    m_autoStatusLabel->setText("Checking for changes...");
+    m_autoStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 0 5px;");
+
+    m_backupFuture = std::async(std::launch::async,
+        [this, productDir, localBase, remoteBase, folderName, latestManifest]() {
+            return performAutoBackupWork(productDir, localBase, remoteBase,
+                                         folderName, latestManifest);
+        });
+
+    const QString type = QStringLiteral("auto");
+    QTimer* pollTimer = new QTimer(this);
+    connect(pollTimer, &QTimer::timeout, this, [this, pollTimer, type]() {
+        if (!m_backupFuture.valid()) {
+            pollTimer->stop();
+            pollTimer->deleteLater();
+            return;
+        }
+        auto status = m_backupFuture.wait_for(std::chrono::milliseconds(0));
+        if (status == std::future_status::ready) {
+            pollTimer->stop();
+            pollTimer->deleteLater();
+            BackupResult result = m_backupFuture.get();
+            onBackupComplete(result, type);
+        }
+    });
+    pollTimer->start(250);
+}
+
+DataBackupPage::BackupResult DataBackupPage::performAutoBackupWork(
+    const fs::path& productDir, const fs::path& localBase,
+    const fs::path& remoteBase, const QString& folderName,
+    const fs::path& latestManifestPath)
+{
+    BackupResult result;
+
+    // --- Change detection (SHA-256 work happens here on the worker thread) ---
+    if (!latestManifestPath.empty()) {
+        std::error_code ec;
+        if (fs::exists(latestManifestPath, ec) && !ec) {
+            QFile f(QString::fromStdString(latestManifestPath.string()));
+            if (f.open(QIODevice::ReadOnly)) {
+                QJsonDocument doc = QJsonDocument::fromJson(f.readAll());
+                f.close();
+
+                if (!doc.isNull() && doc.isObject()) {
+                    QJsonObject backupFiles = doc.object().value("files").toObject();
+                    QJsonObject currentFiles = computeDirectoryHashes(productDir, productDir);
+
+                    // Strip out any backups/ entries from the current scan
+                    const QStringList curKeys = currentFiles.keys();
+                    for (const QString& key : curKeys) {
+                        if (key.startsWith("backups/")) {
+                            currentFiles.remove(key);
+                        }
+                    }
+
+                    bool unchanged = (currentFiles.size() == backupFiles.size());
+                    if (unchanged) {
+                        const QStringList keys = currentFiles.keys();
+                        for (const QString& key : keys) {
+                            if (!backupFiles.contains(key)) {
+                                unchanged = false;
+                                break;
+                            }
+                            const QString cur =
+                                currentFiles.value(key).toObject().value("sha256").toString();
+                            const QString bak =
+                                backupFiles.value(key).toObject().value("sha256").toString();
+                            if (cur != bak) {
+                                unchanged = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (unchanged) {
+                        result.skipped = true;
+                        return result;
+                    }
+                }
+            }
+        }
+    }
+
+    // Changes detected (or no prior backup) — perform the actual backup
+    return performBackupWork(QStringLiteral("auto"), QString(), QString(),
+                              productDir, localBase, remoteBase, folderName);
+}
+
 void DataBackupPage::onBackupComplete(const BackupResult& result, const QString& type)
 {
     m_backupInProgress = false;
     m_createBtn->setEnabled(!getCurrentProductName().isEmpty());
     m_showChangesBtn->setEnabled(!getCurrentProductName().isEmpty());
+
+    if (result.skipped) {
+        const QString ts = QDateTime::currentDateTime().toString("hh:mm:ss");
+        m_autoStatusLabel->setText("No changes — skipped " + ts);
+        m_autoStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 0 5px;");
+        m_statusLabel->setText("Auto-backup: no changes.");
+        m_statusLabel->setStyleSheet("color: #aaaaaa; font-size: 11px;");
+        return;
+    }
 
     if (result.localOk && result.remoteOk) {
         m_statusLabel->setText("Backup saved (local + AppData).");
@@ -1378,18 +1495,6 @@ void DataBackupPage::pruneAutoBackups()
 }
 
 // ===========================================================================
-// Has-changed detection
-// ===========================================================================
-
-bool DataBackupPage::hasChangedSinceLastBackup()
-{
-    FileChangeSet changes = computeChanges();
-    return !changes.added.isEmpty() ||
-           !changes.modified.isEmpty() ||
-           !changes.deleted.isEmpty();
-}
-
-// ===========================================================================
 // Path helpers
 // ===========================================================================
 
@@ -1441,14 +1546,6 @@ QString DataBackupPage::getCurrentProductName() const
 // ===========================================================================
 // Change detection
 // ===========================================================================
-
-DataBackupPage::FileChangeSet DataBackupPage::computeChanges() const
-{
-    if (m_backups.empty()) {
-        return computeChangesVsBackup(-1);
-    }
-    return computeChangesVsBackup(0);
-}
 
 DataBackupPage::FileChangeSet DataBackupPage::computeChangesVsBackup(int backupIndex) const
 {
