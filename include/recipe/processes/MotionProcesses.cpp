@@ -379,7 +379,7 @@ public:
       getParamOr(params, "exposure_camera", "main_camera"),
       static_cast<int>(DeviceComboBox::DeviceType::Camera));
     widget->addNumericParameter("exposure_value", "Exposure (us)",
-      getParamOr(params, "exposure_value", "1000"), 1, 100000, 1, 0, "us");
+      getParamOr(params, "exposure_value", "1000"), 1, 1000000, 1, 0, "us");
   }
 
   void CreateTableUI(PropertyTableWidget* table, const ProcessInstance* instance) override {
@@ -407,7 +407,7 @@ public:
       "Camera to set exposure on");
     table->addNumericActionProperty("exposure_value", "Exposure",
       std::stod(getParamOr(params, "exposure_value", "1000")),
-      1, 100000, 1, 0, "us",
+      1, 1000000, 1, 0, "us",
       "Apply",
       [table](double exposureUs) {
         ApplicationContext* c = table->getContext();
@@ -419,7 +419,7 @@ public:
         settings.auto_exposure = false;
         c->cameraManager->ApplyExposureSettings(cam, settings);
       },
-      "Exposure time in microseconds (1-100000). Click Apply to push this value to the selected camera now.");
+      "Exposure time in microseconds (1-1000000). Click Apply to push this value to the selected camera now.");
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
