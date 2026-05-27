@@ -324,6 +324,86 @@ public:
 };
 
 //=============================================================================
+// TEC TURN ON PLUGIN
+//=============================================================================
+
+class TECTurnOnPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "TEC Turn On";
+  }
+
+  std::string GetCategory() const override {
+    return "TEC & Laser";
+  }
+
+  std::string GetDescription() const override {
+    return "Turn on TEC output";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "TEC1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("device", "TEC Device Name", params.at("device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("device");
+
+    sequence->AddAction(device, "TEC_On", {});
+
+    std::cout << "[TECProcesses] Built TEC Turn On for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
+// TEC TURN OFF PLUGIN
+//=============================================================================
+
+class TECTurnOffPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "TEC Turn Off";
+  }
+
+  std::string GetCategory() const override {
+    return "TEC & Laser";
+  }
+
+  std::string GetDescription() const override {
+    return "Turn off TEC output";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"device", "TEC1"}
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+    widget->addParameterField("device", "TEC Device Name", params.at("device"));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+    std::string device = params.at("device");
+
+    sequence->AddAction(device, "TEC_Off", {});
+
+    std::cout << "[TECProcesses] Built TEC Turn Off for: " << device << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -335,11 +415,13 @@ namespace {
       registry.RegisterPlugin(std::make_unique<TECConnectPlugin>());
       registry.RegisterPlugin(std::make_unique<TECDisconnectPlugin>());
       registry.RegisterPlugin(std::make_unique<SetTECTempPlugin>());
+      registry.RegisterPlugin(std::make_unique<TECTurnOnPlugin>());
+      registry.RegisterPlugin(std::make_unique<TECTurnOffPlugin>());
       registry.RegisterPlugin(std::make_unique<SetLaserCurrentPlugin>());
       registry.RegisterPlugin(std::make_unique<ReadTemperaturePlugin>());
       registry.RegisterPlugin(std::make_unique<ReadLaserCurrentPlugin>());
 
-      std::cout << "[TECProcesses] Registered 6 TEC/Laser process plugins" << std::endl;
+      std::cout << "[TECProcesses] Registered 8 TEC/Laser process plugins" << std::endl;
     }
   };
 
