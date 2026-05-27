@@ -42,7 +42,9 @@ public:
       {"velocity", "0"},           // XY travel velocity (0 = use controller default)
       {"io_device", "EziIO-1"},
       {"dispense_pin", "0"},
-      {"dispense_duration_ms", "300"}
+      {"dispense_duration_ms", "300"},
+      {"camera", "camera-top"},
+      {"image_product_name", "calibration"}
     };
   }
 
@@ -88,6 +90,14 @@ public:
 
     widget->addParameterField("dispense_duration_ms", "Dispense Duration (ms)",
                              getParam("dispense_duration_ms"));
+
+    // Traceability image capture
+    widget->addDeviceSelector("camera", "Traceability Camera",
+                              getParam("camera"),
+                              static_cast<int>(DeviceComboBox::DeviceType::Camera));
+
+    widget->addParameterField("image_product_name", "Image Folder (data/<name>/captured_images)",
+                             getParam("image_product_name"));
   }
 
   void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
@@ -107,6 +117,8 @@ public:
     std::string ioDevice = getParam("io_device");
     std::string dispensePin = getParam("dispense_pin");
     std::string dispenseDuration = getParam("dispense_duration_ms");
+    std::string camera = getParam("camera");
+    std::string imageProductName = getParam("image_product_name");
 
     std::string velocity = getParam("velocity");
 
@@ -585,6 +597,16 @@ public:
       {"enable_z", "false"}
     });
 
+    // Step 21a: Capture traceability image of the imprint (after user confirms
+    // camera is centered). Auto-generated filename includes date+time so each
+    // calibration leaves an auditable record at:
+    //   data/<image_product_name>/captured_images/...
+    sequence->AddAction(camera, "CaptureToFile", {
+      {"product_name", imageProductName},
+      {"prefix_", "needle_offset_"},
+      {"captureAs", "traceability_image_path"}
+    });
+
     // Step 22: Capture camera position (centered on imprint)
     sequence->AddAction("calibration", "CapturePosition", {
       {"device", device},
@@ -654,7 +676,8 @@ public:
                     "  Y: context:delta_y mm\n\n"
                     "Needle Z also saved for next calibration.\n\n"
                     "Files: config/calibration/needleXYoffsetCamera.json\n"
-                    "       config/calibration/needle_z_calibration.json"},
+                    "       config/calibration/needle_z_calibration.json\n"
+                    "Image: context:traceability_image_path"},
         {"blocking", "false"}
       });
     }
@@ -670,7 +693,8 @@ public:
                     "(First calibration - no previous data to compare)\n\n"
                     "Needle Z also saved for next calibration.\n\n"
                     "Files: config/calibration/needleXYoffsetCamera.json\n"
-                    "       config/calibration/needle_z_calibration.json"},
+                    "       config/calibration/needle_z_calibration.json\n"
+                    "Image: context:traceability_image_path"},
         {"blocking", "false"}
       });
     }
