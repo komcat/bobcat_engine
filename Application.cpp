@@ -1393,6 +1393,12 @@ void Application::initializePneumaticManager()
     m_context.pneumaticManager = m_pneumaticManager.get();
     m_logManager->Info("PneumaticManager created", "Application");
 
+    // Now that the slide manager exists, let InterlockManager consult it for
+    // pneumatic-state rules (e.g. block gantry-main XY while Dispenser_Head is extended).
+    if (m_interlockManager) {
+        m_interlockManager->SetPneumaticManager(m_pneumaticManager.get());
+    }
+
     // 2. Load JSON config - try local first, then default
     std::string configPath;
     int loadedCount = 0;

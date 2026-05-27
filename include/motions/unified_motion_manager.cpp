@@ -300,7 +300,7 @@ bool UnifiedMotionManager::MoveToAbs(const std::string& deviceName,
 
   // Interlock check
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, "XYZ");
     if (!allowed) {
       LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
       return false;
@@ -338,7 +338,7 @@ bool UnifiedMotionManager::MoveToAbs6(const std::string& deviceName,
 
   // Interlock check
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, "XYZUVW");
     if (!allowed) {
       LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
       return false;
@@ -414,7 +414,7 @@ bool UnifiedMotionManager::MoveToPosition(const std::string& deviceName,
 
   // Interlock check
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, axis);
     if (!allowed) {
       LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
       return false;
@@ -453,7 +453,7 @@ bool UnifiedMotionManager::MoveRelative(const std::string& deviceName,
 
   // Interlock check
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, axis);
     if (!allowed) {
       LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
       return false;
@@ -530,8 +530,9 @@ bool UnifiedMotionManager::MoveRelativeGlobal(const std::string& deviceName,
                          std::to_string(localDelta.z) + ")");
 
   // Interlock check (same scope as the other Move* methods)
+  // Global frame deltas only carry XYZ; UVW are not affected.
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, "XYZ");
     if (!allowed) {
       LOG_ERROR("INTERLOCK: MoveRelativeGlobal blocked on " + deviceName + " - " + reason);
       return false;
@@ -1624,9 +1625,9 @@ bool UnifiedMotionManager::MoveToNamedPosition(const std::string& deviceName,
     return false;
   }
 
-  // Interlock check
+  // Interlock check (named position can move any installed axis; treat as all)
   if (m_interlockManager) {
-    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName);
+    auto [allowed, reason] = m_interlockManager->CheckMove(deviceName, "XYZUVW");
     if (!allowed) {
       LOG_ERROR("INTERLOCK: Move blocked on " + deviceName + " - " + reason);
       return false;

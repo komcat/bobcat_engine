@@ -36,6 +36,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	CoordinateSystemManager* coordinateSystemManager,
 	SequenceEngine* sequenceEngine,
 	InterlockManager* interlockManager,
+	PneumaticManager* pneumaticManager,
 	QWidget* parent)
 	: QWidget(parent)
 	, m_motionManager(motionManager)
@@ -45,6 +46,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_coordinateSystemManager(coordinateSystemManager)
 	, m_sequenceEngine(sequenceEngine)
 	, m_interlockManager(interlockManager)
+	, m_pneumaticManager(pneumaticManager)
 	, m_tabWidget(nullptr)
 	, m_controlPanel(nullptr)
 	, m_graphicsView(nullptr)
@@ -454,6 +456,16 @@ void MotionPage::setupUI()
 	InterlockWidget* interlockWidget = new InterlockWidget(m_motionManager, m_interlockManager, interlockTab);
 	interlockTabLayout->addWidget(interlockWidget);
 	m_tabWidget->addTab(interlockTab, "Interlock");
+
+	// ----- Pneumatic Interlock Tab -----
+	QWidget* pneumaticTab = new QWidget();
+	pneumaticTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* pneumaticTabLayout = new QVBoxLayout(pneumaticTab);
+	pneumaticTabLayout->setContentsMargins(0, 0, 0, 0);
+	PneumaticInterlockWidget* pneumaticInterlockWidget = new PneumaticInterlockWidget(
+		m_motionManager, m_pneumaticManager, m_interlockManager, pneumaticTab);
+	pneumaticTabLayout->addWidget(pneumaticInterlockWidget);
+	m_tabWidget->addTab(pneumaticTab, "Pneumatic Interlock");
 
 	// Add tab widget to content layout
 	contentLayout->addWidget(m_tabWidget, 1);

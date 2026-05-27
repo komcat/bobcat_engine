@@ -601,7 +601,11 @@ public:
       {"auto_accept", autoAcceptValue}
     });
 
-    // Check if user confirmed
+    // Fire the dispense IO only on user confirm. The "✅ / ❌" notifications
+    // used to sit inside this if/else, but they're non-blocking and the
+    // sequence engine takes ~2-3 s of wall time to ack them — during which the
+    // slide is still extended. That's the dangerous window from the 2026-05-27
+    // incident. Retract the slide BEFORE any post-dispense notification.
     sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
     {
       // Delay before dispense (if configured)
@@ -626,44 +630,47 @@ public:
         {"state", "false"}
       });
 
-      // Delay after dispense (if configured)
+      // Delay after dispense (fluid settle - applied before retract so the
+      // slide doesn't pull the needle up mid-drip)
       if (std::stoi(delayAfterDispense) > 0) {
         sequence->AddAction("system", "Wait", {
           {"milliseconds", delayAfterDispense}
         });
       }
+    }
+    sequence->EndIf();
 
-      // Only show completion notification if NOT in auto-confirm mode
+    // =========================================================================
+    // STEP 6: RETRACT (always, even on user cancel — slide is still extended)
+    // Runs before any notification so the slide is home before UI wall time.
+    // =========================================================================
+    sequence->AddAction(pneumaticSlide, "Retract", {
+      {"debounce_delay_ms", "300"},
+      {"timeout_ms", "10000"}
+    });
+
+    // Post-retract notification (cosmetic — slide is already safe at this point).
+    sequence->BeginIf("user_confirmed", ConditionalBlock::ComparisonType::IS_TRUE);
+    {
       if (!autoConfirm || !setupComplete) {
         sequence->AddAction("system", "UserPrompt", {
           {"title", "✅ Dispense Complete"},
           {"message", "Dispensing completed successfully.\n\n"
-                      "Retracting and returning to safe position."},
+                      "Slide retracted; returning to safe position."},
           {"blocking", "false"}
         });
       }
     }
     sequence->Else();
     {
-      // User cancelled - always show this (shouldn't happen in auto-confirm mode)
       sequence->AddAction("system", "UserPrompt", {
         {"title", "❌ Dispense Cancelled"},
         {"message", "Dispense operation cancelled by user.\n\n"
-                    "Retracting and returning to safe position."},
+                    "Slide retracted; returning to safe position."},
         {"blocking", "false"}
       });
     }
     sequence->EndIf();
-
-    // =========================================================================
-    // STEP 6: RETRACT AND VERIFY DISPENSE RESULT
-    // =========================================================================
-
-    // Retract dispenser head
-    sequence->AddAction(pneumaticSlide, "Retract", {
-      {"debounce_delay_ms", "300"},
-      {"timeout_ms", "10000"}
-    });
 
     // Move camera back to dispensed location so user can verify (unless skipped)
     if (!skipCameraVerify) {

@@ -12,6 +12,7 @@
 #include "GraphWidget.h"
 #include "AdaptiveScanController.h"
 #include "InterlockWidget.h"
+#include "PneumaticInterlockWidget.h"
 #include "DataStore.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -24,6 +25,7 @@
 
 class SequenceEngine;
 class InterlockManager;
+class PneumaticManager;
 
 class MotionPage : public QWidget
 {
@@ -37,6 +39,7 @@ public:
     CoordinateSystemManager* coordinateSystemManager,
     SequenceEngine* sequenceEngine,
     InterlockManager* interlockManager = nullptr,
+    PneumaticManager* pneumaticManager = nullptr,
     QWidget* parent = nullptr);
   ~MotionPage() override;
 
@@ -112,6 +115,7 @@ private:
   CoordinateSystemManager* m_coordinateSystemManager;
   SequenceEngine* m_sequenceEngine;
   InterlockManager* m_interlockManager;
+  PneumaticManager* m_pneumaticManager;
 
   // Tab widget
   QTabWidget* m_tabWidget;

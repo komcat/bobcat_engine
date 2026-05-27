@@ -645,6 +645,7 @@ set(SOURCES
     include/AppUI/MotionPages/NewPositionDialog.cpp
     include/AppUI/MotionPages/MotionPage.cpp
     include/AppUI/MotionPages/InterlockWidget.cpp
+    include/AppUI/MotionPages/PneumaticInterlockWidget.cpp
     include/AppUI/MotionPages/CollapsiblePanel.cpp
     include/AppUI/CoordinateSystem/CreateSystemWidget.cpp
     include/AppUI/CoordinateSystem/TestSystemWidget.cpp
