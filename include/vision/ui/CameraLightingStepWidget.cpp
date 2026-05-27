@@ -13,6 +13,8 @@
 #include <QGridLayout>
 #include <QFormLayout>
 #include <QFrame>
+#include <QIntValidator>
+#include <QDoubleValidator>
 #include <QCoreApplication>
 #include <QFile>
 #include <nlohmann/json.hpp>
@@ -145,72 +147,88 @@ void CameraLightingStepWidget::setupCameraSection(QVBoxLayout* col)
     autoRow->addStretch();
     camLayout->addLayout(autoRow);
 
-    // Grid: Exposure | Gain | FPS in two columns
+    // Grid: Exposure | Gain | FPS — each row is [label] [text field] [unit] [Apply] [value-echo]
     QGridLayout* grid = new QGridLayout();
     grid->setContentsMargins(0, 0, 0, 0);
     grid->setSpacing(3);
 
+    static const char* applyBtnStyle =
+        "QPushButton { background-color: #1565C0; color: white; font-weight: bold; "
+        "padding: 2px 8px; border-radius: 3px; }"
+        "QPushButton:hover { background-color: #1976D2; }"
+        "QPushButton:pressed { background-color: #0D47A1; }";
+
+    auto applyAll = [this]() {
+        applyCameraSettings();
+        emit cameraSettingsChanged();
+    };
+
     // Row 0: Exposure
     grid->addWidget(new QLabel("Exp:"), 0, 0);
-    m_exposureSpinBox = new QSpinBox();
-    m_exposureSpinBox->setRange(1, 1000000);
-    m_exposureSpinBox->setSingleStep(50);
-    m_exposureSpinBox->setValue(1000);
-    m_exposureSpinBox->setSuffix(" us");
-    m_exposureSpinBox->setMaximumWidth(100);
-    connect(m_exposureSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
-            this, [this](int v) { updateExposureLabel(v); });
-    grid->addWidget(m_exposureSpinBox, 0, 1);
+    m_exposureEdit = new QLineEdit();
+    m_exposureEdit->setValidator(new QIntValidator(1, 1000000, m_exposureEdit));
+    m_exposureEdit->setText("1000");
+    m_exposureEdit->setMaximumWidth(100);
+    m_exposureEdit->setToolTip("Exposure in microseconds (1 to 1,000,000)");
+    connect(m_exposureEdit, &QLineEdit::returnPressed, this, applyAll);
+    grid->addWidget(m_exposureEdit, 0, 1);
+    grid->addWidget(new QLabel("us"), 0, 2);
+    m_exposureApplyBtn = new QPushButton("Apply");
+    m_exposureApplyBtn->setStyleSheet(applyBtnStyle);
+    connect(m_exposureApplyBtn, &QPushButton::clicked, this, applyAll);
+    grid->addWidget(m_exposureApplyBtn, 0, 3);
     m_exposureValueLabel = new QLabel("1.00 ms");
     m_exposureValueLabel->setStyleSheet("color: #888; font-size: 10px;");
-    m_exposureValueLabel->setMaximumWidth(50);
-    grid->addWidget(m_exposureValueLabel, 0, 2);
+    m_exposureValueLabel->setMaximumWidth(70);
+    grid->addWidget(m_exposureValueLabel, 0, 4);
 
     // Row 1: Gain
     grid->addWidget(new QLabel("Gain:"), 1, 0);
-    m_gainSpinBox = new QDoubleSpinBox();
-    m_gainSpinBox->setRange(0.0, 24.0);
-    m_gainSpinBox->setValue(1.0);
-    m_gainSpinBox->setSingleStep(0.1);
-    m_gainSpinBox->setDecimals(1);
-    m_gainSpinBox->setMaximumWidth(100);
-    connect(m_gainSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, [this](double v) { updateGainLabel(v); });
-    grid->addWidget(m_gainSpinBox, 1, 1);
+    m_gainEdit = new QLineEdit();
+    {
+        auto* v = new QDoubleValidator(0.0, 24.0, 2, m_gainEdit);
+        v->setNotation(QDoubleValidator::StandardNotation);
+        m_gainEdit->setValidator(v);
+    }
+    m_gainEdit->setText("1.0");
+    m_gainEdit->setMaximumWidth(100);
+    m_gainEdit->setToolTip("Gain (0.0 to 24.0)");
+    connect(m_gainEdit, &QLineEdit::returnPressed, this, applyAll);
+    grid->addWidget(m_gainEdit, 1, 1);
+    grid->addWidget(new QLabel(""), 1, 2);
+    m_gainApplyBtn = new QPushButton("Apply");
+    m_gainApplyBtn->setStyleSheet(applyBtnStyle);
+    connect(m_gainApplyBtn, &QPushButton::clicked, this, applyAll);
+    grid->addWidget(m_gainApplyBtn, 1, 3);
     m_gainValueLabel = new QLabel("1.0");
     m_gainValueLabel->setStyleSheet("color: #888; font-size: 10px;");
-    m_gainValueLabel->setMaximumWidth(50);
-    grid->addWidget(m_gainValueLabel, 1, 2);
+    m_gainValueLabel->setMaximumWidth(70);
+    grid->addWidget(m_gainValueLabel, 1, 4);
 
     // Row 2: Frame Rate
     grid->addWidget(new QLabel("FPS:"), 2, 0);
-    m_frameRateSpinBox = new QDoubleSpinBox();
-    m_frameRateSpinBox->setRange(0.1, 30.0);
-    m_frameRateSpinBox->setValue(8.0);
-    m_frameRateSpinBox->setSingleStep(0.5);
-    m_frameRateSpinBox->setDecimals(1);
-    m_frameRateSpinBox->setSuffix(" fps");
-    m_frameRateSpinBox->setMaximumWidth(100);
-    connect(m_frameRateSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
-            this, [this](double v) { updateFrameRateLabel(v); });
-    grid->addWidget(m_frameRateSpinBox, 2, 1);
+    m_frameRateEdit = new QLineEdit();
+    {
+        auto* v = new QDoubleValidator(0.1, 30.0, 2, m_frameRateEdit);
+        v->setNotation(QDoubleValidator::StandardNotation);
+        m_frameRateEdit->setValidator(v);
+    }
+    m_frameRateEdit->setText("8.0");
+    m_frameRateEdit->setMaximumWidth(100);
+    m_frameRateEdit->setToolTip("Frame rate (0.1 to 30.0 fps)");
+    connect(m_frameRateEdit, &QLineEdit::returnPressed, this, applyAll);
+    grid->addWidget(m_frameRateEdit, 2, 1);
+    grid->addWidget(new QLabel("fps"), 2, 2);
+    m_frameRateApplyBtn = new QPushButton("Apply");
+    m_frameRateApplyBtn->setStyleSheet(applyBtnStyle);
+    connect(m_frameRateApplyBtn, &QPushButton::clicked, this, applyAll);
+    grid->addWidget(m_frameRateApplyBtn, 2, 3);
     m_frameRateValueLabel = new QLabel("8.0");
     m_frameRateValueLabel->setStyleSheet("color: #888; font-size: 10px;");
-    m_frameRateValueLabel->setMaximumWidth(50);
-    grid->addWidget(m_frameRateValueLabel, 2, 2);
+    m_frameRateValueLabel->setMaximumWidth(70);
+    grid->addWidget(m_frameRateValueLabel, 2, 4);
 
     camLayout->addLayout(grid);
-
-    // Apply button
-    m_applyCameraSettingsBtn = new QPushButton("Apply Camera Settings");
-    m_applyCameraSettingsBtn->setStyleSheet(
-        "QPushButton { background-color: #1565C0; color: white; font-weight: bold; padding: 6px; border-radius: 3px; }"
-        "QPushButton:hover { background-color: #1976D2; }"
-        "QPushButton:pressed { background-color: #0D47A1; }"
-    );
-    connect(m_applyCameraSettingsBtn, &QPushButton::clicked,
-            this, &CameraLightingStepWidget::onApplyCameraSettingsBtnClicked);
-    camLayout->addWidget(m_applyCameraSettingsBtn);
 
     col->addWidget(camGroup);
 }
@@ -340,9 +358,43 @@ void CameraLightingStepWidget::applyCameraSettings()
     ICameraHardware::ExposureSettings settings;
     settings.auto_exposure = m_autoExposureCheck->isChecked();
     settings.auto_gain     = m_autoGainCheck->isChecked();
-    settings.exposure_time = m_exposureSpinBox  ? m_exposureSpinBox->value()  : 1000;
-    settings.gain          = m_gainSpinBox      ? m_gainSpinBox->value()      : 1.0;
-    settings.frame_rate    = m_frameRateSpinBox ? m_frameRateSpinBox->value() : 8.0;
+
+    // Parse text fields; clamp/default on bad input
+    settings.exposure_time = 1000;
+    if (m_exposureEdit) {
+        bool ok = false;
+        int v = m_exposureEdit->text().trimmed().toInt(&ok);
+        if (ok) {
+            if (v < 1) v = 1;
+            if (v > 1000000) v = 1000000;
+            settings.exposure_time = v;
+        }
+    }
+    settings.gain = 1.0;
+    if (m_gainEdit) {
+        bool ok = false;
+        double v = m_gainEdit->text().trimmed().toDouble(&ok);
+        if (ok) {
+            if (v < 0.0) v = 0.0;
+            if (v > 24.0) v = 24.0;
+            settings.gain = v;
+        }
+    }
+    settings.frame_rate = 8.0;
+    if (m_frameRateEdit) {
+        bool ok = false;
+        double v = m_frameRateEdit->text().trimmed().toDouble(&ok);
+        if (ok) {
+            if (v < 0.1) v = 0.1;
+            if (v > 30.0) v = 30.0;
+            settings.frame_rate = v;
+        }
+    }
+
+    // Reflect the parsed/applied values in the echo labels
+    updateExposureLabel(static_cast<int>(settings.exposure_time));
+    updateGainLabel(settings.gain);
+    updateFrameRateLabel(settings.frame_rate);
 
     std::string cameraIdStr = cameraId.toStdString();
 
@@ -376,9 +428,9 @@ void CameraLightingStepWidget::loadCurrentCameraSettings()
     // Block signals while loading
     m_autoExposureCheck->blockSignals(true);
     m_autoGainCheck->blockSignals(true);
-    if (m_exposureSpinBox)  m_exposureSpinBox->blockSignals(true);
-    if (m_gainSpinBox)      m_gainSpinBox->blockSignals(true);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
+    if (m_exposureEdit)  m_exposureEdit->blockSignals(true);
+    if (m_gainEdit)      m_gainEdit->blockSignals(true);
+    if (m_frameRateEdit) m_frameRateEdit->blockSignals(true);
 
     m_autoExposureCheck->setChecked(settings.auto_exposure);
     m_autoGainCheck->setChecked(settings.auto_gain);
@@ -387,23 +439,25 @@ void CameraLightingStepWidget::loadCurrentCameraSettings()
     if (exposureValue < 1)       exposureValue = 1;
     if (exposureValue > 1000000) exposureValue = 1000000;
 
-    if (m_exposureSpinBox)  m_exposureSpinBox->setValue(exposureValue);
-    if (m_gainSpinBox)      m_gainSpinBox->setValue(settings.gain);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->setValue(settings.frame_rate);
+    if (m_exposureEdit)  m_exposureEdit->setText(QString::number(exposureValue));
+    if (m_gainEdit)      m_gainEdit->setText(QString::number(settings.gain, 'f', 2));
+    if (m_frameRateEdit) m_frameRateEdit->setText(QString::number(settings.frame_rate, 'f', 1));
 
     updateExposureLabel(exposureValue);
     updateGainLabel(settings.gain);
     updateFrameRateLabel(settings.frame_rate);
 
-    if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.auto_exposure);
-    if (m_gainSpinBox)     m_gainSpinBox->setEnabled(!settings.auto_gain);
+    if (m_exposureEdit)     m_exposureEdit->setEnabled(!settings.auto_exposure);
+    if (m_exposureApplyBtn) m_exposureApplyBtn->setEnabled(!settings.auto_exposure);
+    if (m_gainEdit)         m_gainEdit->setEnabled(!settings.auto_gain);
+    if (m_gainApplyBtn)     m_gainApplyBtn->setEnabled(!settings.auto_gain);
 
     // Unblock signals
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
-    if (m_exposureSpinBox)  m_exposureSpinBox->blockSignals(false);
-    if (m_gainSpinBox)      m_gainSpinBox->blockSignals(false);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
+    if (m_exposureEdit)  m_exposureEdit->blockSignals(false);
+    if (m_gainEdit)      m_gainEdit->blockSignals(false);
+    if (m_frameRateEdit) m_frameRateEdit->blockSignals(false);
 
     std::cout << "[CameraLightingStepWidget] Loaded camera settings from " << cameraIdStr << std::endl;
 }
@@ -440,11 +494,26 @@ CameraLightingStepWidget::CameraSettings CameraLightingStepWidget::getCameraSett
 {
     CameraSettings s;
     s.cameraId    = getSelectedCameraId();
-    s.exposureTime = m_exposureSpinBox  ? m_exposureSpinBox->value()  : 1000;
-    s.gain         = m_gainSpinBox      ? m_gainSpinBox->value()      : 1.0;
+    s.exposureTime = 1000;
+    if (m_exposureEdit) {
+        bool ok = false;
+        int v = m_exposureEdit->text().trimmed().toInt(&ok);
+        if (ok) s.exposureTime = v;
+    }
+    s.gain = 1.0;
+    if (m_gainEdit) {
+        bool ok = false;
+        double v = m_gainEdit->text().trimmed().toDouble(&ok);
+        if (ok) s.gain = v;
+    }
     s.autoExposure = m_autoExposureCheck ? m_autoExposureCheck->isChecked() : false;
     s.autoGain     = m_autoGainCheck     ? m_autoGainCheck->isChecked()     : false;
-    s.frameRate    = m_frameRateSpinBox ? m_frameRateSpinBox->value() : 8.0;
+    s.frameRate = 8.0;
+    if (m_frameRateEdit) {
+        bool ok = false;
+        double v = m_frameRateEdit->text().trimmed().toDouble(&ok);
+        if (ok) s.frameRate = v;
+    }
     return s;
 }
 
@@ -453,9 +522,9 @@ void CameraLightingStepWidget::setCameraSettings(const CameraSettings& settings)
     m_cameraSelector->blockSignals(true);
     m_autoExposureCheck->blockSignals(true);
     m_autoGainCheck->blockSignals(true);
-    if (m_exposureSpinBox)  m_exposureSpinBox->blockSignals(true);
-    if (m_gainSpinBox)      m_gainSpinBox->blockSignals(true);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(true);
+    if (m_exposureEdit)  m_exposureEdit->blockSignals(true);
+    if (m_gainEdit)      m_gainEdit->blockSignals(true);
+    if (m_frameRateEdit) m_frameRateEdit->blockSignals(true);
 
     int cameraIndex = m_cameraSelector->findText(settings.cameraId);
     if (cameraIndex >= 0) {
@@ -465,16 +534,18 @@ void CameraLightingStepWidget::setCameraSettings(const CameraSettings& settings)
     m_autoExposureCheck->setChecked(settings.autoExposure);
     m_autoGainCheck->setChecked(settings.autoGain);
 
-    if (m_exposureSpinBox)  m_exposureSpinBox->setValue(settings.exposureTime);
-    if (m_gainSpinBox)      m_gainSpinBox->setValue(settings.gain);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->setValue(settings.frameRate);
+    if (m_exposureEdit)  m_exposureEdit->setText(QString::number(settings.exposureTime));
+    if (m_gainEdit)      m_gainEdit->setText(QString::number(settings.gain, 'f', 2));
+    if (m_frameRateEdit) m_frameRateEdit->setText(QString::number(settings.frameRate, 'f', 1));
 
     updateExposureLabel(settings.exposureTime);
     updateGainLabel(settings.gain);
     updateFrameRateLabel(settings.frameRate);
 
-    if (m_exposureSpinBox) m_exposureSpinBox->setEnabled(!settings.autoExposure);
-    if (m_gainSpinBox)     m_gainSpinBox->setEnabled(!settings.autoGain);
+    if (m_exposureEdit)     m_exposureEdit->setEnabled(!settings.autoExposure);
+    if (m_exposureApplyBtn) m_exposureApplyBtn->setEnabled(!settings.autoExposure);
+    if (m_gainEdit)         m_gainEdit->setEnabled(!settings.autoGain);
+    if (m_gainApplyBtn)     m_gainApplyBtn->setEnabled(!settings.autoGain);
 
     // Refresh calibration labels (values come from JSON, not from settings)
     if (m_pixelToMmXLabel) {
@@ -487,9 +558,9 @@ void CameraLightingStepWidget::setCameraSettings(const CameraSettings& settings)
     m_cameraSelector->blockSignals(false);
     m_autoExposureCheck->blockSignals(false);
     m_autoGainCheck->blockSignals(false);
-    if (m_exposureSpinBox)  m_exposureSpinBox->blockSignals(false);
-    if (m_gainSpinBox)      m_gainSpinBox->blockSignals(false);
-    if (m_frameRateSpinBox) m_frameRateSpinBox->blockSignals(false);
+    if (m_exposureEdit)  m_exposureEdit->blockSignals(false);
+    if (m_gainEdit)      m_gainEdit->blockSignals(false);
+    if (m_frameRateEdit) m_frameRateEdit->blockSignals(false);
 
     std::cout << "[CameraLightingStepWidget] Camera settings restored: "
               << "Camera=" << settings.cameraId.toStdString() << ", "
@@ -505,9 +576,8 @@ void CameraLightingStepWidget::setCameraSettings(const CameraSettings& settings)
 void CameraLightingStepWidget::onAutoExposureChanged(Qt::CheckState state)
 {
     bool autoEnabled = (state == Qt::Checked);
-    if (m_exposureSpinBox) {
-        m_exposureSpinBox->setEnabled(!autoEnabled);
-    }
+    if (m_exposureEdit)     m_exposureEdit->setEnabled(!autoEnabled);
+    if (m_exposureApplyBtn) m_exposureApplyBtn->setEnabled(!autoEnabled);
     applyCameraSettings();
     emit cameraSettingsChanged();
 }
@@ -515,18 +585,10 @@ void CameraLightingStepWidget::onAutoExposureChanged(Qt::CheckState state)
 void CameraLightingStepWidget::onAutoGainChanged(Qt::CheckState state)
 {
     bool autoEnabled = (state == Qt::Checked);
-    if (m_gainSpinBox) {
-        m_gainSpinBox->setEnabled(!autoEnabled);
-    }
+    if (m_gainEdit)     m_gainEdit->setEnabled(!autoEnabled);
+    if (m_gainApplyBtn) m_gainApplyBtn->setEnabled(!autoEnabled);
     applyCameraSettings();
     emit cameraSettingsChanged();
-}
-
-void CameraLightingStepWidget::onApplyCameraSettingsBtnClicked()
-{
-    applyCameraSettings();
-    emit cameraSettingsChanged();
-    std::cout << "[CameraLightingStepWidget] Camera settings applied via button" << std::endl;
 }
 
 // ---------------------------------------------------------------------------

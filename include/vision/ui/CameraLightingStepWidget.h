@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QSpinBox>
 #include <QDoubleSpinBox>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSlider>
 #include <QLabel>
@@ -82,7 +83,6 @@ private slots:
     void onCameraSelectionChanged(int index);
     void onAutoExposureChanged(Qt::CheckState state);
     void onAutoGainChanged(Qt::CheckState state);
-    void onApplyCameraSettingsBtnClicked();
     void onLightingEnabledChanged(Qt::CheckState state);
     void onLightingChannelIntensityChanged(int channel, int intensity);
     void onLightingChannelToggleChanged(int channel, bool on);
@@ -109,13 +109,15 @@ private:
     QComboBox*      m_cameraSelector       = nullptr;
     QCheckBox*      m_autoExposureCheck    = nullptr;
     QCheckBox*      m_autoGainCheck        = nullptr;
-    QSpinBox*       m_exposureSpinBox      = nullptr;
+    QLineEdit*      m_exposureEdit         = nullptr;
+    QPushButton*    m_exposureApplyBtn     = nullptr;
     QLabel*         m_exposureValueLabel   = nullptr;
-    QDoubleSpinBox* m_gainSpinBox          = nullptr;
+    QLineEdit*      m_gainEdit             = nullptr;
+    QPushButton*    m_gainApplyBtn         = nullptr;
     QLabel*         m_gainValueLabel       = nullptr;
-    QDoubleSpinBox* m_frameRateSpinBox     = nullptr;
+    QLineEdit*      m_frameRateEdit        = nullptr;
+    QPushButton*    m_frameRateApplyBtn    = nullptr;
     QLabel*         m_frameRateValueLabel  = nullptr;
-    QPushButton*    m_applyCameraSettingsBtn = nullptr;
 
     // Calibration (read-only display)
     QLabel* m_pixelToMmXLabel = nullptr;
