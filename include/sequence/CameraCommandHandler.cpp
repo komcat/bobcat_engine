@@ -6,6 +6,7 @@
 #include "LiveVideoSubscriber.h"
 #include "DeviceUnderTest.h"
 #include "ApplicationContext.h"
+#include "product_position_manager.h"
 #include <QImage>
 #include <QString>
 #include <filesystem>
@@ -111,8 +112,40 @@ static bool CaptureFrameFromLiveFeed(CameraManager* cameraManager, const std::st
     return true;
 }
 
+// Returns "YYYY-MM-DD_HH-MM-SS"
+static std::string CurrentTimestampString() {
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    std::tm tm_now;
+    localtime_s(&tm_now, &time_t_now);
+    char buf[40];
+    std::strftime(buf, sizeof(buf), "%Y-%m-%d_%H-%M-%S", &tm_now);
+    return std::string(buf);
+}
+
+// Substitute {timestamp} placeholder in a filename with current local time.
+static std::string SubstituteFilenamePlaceholders(const std::string& filename) {
+    const std::string token = "{timestamp}";
+    auto pos = filename.find(token);
+    if (pos == std::string::npos) {
+        return filename;
+    }
+    std::string out = filename;
+    std::string ts = CurrentTimestampString();
+    while (pos != std::string::npos) {
+        out.replace(pos, token.size(), ts);
+        pos = out.find(token, pos + ts.size());
+    }
+    return out;
+}
+
 // Helper function to generate capture filepath
-static std::string GenerateCaptureFilePath(const std::string& productName, const std::string& cameraName, const std::string& prefix = "") {
+// subfolder defaults to "captured_images"; when flat=true the date subfolder is omitted.
+static std::string GenerateCaptureFilePath(const std::string& productName,
+                                           const std::string& cameraName,
+                                           const std::string& prefix = "",
+                                           const std::string& subfolder = "captured_images",
+                                           bool flat = false) {
     // Get current date
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
@@ -128,8 +161,10 @@ static std::string GenerateCaptureFilePath(const std::string& productName, const
     // Build filename: [prefix_][camera]_[time].png
     std::string filename = prefix + cameraName + "_" + timeBuffer + ".png";
 
-    // Build path: data/[product_name]/captured_images/[date]/[filename]
-    fs::path capturePath = fs::path("data") / productName / "captured_images" / dateBuffer / filename;
+    // Build path: data/[product_name]/[subfolder]/[date]/[filename] (or no date if flat)
+    fs::path capturePath = flat
+        ? (fs::path("data") / productName / subfolder / filename)
+        : (fs::path("data") / productName / subfolder / dateBuffer / filename);
 
     return capturePath.string();
 }
@@ -151,24 +186,43 @@ bool CameraCommandHandler::ExecuteCommand(
     auto productNameIt = params.find("product_name");
     auto filenameIt = params.find("filename");
     auto prefixIt = params.find("prefix_");
+    auto subfolderIt = params.find("subfolder");
+    auto flatIt = params.find("flat");
 
-    if (productNameIt == params.end()) {
-      errorMessage = "Missing required parameter: product_name";
+    std::string productName = (productNameIt != params.end()) ? productNameIt->second : "";
+    // Fallback chain when caller leaves product_name empty:
+    //   1) active DUT's product name (most specific to the run)
+    //   2) ProductPositionManager current product (F-key selector)
+    if (productName.empty() && m_context && m_context->currentDUT) {
+      productName = m_context->currentDUT->getProductName();
+    }
+    if (productName.empty() && m_context && m_context->productPositionManager &&
+        m_context->productPositionManager->HasLoadedProduct()) {
+      productName = m_context->productPositionManager->GetCurrentProductName();
+    }
+    if (productName.empty()) {
+      errorMessage = "Missing required parameter: product_name (no active DUT or loaded product to fall back to)";
       return false;
     }
 
-    std::string productName = productNameIt->second;
     std::string prefix = (prefixIt != params.end()) ? prefixIt->second : "";
+    std::string subfolder = (subfolderIt != params.end() && !subfolderIt->second.empty())
+                              ? subfolderIt->second : "captured_images";
+    bool flat = (flatIt != params.end()) && (flatIt->second == "true" || flatIt->second == "1");
     std::string filepath;
 
     // Generate or use provided filepath
     if (filenameIt != params.end() && !filenameIt->second.empty()) {
-      // User provided filename - use it (prefix not applied when filename is specified)
-      fs::path userPath = fs::path("data") / productName / "captured_images" / filenameIt->second;
+      // User provided filename - use it (prefix not applied when filename is specified).
+      // Supports {timestamp} placeholder substituted at execution time.
+      std::string resolvedName = SubstituteFilenamePlaceholders(filenameIt->second);
+      // When a filename is supplied, the date subfolder is omitted (the user
+      // controls the full leaf name). 'flat' only matters for the auto-gen path.
+      fs::path userPath = fs::path("data") / productName / subfolder / resolvedName;
       filepath = userPath.string();
     } else {
       // Auto-generate filepath with prefix
-      filepath = GenerateCaptureFilePath(productName, deviceName, prefix);
+      filepath = GenerateCaptureFilePath(productName, deviceName, prefix, subfolder, flat);
     }
 
     // Capture frame

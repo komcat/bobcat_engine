@@ -53,7 +53,8 @@ public:
       {"auto_confirm", "false"},  // Auto-confirm after first-time setup
       {"skip_camera_verify", "false"},  // Skip camera view over dispensing position
       {"reteach_z_height", "false"},  // Force re-teach XY and Z height and save to data file
-      {"save_xy_after_confirm", "false"}  // Save camera XY to data file after verification
+      {"save_xy_after_confirm", "false"},  // Save camera XY to data file after verification
+      {"capture_after_dispense", "true"}   // Silently snapshot the dispensed location for traceability
     };
   }
 
@@ -133,6 +134,13 @@ public:
                                 "Skip moving camera back to dispensing position for visual verification. "
                                 "Useful for faster cycle times when verification is not needed.");
 
+    // Silent traceability snapshot after dispense
+    widget->addCheckboxParameter("capture_after_dispense", "Auto-capture snapshot after dispense (traceability)",
+                                getParam("capture_after_dispense"),
+                                "After the camera navigates back over the dispensed location, silently capture "
+                                "a frame to data/<product>/dispense_image/<UID>_dispense_<timestamp>.png. "
+                                "Has no effect when 'Skip camera verification' is enabled.");
+
     // ✅ Add validation when user toggles auto_confirm checkbox
     QCheckBox* autoConfirmCheckbox = widget->getCheckbox("auto_confirm");
     if (autoConfirmCheckbox) {
@@ -206,6 +214,7 @@ public:
     bool skipCameraVerify = (getParam("skip_camera_verify") == "true");
     bool reteachZHeight = (getParam("reteach_z_height") == "true");
     bool saveXyAfterConfirm = (getParam("save_xy_after_confirm") == "true");
+    bool captureAfterDispense = (getParam("capture_after_dispense") == "true");
 
     // Get the process instance UID for unique dispense position files
     std::string uid = step->uniqueId;
@@ -675,6 +684,18 @@ public:
       });
       sequence->AddAction(device, "WaitForMotionComplete", {});
 
+      // Silent traceability snapshot of the dispensed location.
+      // Product folder is resolved from the active DUT at execution time;
+      // {timestamp} is substituted by CameraCommandHandler at runtime.
+      if (captureAfterDispense) {
+        sequence->AddAction("main_camera", "CaptureToFile", {
+          {"product_name", ""},
+          {"subfolder", "dispense_image"},
+          {"flat", "true"},
+          {"filename", uid + "_dispense_{timestamp}.png"}
+        });
+      }
+
       // Show verification prompt (unless auto-confirm mode)
       if (!autoConfirm || !setupComplete) {
         sequence->AddAction("system", "UserPrompt", {
@@ -742,6 +763,7 @@ public:
       << ", SkipCameraVerify: " << (skipCameraVerify ? "yes" : "no")
       << ", ReteachZ: " << (reteachZHeight ? "yes" : "no")
       << ", SaveXYAfterConfirm: " << (saveXyAfterConfirm ? "yes" : "no")
+      << ", CaptureAfterDispense: " << (captureAfterDispense ? "yes" : "no")
       << ", ZOffset: " << zOffset << "mm)" << std::endl;
   }
 };
