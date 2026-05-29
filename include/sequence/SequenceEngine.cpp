@@ -616,6 +616,13 @@ void SequenceEngine::SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callba
   }
 }
 
+void SequenceEngine::SetStateSnapshotManager(StateSnapshotManager* mgr)
+{
+  if (m_systemHandler) {
+    m_systemHandler->SetStateSnapshotManager(mgr);
+  }
+}
+
 void SequenceEngine::SetEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback)
 {
   if (m_edgeTransferHandler) {

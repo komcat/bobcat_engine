@@ -1510,6 +1510,34 @@ bobcat = {
     -- "Variables" panel live during the run.
     watch = function(key, value)
         _native_watch(key, value)
+    end,
+    -- bobcat.snapshot(label, opts) -> captures a labeled JSON dump of all
+    -- machine state (motion/TEC/PSU/SMU/IO/lighting/pneumatic/DataStore/DUT)
+    -- plus optional camera frames. opts is an optional table:
+    --   tags          = {"debug","post-glue"}   (array of strings)
+    --   note          = "free-form note"
+    --   capture_image = false                   (default true)
+    -- Returns the snapshot file path via ctx.getString("snapshot.path").
+    snapshot = function(label, opts)
+        local tags = ""
+        local note = ""
+        local capImg = "true"
+        if opts then
+            if type(opts.tags) == "table" then
+                tags = table.concat(opts.tags, ",")
+            elseif type(opts.tags) == "string" then
+                tags = opts.tags
+            end
+            if opts.note then note = tostring(opts.note) end
+            if opts.capture_image == false then capImg = "false" end
+        end
+        return _dispatch("system", "CaptureSnapshot", {
+            label = tostring(label or ""),
+            tags = tags,
+            note = note,
+            source = "lua",
+            capture_image = capImg
+        })
     end
 }
 

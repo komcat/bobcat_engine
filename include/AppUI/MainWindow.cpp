@@ -31,11 +31,13 @@
 #include "Common/ShutdownConfirmDialog.h"          // Shutdown confirmation
 #include "safety/SafetyWatchManager.h"
 #include "safety/SafetyAlertDialog.h"
+#include "snapshot/StateSnapshotManager.h"
 #include <QVBoxLayout>
 #include <QApplication>
 #include <QMessageBox>
 #include <QSettings>
 #include <QScreen>
+#include <QInputDialog>
 #include <iostream>
 
 MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
@@ -519,10 +521,15 @@ void MainWindow::setupKeyboardShortcuts()
   connect(m_shortcutCtrlT, &QShortcut::activated, this, &MainWindow::onToggleRtlmWindow2);
   std::cout << "[MainWindow]   Ctrl+T -> Toggle Realtime Camera Monitor 2" << std::endl;
 
+  // Ctrl+Shift+S - Capture labeled state snapshot
+  m_shortcutCtrlShiftS = new QShortcut(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_S), this);
+  connect(m_shortcutCtrlShiftS, &QShortcut::activated, this, &MainWindow::onCaptureSnapshot);
+  std::cout << "[MainWindow]   Ctrl+Shift+S -> Capture state snapshot" << std::endl;
+
   std::cout << "[MainWindow] Keyboard shortcuts setup complete!" << std::endl;
 
   if (m_context->logManager) {
-    m_context->logManager->Info("Keyboard shortcuts (F1-F9, Ctrl+J, Ctrl+K, Ctrl+R, Ctrl+T) registered", "MainWindow");
+    m_context->logManager->Info("Keyboard shortcuts (F1-F9, Ctrl+J, Ctrl+K, Ctrl+R, Ctrl+T, Ctrl+Shift+S) registered", "MainWindow");
   }
 }
 
@@ -900,4 +907,47 @@ void MainWindow::restoreWindowSettings()
     restoreState(state);
     std::cout << "[MainWindow] Window state restored" << std::endl;
   }
+}
+
+// ----------------------------------------------------------------------------
+// Ctrl+Shift+S handler — pops a label prompt and writes a state snapshot via
+// the StateSnapshotManager. Runs directly on the UI thread (no sequence,
+// no script) so it's safe to invoke from any page at any time.
+// ----------------------------------------------------------------------------
+void MainWindow::onCaptureSnapshot()
+{
+  if (!m_context || !m_context->stateSnapshotManager) {
+    QMessageBox::warning(this, "Snapshot",
+      "StateSnapshotManager is not available.");
+    return;
+  }
+
+  bool ok = false;
+  QString label = QInputDialog::getText(this,
+    "Capture State Snapshot",
+    "Label (free text — used in filename):",
+    QLineEdit::Normal,
+    QString(),
+    &ok);
+  if (!ok) {
+    return;  // user cancelled
+  }
+
+  SnapshotOptions opts;
+  opts.label         = label.toStdString();
+  opts.source        = "ui";
+  opts.capture_image = true;
+
+  auto result = m_context->stateSnapshotManager->Capture(opts);
+  if (!result || !result->success) {
+    QString err = result ? QString::fromStdString(result->error)
+                         : QString("manager returned no result");
+    QMessageBox::warning(this, "Snapshot failed", err);
+    return;
+  }
+
+  QMessageBox::information(this, "Snapshot saved",
+    QString("Saved to:\n%1\n\nCamera frames: %2")
+      .arg(QString::fromStdString(result->snapshot_path))
+      .arg(static_cast<int>(result->image_paths.size())));
 }
