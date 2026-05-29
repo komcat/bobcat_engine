@@ -4,6 +4,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QProgressBar>
+#include <QPushButton>
 #include <QVBoxLayout>
 
 ExecutionStatusWidget::ExecutionStatusWidget(QWidget* parent)
@@ -62,8 +63,52 @@ void ExecutionStatusWidget::buildUi()
     headerRow->setContentsMargins(0, 0, 0, 0);
     headerRow->setSpacing(15);
 
+    // DUT button stack — Init (top) + tiny x Close (bottom), pinned to the
+    // left of the badge. The page wires both clicks to DUTCommandHandler
+    // dispatches; this widget owns layout only. Close is hidden by default.
+    auto* dutColumn = new QWidget();
+    dutColumn->setFixedWidth(70);
+    auto* dutColLayout = new QVBoxLayout(dutColumn);
+    dutColLayout->setContentsMargins(0, 0, 0, 0);
+    dutColLayout->setSpacing(2);
+
+    m_initDutButton = new QPushButton("Init\nDUT");
+    m_initDutButton->setFixedHeight(53);
+    m_initDutButton->setToolTip("Initialize a DUT (loads existing or creates new) for this run");
+    m_initDutButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #0e639c; "
+        "  color: #ffffff; "
+        "  border: 1px solid #1177bb; "
+        "  border-radius: 4px; "
+        "  font-weight: bold; "
+        "  font-size: 12px; "
+        "} "
+        "QPushButton:hover  { background-color: #1177bb; } "
+        "QPushButton:pressed{ background-color: #0a4f7a; }");
+
+    m_closeDutButton = new QPushButton(QString::fromUtf8("\xC3\x97"));  // "×"
+    m_closeDutButton->setFixedHeight(20);
+    m_closeDutButton->setToolTip("Close the active DUT");
+    m_closeDutButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #8b2c2c; "
+        "  color: #ffffff; "
+        "  border: 1px solid #b04040; "
+        "  border-radius: 4px; "
+        "  font-weight: bold; "
+        "  font-size: 12px; "
+        "} "
+        "QPushButton:hover  { background-color: #b04040; } "
+        "QPushButton:pressed{ background-color: #6a2020; }");
+    m_closeDutButton->hide();  // shown by the page after a successful init
+
+    dutColLayout->addWidget(m_initDutButton);
+    dutColLayout->addWidget(m_closeDutButton);
+    headerRow->addWidget(dutColumn, 0, Qt::AlignTop);
+
     m_programStatusLabel = new QLabel("Idle");
-    m_programStatusLabel->setFixedSize(250, 150);
+    m_programStatusLabel->setFixedSize(250, 75);
     m_programStatusLabel->setAlignment(Qt::AlignCenter);
     headerRow->addWidget(m_programStatusLabel, 0, Qt::AlignTop);
 

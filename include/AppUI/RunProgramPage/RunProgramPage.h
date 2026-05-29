@@ -84,6 +84,14 @@ private slots:
   void onExecuteProgram();
   void onStopProgram();
 
+  // DUT initialization — prompts for SN and dispatches dut/LoadOrCreate
+  // through DUTCommandHandler. On success the SN is overlaid on the
+  // status badge (see applyProgramStatusLabel).
+  void onInitDutClicked();
+
+  // Closes the active DUT via dut/Close and clears the SN overlay.
+  void onCloseDutClicked();
+
   // Program execution signals
   void onProgramExecutionStarted(int totalRecipes);
   void onRecipeStarted(int recipeIndex, QString recipeName);

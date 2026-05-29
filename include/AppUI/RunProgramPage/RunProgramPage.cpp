@@ -26,6 +26,7 @@
 #include "common/ScanActivityTracker.h"
 #include "motions/unified_motion_manager.h"
 #include "SequenceEngine.h"
+#include "DUTCommandHandler.h"
 #include "MotionCommandHandler.h"
 #include "CameraClickToMoveWidget.h"
 #include <future>
@@ -519,6 +520,13 @@ void RunProgramPage::applyProgramStatusLabel()
     fg = m_baseStatusFgColor;
   }
 
+  // Append the active DUT serial number under the base state, if one has
+  // been initialized. Cleared by re-setting the widget's dutSerial to "".
+  const QString& sn = m_executionStatus->dutSerial();
+  if (!sn.isEmpty()) {
+    text += QString("\nSN: %1").arg(sn);
+  }
+
   m_executionStatus->programStatusLabel()->setText(text);
   m_executionStatus->programStatusLabel()->setStyleSheet(
     QString(
@@ -528,7 +536,7 @@ void RunProgramPage::applyProgramStatusLabel()
       "  padding: 4px 12px; "
       "  border-radius: 4px; "
       "  font-weight: bold; "
-      "  font-size: 18px; "
+      "  font-size: 16px; "
       "}"
     ).arg(bg, fg)
   );
@@ -545,6 +553,15 @@ void RunProgramPage::createExecutionWidget()
   // via typed getters where the page reacts to execution events.
   m_executionStatus = new ExecutionStatusWidget();
   layout->addWidget(m_executionStatus);
+
+  // Wire the DUT button stack (left of the status badge) to the local
+  // slots that dispatch dut/LoadOrCreate and dut/Close. The widget exposes
+  // both buttons raw; all behavior — prompt, dispatch, badge overlay,
+  // close-button visibility — lives here.
+  connect(m_executionStatus->initDutButton(), &QPushButton::clicked,
+          this, &RunProgramPage::onInitDutClicked);
+  connect(m_executionStatus->closeDutButton(), &QPushButton::clicked,
+          this, &RunProgramPage::onCloseDutClicked);
 
   // Initial paint — the badge reads from m_baseStatus* defaults.
   applyProgramStatusLabel();
@@ -1230,6 +1247,125 @@ void RunProgramPage::onExecuteProgram()
 
   // Start context refresh timer for real-time context tab updates.
   startContextRefreshTimer();
+}
+
+// "Init DUT" button — prompts for a serial number and dispatches
+// dut/LoadOrCreate through a stack-local DUTCommandHandler. This is a
+// single-command UI action (no sequence) so we instantiate the handler
+// directly rather than going through SequenceEngine. On success, the SN
+// is stored on the status widget and re-painted onto the Idle badge.
+void RunProgramPage::onInitDutClicked()
+{
+  if (!m_context) {
+    QMessageBox::warning(this, "DUT", "Application context unavailable.");
+    return;
+  }
+
+  // Pre-seed the dialog with the currently-loaded SN, if any, so the user
+  // can re-confirm or edit instead of retyping.
+  QString currentSn;
+  if (m_context->currentDUT) {
+    currentSn = QString::fromStdString(m_context->currentDUT->getSerialNumber());
+  }
+
+  bool ok = false;
+  QString sn = QInputDialog::getText(this,
+    "Initialize DUT",
+    "Serial number:",
+    QLineEdit::Normal,
+    currentSn,
+    &ok);
+  if (!ok) {
+    return;  // user cancelled
+  }
+  sn = sn.trimmed();
+  if (sn.isEmpty()) {
+    QMessageBox::warning(this, "DUT", "Serial number cannot be empty.");
+    return;
+  }
+
+  // Dispatch through the DUT command handler so all bookkeeping
+  // (auto-close existing DUT, product-name resolution, logging) stays
+  // in one place. LoadOrCreate preserves existing entries if the DUT
+  // file already exists, otherwise creates a fresh one.
+  DUTCommandHandler handler(m_context);
+  std::map<std::string, std::string> params = {
+    {"serialNumber", sn.toStdString()}
+    // productName left empty -> handler resolves from ProductPositionManager
+  };
+  std::string errorMessage;
+  bool dispatched = handler.ExecuteCommand(
+      /*manager=*/nullptr,
+      /*deviceName=*/"dut",
+      /*methodName=*/"LoadOrCreate",
+      params,
+      errorMessage,
+      /*context=*/nullptr);
+
+  if (!dispatched) {
+    QMessageBox::warning(this, "DUT init failed",
+      QString::fromStdString(errorMessage));
+    return;
+  }
+
+  // Reflect the new SN on the Idle badge. The widget stores the string;
+  // applyProgramStatusLabel() composes "Idle\nSN: ..." on the next paint.
+  m_executionStatus->setDutSerial(sn);
+  m_executionStatus->closeDutButton()->show();
+  applyProgramStatusLabel();
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "DUT initialized via Run page button: " + sn.toStdString(),
+      "RunProgramPage");
+  }
+}
+
+// "x" close button — dispatches dut/Close, clears the SN overlay, and
+// re-hides the close button. Same single-command UI pattern as init.
+void RunProgramPage::onCloseDutClicked()
+{
+  if (!m_context) {
+    QMessageBox::warning(this, "DUT", "Application context unavailable.");
+    return;
+  }
+
+  if (!m_context->currentDUT) {
+    // Nothing to close — just make sure the UI matches reality.
+    m_executionStatus->setDutSerial(QString());
+    m_executionStatus->closeDutButton()->hide();
+    applyProgramStatusLabel();
+    return;
+  }
+
+  std::string sn = m_context->currentDUT->getSerialNumber();
+
+  DUTCommandHandler handler(m_context);
+  std::map<std::string, std::string> params;
+  std::string errorMessage;
+  bool dispatched = handler.ExecuteCommand(
+      /*manager=*/nullptr,
+      /*deviceName=*/"dut",
+      /*methodName=*/"Close",
+      params,
+      errorMessage,
+      /*context=*/nullptr);
+
+  if (!dispatched) {
+    QMessageBox::warning(this, "DUT close failed",
+      QString::fromStdString(errorMessage));
+    return;
+  }
+
+  m_executionStatus->setDutSerial(QString());
+  m_executionStatus->closeDutButton()->hide();
+  applyProgramStatusLabel();
+
+  if (m_context->logManager) {
+    m_context->logManager->Info(
+      "DUT closed via Run page button: " + sn,
+      "RunProgramPage");
+  }
 }
 
 void RunProgramPage::onStopProgram()
