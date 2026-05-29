@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+class StateSnapshotManager;
+
 // Callback type for user prompts - returns true if user confirmed, false if cancelled
 using UserPromptCallback = std::function<bool(const std::string& title, const std::string& message)>;
 
@@ -146,6 +148,16 @@ public:
     m_getSwirBeamStateCallback = callback;
   }
 
+  // StateSnapshotManager handle used by the "CaptureSnapshot" command.
+  // Wired by Application after both this handler and the snapshot manager
+  // exist; null is OK and produces a clean error from the command.
+  void SetStateSnapshotManager(StateSnapshotManager* mgr) {
+    m_stateSnapshotManager = mgr;
+  }
+  StateSnapshotManager* GetStateSnapshotManager() const {
+    return m_stateSnapshotManager;
+  }
+
   // Getters — needed by ScriptCommandHandler to save/restore callbacks across
   // recipe.run() invocations from Lua (RecipeWorker clears them on destroy);
   // also consumed by per-family helpers under include/sequence/system/ via
@@ -172,4 +184,5 @@ private:
   SetSwirToggleCallback m_beamDetectToggleCallback;
   SetSwirToggleCallback m_autoSatToggleCallback;
   GetSwirBeamStateCallback m_getSwirBeamStateCallback;
+  StateSnapshotManager* m_stateSnapshotManager = nullptr;
 };

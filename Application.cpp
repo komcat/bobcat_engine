@@ -28,6 +28,7 @@
 #include "safety/SafetyEventLog.h"
 #include "customserver/BeamServerClient.h"
 #include "common/ScanActivityTracker.h"
+#include "snapshot/StateSnapshotManager.h"
 #include "ProcessPluginRegistry.h"
 #include "DarkTheme.h"  // ✅ NEW: Centralized dark theme
 #include "Theme.h"      // Palette + runtime applyPalette()
@@ -472,6 +473,17 @@ void Application::initializeManagers()
     m_motionManager->SetInterlockManager(m_interlockManager.get());
     m_context.interlockManager = m_interlockManager.get();
     m_logManager->Info("InterlockManager initialized", "Application");
+
+    // StateSnapshotManager — must be created after all hardware managers are
+    // wired into m_context (motion/IO/TEC/PSU/SMU/lighting/pneumatic/camera/
+    // DataStore/DUT) so its dumpers can read them. No hardware connection of
+    // its own — pure read-side aggregator.
+    m_stateSnapshotManager = std::make_unique<StateSnapshotManager>(&m_context);
+    m_context.stateSnapshotManager = m_stateSnapshotManager.get();
+    if (m_sequenceEngine) {
+      m_sequenceEngine->SetStateSnapshotManager(m_stateSnapshotManager.get());
+    }
+    m_logManager->Info("StateSnapshotManager initialized", "Application");
 
     // Optional: run test commands to verify managers
     //testMotionCommands();
@@ -1338,6 +1350,10 @@ void Application::shutdownManagers()
   }
 
   m_context = ApplicationContext();
+
+  // StateSnapshotManager only reads from peer managers — tear it down before
+  // any of them go away.
+  m_stateSnapshotManager.reset();
 
   // ✅ CRITICAL: Reset SMU polling manager BEFORE DataStore (it emits to DataStore)
   m_smuPollingManager.reset();

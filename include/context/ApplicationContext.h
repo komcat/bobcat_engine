@@ -35,6 +35,7 @@ class ScanActivityTracker;  // Reference-counted scan-busy broadcaster (drives T
 class ScriptEngine;         // Lua 5.4 scripting engine
 class IoWatchManager;       // IO manual-override watch layer
 class TransformationMatrixLoader;  // Per-device global<->local frame matrices
+class StateSnapshotManager;        // Labeled state snapshot capture (see include/snapshot/)
 
 namespace Lighting {
 class LightingManager;
@@ -79,6 +80,7 @@ struct ApplicationContext
   ScriptEngine* scriptEngine = nullptr;                  // Lua 5.4 scripting engine
   IoWatchManager* ioWatchManager = nullptr;              // IO manual-override watch layer
   TransformationMatrixLoader* transformationMatrixLoader = nullptr;  // Per-device global<->local frame matrices
+  StateSnapshotManager* stateSnapshotManager = nullptr;              // On-demand labeled state snapshots
 
   // System configuration
   bool simulationMode = false;  // When true, skip hardware connections

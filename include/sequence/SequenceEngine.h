@@ -19,6 +19,7 @@
 class SequenceBuilder;
 struct ISequenceStep;
 class SystemCommandHandler;
+class StateSnapshotManager;
 class AccuracyTrainerCommandHandler;
 class PlanarAdjustmentCommandHandler;
 class ZOffsetCommandHandler;
@@ -264,6 +265,7 @@ public:
   void SetBeamDetectToggleCallback(SetSwirToggleCallback callback);
   void SetAutoSatToggleCallback(SetSwirToggleCallback callback);
   void SetGetSwirBeamStateCallback(GetSwirBeamStateCallback callback);
+  void SetStateSnapshotManager(StateSnapshotManager* mgr);
   void SetEdgeTransferRetraceCallback(EdgeTransferRetraceCallback callback);
 
   // Step execution event callbacks (pub-sub)

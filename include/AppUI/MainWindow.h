@@ -65,6 +65,7 @@ private slots:
   void onToggleRtlmWindow2(); // Toggle second realtime camera monitor (GDI)
   void onToggleSwirWindow();  // Toggle SWIR beam processing window
   void onToggleGdiWindow();   // Force-toggle native GDI camera monitor (skips Qt fallback)
+  void onCaptureSnapshot();   // Ctrl+Shift+S — prompt for label, write snapshot
 
 private:
   void setupUI();
@@ -118,6 +119,7 @@ private:
   QShortcut* m_shortcutCtrlK;  // Toggle Aux Window
   QShortcut* m_shortcutCtrlR;  // Toggle Realtime Camera Monitor
   QShortcut* m_shortcutCtrlT;  // Toggle Realtime Camera Monitor 2
+  QShortcut* m_shortcutCtrlShiftS;  // Capture state snapshot
 
   bool m_scriptRunning = false;  // true while a Lua script is executing
 };

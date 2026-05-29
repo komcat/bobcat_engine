@@ -546,6 +546,7 @@ include_directories(
     ${CMAKE_SOURCE_DIR}/include/common
     ${CMAKE_SOURCE_DIR}/include/scripting
     ${CMAKE_SOURCE_DIR}/include/AppUI/ScriptRunnerPage
+    ${CMAKE_SOURCE_DIR}/include/snapshot
 )
 
 # External SDK include directories — stored for SYSTEM includes after target creation
@@ -712,6 +713,8 @@ set(SOURCES
     include/sequence/system/SysDialogCommands.cpp
     include/sequence/system/SysSwirCommands.cpp
     include/sequence/system/SysPersistenceCommands.cpp
+    include/sequence/system/SysSnapshotCommands.cpp
+    include/snapshot/StateSnapshotManager.cpp
     include/sequence/SequencePromptDialog.cpp
     include/sequence/GripperSequenceHelpers.cpp
     include/AppUI/RecipePage/RecipePage.cpp
@@ -754,6 +757,7 @@ set(SOURCES
     include/recipe/processes/YawCorrectionToTemplateProcesses.cpp
     include/recipe/processes/AutoFocusProcesses.cpp
     include/recipe/processes/UpdatePositionProcesses.cpp
+    include/recipe/processes/SnapshotProcesses.cpp
     include/recipe/processes/CalibrateCameraToNeedleOffset.cpp
     include/recipe/processes/DispenseProcesses.cpp
     include/recipe/processes/SMUProcesses.cpp
@@ -1112,6 +1116,8 @@ set(HEADERS
     include/sequence/system/SysDialogCommands.h
     include/sequence/system/SysSwirCommands.h
     include/sequence/system/SysPersistenceCommands.h
+    include/sequence/system/SysSnapshotCommands.h
+    include/snapshot/StateSnapshotManager.h
     include/sequence/SequencePromptDialog.h
     include/sequence/GripperSequenceHelpers.h 
     include/AppUI/RecipePage/RecipePage.h

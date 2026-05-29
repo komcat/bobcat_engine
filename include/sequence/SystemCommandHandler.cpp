@@ -8,6 +8,7 @@
 #include "system/SysControlCommands.h"
 #include "system/SysDialogCommands.h"
 #include "system/SysPersistenceCommands.h"
+#include "system/SysSnapshotCommands.h"
 #include "system/SysSwirCommands.h"
 
 bool SystemCommandHandler::ExecuteCommand(
@@ -38,6 +39,10 @@ bool SystemCommandHandler::ExecuteCommand(
     return *r;
   }
   if (auto r = SysPersistenceCommands::TryExecute(
+        deviceName, methodName, params, errorMessage, context, deps)) {
+    return *r;
+  }
+  if (auto r = SysSnapshotCommands::TryExecute(
         deviceName, methodName, params, errorMessage, context, deps)) {
     return *r;
   }
