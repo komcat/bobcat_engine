@@ -4,6 +4,86 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ---
 
+## v1.13.0 — 2026-05-28
+
+### Highlights
+
+- **State Snapshot capture** — New `StateSnapshotManager` walks every reachable manager and writes a labeled JSON dump of motion positions, TEC/PSU/SMU/lighting readings, IO bits, pneumatic states, DataStore values, and the active DUT, plus a PNG from every grabbing camera. Three triggers share one capture path: a "Capture Snapshot" recipe step (`system/CaptureSnapshot`), `bobcat.snapshot(label, opts)` in Lua, and **Ctrl+Shift+S** in MainWindow. Output lives at `data/<product>/snapshots/<ts>_<label>.{json,png}` with an append-only `index.jsonl` summary. Subsystem failures fall into `skipped`/`errors` arrays rather than aborting.
+- **RunProgramPage DUT controls** — New stacked Init/× Close button pair pinned left of the Idle status badge. Operator can `dut/LoadOrCreate` or `dut/Close` directly from the Run page; the active serial number is overlaid on the badge. Both actions go through `DUTCommandHandler` (same code path a recipe step takes).
+- **Dispense traceability snapshot** — After camera nav back over the dispensed location, optionally captures `data/<product>/dispense_image/<UID>_dispense_<timestamp>.png` for visual review. Controlled by a new `capture_after_dispense` plugin checkbox (default on).
+- **siphog-saa-uploader** — New standalone Python service uploads per-PCBA SAA data to a Google Sheet; OAuth refresh-token revocation self-heals automatically.
+- **Thorlabs TTC-001 T-Cube TEC adapter** — Via Kinesis SDK. Adds sensor-mode-aware unit conversion (transducer / 20 kΩ / 200 kΩ thermistor) using `ThermistorBeta`/`R0`/`T0` fields on `TECDevice` to convert Kinesis device units to °C.
+- **TEC recipe plugins** — `TEC Turn On` / `TEC Turn Off` first-class recipe steps.
+- **Halcon LineDetect live Canny edge overlay** — Real-time Canny edge preview in the vision tuning wizard for line-detection profile authoring.
+- **Camera / vision UX polish** — Per-row text fields + Apply buttons in the vision wizard, exposure cap raised 100ms → 1s in vision wizard and MoveToPosition editor, imprint-image capture during camera-to-needle calibration, replace blind `+1mm` with a taught final Z touch.
+- **SWIR & trainer responsiveness** — `B DETECT` toggle no longer blocks the UI thread (async stop); OpenCV/Halcon thread pools clamped to 1 to cap SwirBeamWindow memory growth; trainer retrace widgets read cached positions instead of synchronously querying the controller on the UI thread.
+
+### All Changes (by date)
+
+## 2026-05-28
+
+- **RunProgramPage: Init / Close DUT buttons stacked left of status badge**
+  - `ExecutionStatusWidget` — `m_programStatusLabel` shrunk 250×150 → 250×75; new `m_initDutButton` (53 px, blue) + `m_closeDutButton` ("×", 20 px, red, hidden by default) stacked in a 70-wide column inside `headerRow`. `setDutSerial(QString)`/`dutSerial()` pair lets the page overlay the active SN on the badge.
+  - `RunProgramPage::onInitDutClicked` — pops `QInputDialog` (pre-seeded with current SN), instantiates a stack-local `DUTCommandHandler(m_context)`, dispatches `dut/LoadOrCreate` with the `serialNumber` param (productName auto-resolves from `ProductPositionManager` inside the handler). On success, stores the SN on the widget, reveals the close button, and repaints the badge.
+  - `RunProgramPage::onCloseDutClicked` — same single-command pattern but dispatches `dut/Close`; clears the SN overlay and re-hides the close button.
+  - `applyProgramStatusLabel` now appends `\nSN: <serial>` to the badge text when a SN is set; font shrunk 18 → 16 px to fit two lines in the new 75 px-tall badge.
+
+- **StateSnapshotManager — labeled machine-state snapshots** (b291eac)
+  - New `include/snapshot/StateSnapshotManager.{h,cpp}` — `Capture(SnapshotOptions)` walks every manager in `ApplicationContext` and writes one JSON file + per-camera PNGs + appends a one-line summary to `index.jsonl`. Subsystem dumpers are all best-effort with try/catch; failures land in `root["skipped"]`/`root["errors"]` without aborting.
+  - Per-subsystem dumpers — motion (cached positions when available), TEC (`TECStatus`), PSU (per-channel voltage/current/setpoint/output), SMU (`ReadAllChannels` for enabled channels), lighting (per-channel intensity/percent/mode/on), IO (raw masks + named pin maps), pneumatic (position + sensor states), DataStore (cap 500 keys), DUT (serial/product/created/entry count).
+  - Camera frames — instantiates a temporary `CameraCommandHandler` and dispatches `CaptureToFile` per camera id; failures land in `skipped.cameras` rather than aborting the snapshot.
+  - **System command** (`system/CaptureSnapshot`) — new `SysSnapshotCommands` family wired into `SystemCommandHandler`'s dispatch ladder. Auto-populates recipe metadata (`GetSequenceName`/`GetCurrentStepIndex`/`GetCurrentStepName`) from the live `SequenceContext`; writes result back as `snapshot.path`/`snapshot.label`/`snapshot.timestamp`/`snapshot.images_count`.
+  - **Recipe plugin** — `CaptureSnapshotPlugin` (category "System") with label/tags/note/capture_image fields, auto-registered.
+  - **Lua wrapper** — `bobcat.snapshot(label, opts)` (opts accepts `tags` as table or string, `note`, `capture_image`).
+  - **UI hotkey** — `MainWindow` Ctrl+Shift+S pops `QInputDialog::getText` for a label and calls `StateSnapshotManager::Capture` directly (no recipe in the loop). Success/failure shown in a message box with the saved path.
+  - **Wiring** — `StateSnapshotManager*` pointer added to `ApplicationContext`; new `SequenceEngine::SetStateSnapshotManager` forwarder mirrors the SWIR callback pattern.
+
+- **Dispense: auto-capture traceability snapshot after dispense** (8ac13ba)
+  - New `capture_after_dispense` plugin checkbox (default on). After camera navigation back over the dispensed location, the plugin emits a `CaptureToFile` for `main_camera` writing to `data/<product>/dispense_image/<UID>_dispense_<timestamp>.png` (flat layout — no date subfolder). `{timestamp}` placeholder substituted at execution time by `CameraCommandHandler`.
+
+## 2026-05-27
+
+- **siphog-saa-uploader: per-PCBA SAA data → Google Sheet** (a605293, f2aaacb)
+  - New standalone Python service that watches per-PCBA SAA files and uploads results to a Google Sheet. OAuth refresh-token revocation/expiry now self-heals automatically — the uploader detects the failed token, deletes the stale credentials file, and re-prompts the user once instead of crashing on every poll.
+
+- **DataBackup: change-detection off the UI thread** (fce1da5)
+  - The auto-backup change detector (SHA-256 over product folders) now runs in a worker thread and only signals the UI when it finds a real delta. Previously the hash walk happened on the timer callback on the UI thread and could stutter the Run page during long-running backups.
+
+- **TEC recipe plugins: Turn On / Turn Off** (0547a5e)
+  - New first-class `TEC Turn On` / `TEC Turn Off` process plugins. Use these instead of raw `TECCommandHandler.TEC_On`/`TEC_Off` actions for visibility in the recipe browser.
+
+- **LineDetect (Halcon): live Canny edge overlay for tuning** (d15d3a5)
+  - Vision profile editor for Halcon line-detect now renders a real-time Canny edge preview overlay while you adjust the threshold/min-length/max-gap sliders. Makes parameter tuning visual instead of trial-and-error.
+
+- **QtCameraVisionController: stop double-applying ROI** (c0a760f)
+  - The vision controller was applying the wizard's ROI both before and after the plugin transform, producing offset detections for any profile that returned image-space coordinates.
+
+- **Vision wizard: per-row text fields + Apply buttons for camera settings** (82bdf4c, 57b8360, df1b528)
+  - Each tunable (exposure, gain, gamma, …) now has a discrete `QLineEdit` + `Apply` pair instead of a single shared editor. Exposure max raised from 100 ms → 1 s in both the vision wizard and the MoveToPosition editor's per-step exposure override.
+
+- **CalibrateCameraToNeedleOffset: imprint capture + taught Z touch** (1c53594, 2e12fb3)
+  - The calibration recipe now captures the needle imprint photo to a traceability folder for QA review. The final Z touch step replaces the previous blind `+1mm` jog with a manually taught Z value, eliminating the "wrong Z destroys the needle" failure mode when product height changes.
+
+## 2026-05-22
+
+- **Thorlabs TTC-001 T-Cube TEC adapter via Kinesis SDK** (df02018, 374f351)
+  - New `TTC001Adapter` implementation of `ITECDevice` using Thorlabs Kinesis USB. Adapter is *sensor-mode-aware*: Kinesis `TC_SetTemperature` / `TC_GetTemperatureReading` return device units that depend on the configured sensor mode (transducer = °C, but 20 kΩ / 200 kΩ thermistor modes return raw counts). The adapter consults `TECDevice.SensorMode` + `ThermistorBeta` / `R0Ohms` / `T0Celsius` and converts via the beta equation so the public contract stays in °C.
+  - Force-pushes sensor mode via `TC_SetSensorType` on `Connect()` because the Kinesis GUI's "Persist Settings to the Device" checkbox is rarely ticked — without this, devices boot in factory-default transducer mode and the adapter would misread raw thermistor counts.
+  - No native 10 kΩ thermistor option in TTC-001 hardware; project standard is the 20 kΩ variant.
+
+## 2026-05-20
+
+- **Clamp OpenCV/Halcon thread pools to 1** (05e583e)
+  - Both libraries default to one thread per logical core, and SwirBeamWindow's high-rate beam-detection pipeline was spinning up large pools per call. Memory growth from per-thread arena caches now bounded to a single worker each.
+
+- **SwirBeamWindow: async-stop beam detection** (1e05d3e)
+  - The `B DETECT` toggle no longer waits on the in-flight Halcon detection to finish before returning; the stop request is posted and the UI returns immediately. Previously the toggle could freeze the SWIR window for several seconds when D4σ + saturation guard were both enabled.
+
+- **Trainer retrace widgets: cached position reads on the UI thread** (c3fdbca)
+  - `PlacementRetraceWidget` and friends now call `GetCachedPosition` (populated by the background poller) instead of `GetCurrentPosition` (synchronous controller round-trip). Eliminates 100–300 ms UI hitches during retrace workflows when motion controllers are busy.
+
+---
+
 ## v1.8.0 — 2026-04-14
 
 ### Highlights
