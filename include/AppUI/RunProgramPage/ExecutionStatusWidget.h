@@ -14,9 +14,11 @@
 #pragma once
 
 #include <QWidget>
+#include <QString>
 
 class QLabel;
 class QProgressBar;
+class QPushButton;
 
 class ExecutionStatusWidget : public QWidget {
     Q_OBJECT
@@ -24,9 +26,21 @@ public:
     explicit ExecutionStatusWidget(QWidget* parent = nullptr);
     ~ExecutionStatusWidget() override;
 
-    // Status badge (250x150) — page paints from its own m_baseStatus*
+    // Status badge (250x75) — page paints from its own m_baseStatus*
     // state via applyProgramStatusLabel().
     QLabel* programStatusLabel()    const { return m_programStatusLabel; }
+
+    // "Init DUT" / "x" close button stack — pinned to the left of the badge.
+    // Both clicks are wired by RunProgramPage to DUTCommandHandler dispatches
+    // (LoadOrCreate / Close). Close is hidden by default; the page shows it
+    // after a successful init and hides it again on close.
+    QPushButton* initDutButton()    const { return m_initDutButton; }
+    QPushButton* closeDutButton()   const { return m_closeDutButton; }
+
+    // Active DUT serial number overlaid on the status badge. Empty hides
+    // the SN line. Read by the page when composing the badge text.
+    void          setDutSerial(const QString& serial) { m_dutSerial = serial; }
+    const QString& dutSerial() const { return m_dutSerial; }
 
     // Header text labels.
     QLabel* executionTitleLabel()   const { return m_executionTitleLabel; }
@@ -64,4 +78,8 @@ private:
 
     QLabel*       m_actionDetailLabel = nullptr;
     QProgressBar* m_progressBar       = nullptr;
+
+    QPushButton*  m_initDutButton     = nullptr;
+    QPushButton*  m_closeDutButton    = nullptr;
+    QString       m_dutSerial;
 };
