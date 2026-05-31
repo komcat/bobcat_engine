@@ -112,6 +112,24 @@ void ExecutionStatusWidget::buildUi()
     m_programStatusLabel->setAlignment(Qt::AlignCenter);
     headerRow->addWidget(m_programStatusLabel, 0, Qt::AlignTop);
 
+    // Quick "Snapshot" button — right of the badge, height-matched. The page
+    // wires the click to a label prompt + SystemCommandHandler dispatch.
+    m_snapshotButton = new QPushButton("Snap\nshot");
+    m_snapshotButton->setFixedSize(70, 75);
+    m_snapshotButton->setToolTip("Capture a labeled state snapshot (recipe + Lua + images)");
+    m_snapshotButton->setStyleSheet(
+        "QPushButton { "
+        "  background-color: #2e7d32; "
+        "  color: #ffffff; "
+        "  border: 1px solid #43a047; "
+        "  border-radius: 4px; "
+        "  font-weight: bold; "
+        "  font-size: 12px; "
+        "} "
+        "QPushButton:hover  { background-color: #43a047; } "
+        "QPushButton:pressed{ background-color: #1b5e20; }");
+    headerRow->addWidget(m_snapshotButton, 0, Qt::AlignTop);
+
     auto* headerTextLayout = new QVBoxLayout();
     headerTextLayout->setContentsMargins(0, 0, 0, 0);
     headerTextLayout->setSpacing(4);

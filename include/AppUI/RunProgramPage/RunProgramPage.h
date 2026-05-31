@@ -95,6 +95,10 @@ private slots:
   // Closes the active DUT via dut/Close and clears the SN overlay.
   void onCloseDutClicked();
 
+  // "Snapshot" quick-action — prompts for a label and dispatches
+  // system/CaptureSnapshot through a stack-local SystemCommandHandler.
+  void onCaptureSnapshotClicked();
+
   // Program execution signals
   void onProgramExecutionStarted(int totalRecipes);
   void onRecipeStarted(int recipeIndex, QString recipeName);

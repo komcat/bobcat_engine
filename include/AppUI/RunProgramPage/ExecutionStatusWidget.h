@@ -37,6 +37,11 @@ public:
     QPushButton* initDutButton()    const { return m_initDutButton; }
     QPushButton* closeDutButton()   const { return m_closeDutButton; }
 
+    // "Snapshot" quick-action button — pinned immediately to the right of
+    // the status badge. RunProgramPage wires the click to a label prompt +
+    // a SystemCommandHandler::ExecuteCommand("CaptureSnapshot") dispatch.
+    QPushButton* snapshotButton()   const { return m_snapshotButton; }
+
     // Active DUT serial number overlaid on the status badge. Empty hides
     // the SN line. Read by the page when composing the badge text.
     void          setDutSerial(const QString& serial) { m_dutSerial = serial; }
@@ -81,5 +86,6 @@ private:
 
     QPushButton*  m_initDutButton     = nullptr;
     QPushButton*  m_closeDutButton    = nullptr;
+    QPushButton*  m_snapshotButton    = nullptr;
     QString       m_dutSerial;
 };

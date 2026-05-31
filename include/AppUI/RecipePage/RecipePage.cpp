@@ -1942,6 +1942,7 @@ void RecipePage::setupSequenceEngine()
   m_sequenceEngine->SetLogger(m_context->logManager);
   m_sequenceEngine->BuildDeviceRegistry();
   m_sequenceEngine->SetScriptEngine(m_context->scriptEngine);
+  m_sequenceEngine->SetStateSnapshotManager(m_context->stateSnapshotManager);
 
   // Set blocking prompt callback
   m_sequenceEngine->SetUserPromptCallback(
