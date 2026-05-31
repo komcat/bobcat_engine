@@ -28,6 +28,8 @@
 #include "SequenceEngine.h"
 #include "DUTCommandHandler.h"
 #include "MotionCommandHandler.h"
+#include "SystemCommandHandler.h"
+#include "snapshot/StateSnapshotManager.h"
 #include "CameraClickToMoveWidget.h"
 #include <future>
 #include "PlacementRetraceWidget.h"
@@ -562,6 +564,8 @@ void RunProgramPage::createExecutionWidget()
           this, &RunProgramPage::onInitDutClicked);
   connect(m_executionStatus->closeDutButton(), &QPushButton::clicked,
           this, &RunProgramPage::onCloseDutClicked);
+  connect(m_executionStatus->snapshotButton(), &QPushButton::clicked,
+          this, &RunProgramPage::onCaptureSnapshotClicked);
 
   // Initial paint — the badge reads from m_baseStatus* defaults.
   applyProgramStatusLabel();
@@ -1366,6 +1370,58 @@ void RunProgramPage::onCloseDutClicked()
       "DUT closed via Run page button: " + sn,
       "RunProgramPage");
   }
+}
+
+// "Snapshot" quick-action — prompts for a label and dispatches
+// system/CaptureSnapshot through a stack-local SystemCommandHandler. The
+// handler walks the standard recipe-worker protocol (SysSnapshotCommands ->
+// StateSnapshotManager::Capture) so UI-triggered snapshots produce the
+// same on-disk layout as recipe/Lua-triggered ones.
+void RunProgramPage::onCaptureSnapshotClicked()
+{
+  if (!m_context || !m_context->stateSnapshotManager) {
+    QMessageBox::warning(this, "Snapshot",
+      "StateSnapshotManager is not available.");
+    return;
+  }
+
+  bool ok = false;
+  QString label = QInputDialog::getText(this,
+    "Capture State Snapshot",
+    "Label (free text — used in filename):",
+    QLineEdit::Normal,
+    QString(),
+    &ok);
+  if (!ok) {
+    return;  // user cancelled
+  }
+
+  SystemCommandHandler handler;
+  handler.SetStateSnapshotManager(m_context->stateSnapshotManager);
+  handler.SetLogger(m_context->logManager);
+
+  std::map<std::string, std::string> params = {
+    {"label",         label.trimmed().toStdString()},
+    {"source",        "ui"},
+    {"capture_image", "true"},
+  };
+  std::string errorMessage;
+  bool dispatched = handler.ExecuteCommand(
+      /*manager=*/nullptr,
+      /*deviceName=*/"system",
+      /*methodName=*/"CaptureSnapshot",
+      params,
+      errorMessage,
+      /*context=*/nullptr);
+
+  if (!dispatched) {
+    QMessageBox::warning(this, "Snapshot failed",
+      QString::fromStdString(errorMessage));
+    return;
+  }
+
+  QMessageBox::information(this, "Snapshot saved",
+    "Snapshot captured. See logs for the saved path.");
 }
 
 void RunProgramPage::onStopProgram()
