@@ -225,6 +225,12 @@ void QtCameraChartOverlay::maybeLogDiagnostics()
   const auto upSec = std::chrono::duration_cast<std::chrono::seconds>(
                          now - m_diagStartupTime).count();
 
+  // Per-overlay throughput diagnostics. Disabled by default to keep the console
+  // quiet; flip kLogChartDiag to true to re-enable. Kept as a runtime (non-const)
+  // flag so the std::cout chain still compiles cleanly under /W4 (all the stats
+  // locals stay referenced, and there is no C4127 constant-condition warning).
+  static bool kLogChartDiag = false;
+  if (kLogChartDiag)
   std::cout << "[ChartOverlay/" << m_instanceId << "] t=" << upSec << "s"
             << " samples=" << samples << " (" << sampleHz << "/s)"
             << " enabledCh=" << enabled
