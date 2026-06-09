@@ -164,6 +164,7 @@ private:
 
     // Extra correction fields captured by computeRetraceResults for the log
     double m_logFrameDeltaTheta = 0.0;
+    double m_logUCorrection = 0.0;   // applied U delta = Am − At (post reverseSign)
     double m_logRotatedOffsetX = 0.0, m_logRotatedOffsetY = 0.0;
     double m_logIdealTargetX = 0.0,   m_logIdealTargetY = 0.0;
     double m_logCorrGlobalX = 0.0,    m_logCorrGlobalY = 0.0;

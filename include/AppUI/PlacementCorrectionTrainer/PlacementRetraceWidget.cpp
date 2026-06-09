@@ -1169,7 +1169,18 @@ void PlacementRetraceWidget::onConfirmNrmP2()
 //   5. correctionGlobal = rotatedDesignOffset  (hex must move lens by this)
 //   6. Transform correctionGlobal → device-local via transformation matrix.
 //   7. correctedXYZ = liveHex + localCorrection
-//      correctedU   = liveHex.u + Δθ   (if applyUCorrection)
+//      correctedU   = liveHex.u + (Am − At)   (if applyUCorrection)
+//
+// U-ANGLE CORRECTION (master-vs-target model):
+//   The U correction rotates the placed part so its measured line becomes
+//   parallel to the master line. Both lines are measured in the SAME retrace
+//   frame, so the correction is just the angular difference between them:
+//       Am = retraced reference (master) line angle   [m_retracedRef.angleDeg]
+//       At = retraced normal-placement (target) angle  [m_retracedNrm.angleDeg]
+//       ΔU = Am − At      → applied to hex U so that At' = Am (parallel)
+//   The reverseSign flag flips ΔU if the hex U axis rotates opposite to the
+//   gantry-measured angle convention. (Frame Δθ is still computed, but only for
+//   the XY design-offset rotation in steps 2–5 — it no longer drives U.)
 //
 // The corrected position is stored in m_correctedX..W for use by onSaveToTarget().
 void PlacementRetraceWidget::computeRetraceResults()
@@ -1202,20 +1213,34 @@ void PlacementRetraceWidget::computeRetraceResults()
         m_retracedNrm.p1x, m_retracedNrm.p1y,
         m_retracedNrm.p2x, m_retracedNrm.p2y, retNrmCx, retNrmCy);
 
-    // Frame rotation: new reference angle − taught reference angle
+    // Frame rotation: new reference angle − taught reference angle.
+    // Still used for the XY design-offset rotation below — NOT for U anymore.
     const double taughtRefAngle = m_set->referenceLine.angleDeg;
     const double retracedRefAngle = m_retracedRef.angleDeg;
     const double frameDeltaTheta = PlacementCorrectionMath::ComputeDeltaAngle(
         taughtRefAngle, retracedRefAngle);
 
-    // Safety guard: a frame rotation beyond this threshold is almost always a
-    // bad reference-line measurement (wrong point, vision misdetect, etc.).
-    // Auto-disable U correction so the hex doesn't perform a dangerous large
-    // rotation. Operator can re-enable manually after verifying the retraced
-    // reference points.
+    // U-angle correction (master-vs-target model): rotate the placed part so its
+    // measured line becomes parallel to the master line. Both lines are measured
+    // in THIS retrace, so the correction is simply the angular difference:
+    //   Am = retraced reference (master) line angle
+    //   At = retraced normal-placement (target) line angle
+    //   ΔU = Am − At   → applied to hex U so that At' = Am
+    const double masterAngle = m_retracedRef.angleDeg;   // Am
+    const double targetAngle = m_retracedNrm.angleDeg;   // At
+    const double uDeltaDeg = PlacementCorrectionMath::ComputeDeltaAngle(
+        targetAngle, masterAngle);                       // Am − At, normalized
+    const double uCorrection = PlacementCorrectionMath::GetCorrectionValue(
+        uDeltaDeg, m_set->config.reverseSign);
+    m_logUCorrection = uCorrection;
+
+    // Safety guard: a U correction beyond this threshold is almost always a bad
+    // line measurement (wrong point, vision misdetect, etc.). Auto-disable U
+    // correction so the hex doesn't perform a dangerous large rotation. Operator
+    // can re-enable manually after verifying the retraced points.
     constexpr double kUAutoDisableThresholdDeg = 3.0;
     bool uAutoDisabled = false;
-    if (std::abs(frameDeltaTheta) > kUAutoDisableThresholdDeg
+    if (std::abs(uCorrection) > kUAutoDisableThresholdDeg
         && m_set->config.applyUCorrection) {
         m_set->config.applyUCorrection = false;
         if (m_applyUCheckbox) {
@@ -1223,7 +1248,7 @@ void PlacementRetraceWidget::computeRetraceResults()
             m_applyUCheckbox->setChecked(false);
         }
         uAutoDisabled = true;
-        std::cout << "[PlacementRetrace] |Δθ|=" << std::abs(frameDeltaTheta)
+        std::cout << "[PlacementRetrace] |ΔU|=" << std::abs(uCorrection)
                   << "° exceeds " << kUAutoDisableThresholdDeg
                   << "° — auto-disabled applyUCorrection" << std::endl;
     }
@@ -1273,7 +1298,7 @@ void PlacementRetraceWidget::computeRetraceResults()
     m_correctedY = m_liveHexY + corrLocalY;
     m_correctedZ = m_liveHexZ + corrLocalZ;
     m_correctedU = m_set->config.applyUCorrection
-        ? (m_liveHexU + frameDeltaTheta)
+        ? (m_liveHexU + uCorrection)
         : m_liveHexU;
     m_correctedV = m_liveHexV;
     m_correctedW = m_liveHexW;
@@ -1297,19 +1322,20 @@ void PlacementRetraceWidget::computeRetraceResults()
     text += QString("Nrm P1: X=%1  Y=%2\n").arg(m_retracedNrm.p1x, 0, 'f', 4).arg(m_retracedNrm.p1y, 0, 'f', 4);
     text += QString("Nrm P2: X=%1  Y=%2\n\n").arg(m_retracedNrm.p2x, 0, 'f', 4).arg(m_retracedNrm.p2y, 0, 'f', 4);
 
-    text += QString("--- Angles ---\n");
-    text += QString("Ref Angle (taught):    %1%2\n").arg(taughtRefAngle, 0, 'f', 3).arg(deg);
-    text += QString("Ref Angle (retraced):  %1%2\n").arg(retracedRefAngle, 0, 'f', 3).arg(deg);
-    text += QString("Frame Δθ:              %1%2%3\n")
-        .arg(frameDeltaTheta, 0, 'f', 3).arg(deg)
+    text += QString("--- U Correction (master vs target) ---\n");
+    text += QString("Master angle Am (ref):     %1%2\n").arg(masterAngle, 0, 'f', 3).arg(deg);
+    text += QString("Target angle At (normal):  %1%2\n").arg(targetAngle, 0, 'f', 3).arg(deg);
+    text += QString("U correction ΔU = Am−At:   %1%2%3\n")
+        .arg(uCorrection, 0, 'f', 3).arg(deg)
         .arg(m_set->config.applyUCorrection ? "" : "  (U correction DISABLED)");
     if (uAutoDisabled) {
-        text += QString("⚠ AUTO-DISABLED U correction: |Δθ| > %1%2 threshold.\n"
-                        "   Verify retraced reference points; re-enable the "
+        text += QString("⚠ AUTO-DISABLED U correction: |ΔU| > %1%2 threshold.\n"
+                        "   Verify retraced points; re-enable the "
                         "checkbox manually if correct.\n")
                     .arg(kUAutoDisableThresholdDeg, 0, 'f', 1).arg(deg);
     }
-    text += QString("\n");
+    text += QString("Frame Δθ (XY only):        %1%2\n\n")
+        .arg(frameDeltaTheta, 0, 'f', 3).arg(deg);
 
     text += QString("--- Design Offset (cached at teach) ---\n");
     text += QString("designOffset: dX=%1  dY=%2\n").arg(m_set->designOffsetX, 0, 'f', 4).arg(m_set->designOffsetY, 0, 'f', 4);
@@ -1940,6 +1966,7 @@ void PlacementRetraceWidget::writeLogEntry(const std::string& outcome,
 
     e.taughtRefAngleDeg   = m_set->referenceLine.angleDeg;
     e.frameDeltaThetaDeg  = m_logFrameDeltaTheta;
+    e.uCorrectionDeg      = m_logUCorrection;
 
     e.designOffsetX = m_set->designOffsetX;
     e.designOffsetY = m_set->designOffsetY;

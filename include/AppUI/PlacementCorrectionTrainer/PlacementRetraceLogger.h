@@ -46,7 +46,8 @@ struct RetraceLogEntry {
 
     // Frame math
     double taughtRefAngleDeg = 0.0;
-    double frameDeltaThetaDeg = 0.0;
+    double frameDeltaThetaDeg = 0.0;   // retraced ref − taught ref (XY rotation only)
+    double uCorrectionDeg = 0.0;       // applied U delta = Am − At (post reverseSign)
 
     // Design offset + rotated offset
     double designOffsetX = 0.0, designOffsetY = 0.0;

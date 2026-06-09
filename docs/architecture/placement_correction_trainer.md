@@ -22,6 +22,6 @@ PlacementCorrectionData.h    - Structs (PlacementLinePoints, PlacementCorrection
 ## Data Flow
 
 1. **Teach**: Capture 2 gantry XY points each for a reference line and target line
-2. **Compute**: `PlacementCorrectionMath::ComputeLineAngle()` for each line, delta angle = target - reference
-3. **Correct**: Apply delta to hex device U axis: `correctedU = masterU + deltaAngle` (with optional sign reversal)
+2. **Compute**: `PlacementCorrectionMath::ComputeLineAngle()` for each line
+3. **Correct (U axis)**: At retrace, the master line (reference) and target line (normal-placement) are both re-measured in the same frame. The U correction rotates the target until it is parallel to the master: `ΔU = Am − At` (Am = master/reference angle, At = target/normal-placement angle), then `correctedU = liveHexU + ΔU` (with optional sign reversal via `reverseSign`). Computed in `PlacementRetraceWidget::computeRetraceResults()`. Auto-disabled when `|ΔU| > 3°` (likely bad measurement). The XY correction still uses frame Δθ (retraced ref − taught ref) to rotate the cached design offset — that is independent of the U logic.
 4. **Config**: `PlacementCorrectionConfig` maps a master position (golden reference, never modified) to a target position that receives the corrected values
