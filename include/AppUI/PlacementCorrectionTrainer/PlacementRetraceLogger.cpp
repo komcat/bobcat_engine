@@ -40,6 +40,7 @@ static json EntryToJson(const RetraceLogEntry& e) {
 
     j["taughtRefAngleDeg"]   = e.taughtRefAngleDeg;
     j["frameDeltaThetaDeg"]  = e.frameDeltaThetaDeg;
+    j["uCorrectionDeg"]      = e.uCorrectionDeg;
 
     j["designOffsetTaught"]  = { {"dx", e.designOffsetX},  {"dy", e.designOffsetY} };
     j["designOffsetRotated"] = { {"dx", e.rotatedOffsetX}, {"dy", e.rotatedOffsetY} };

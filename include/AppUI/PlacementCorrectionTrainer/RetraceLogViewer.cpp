@@ -80,9 +80,9 @@ RetraceLogViewer::RetraceLogViewer(ApplicationContext* context, QWidget* parent)
 
     // Table
     m_table = new QTableWidget();
-    m_table->setColumnCount(8);
+    m_table->setColumnCount(9);
     QStringList headers;
-    headers << "Timestamp" << "Outcome" << "Mode" << "Δθ (°)"
+    headers << "Timestamp" << "Outcome" << "Mode" << "ΔU (°)" << "Δθ (°)"
             << "Corr dX (mm)" << "Corr dY (mm)"
             << "Corrected X" << "Corrected Y";
     m_table->setHorizontalHeaderLabels(headers);
@@ -174,11 +174,12 @@ void RetraceLogViewer::populateRow(int row, const json& entry)
     set(0, js(entry, "timestamp"));
     set(1, outcome, outcomeFg);
     set(2, js(entry, "mode"));
-    set(3, QString::number(jn(entry, {"frameDeltaThetaDeg"}), 'f', 4));
-    set(4, QString::number(jn(entry, {"correctionGlobal", "dx"}), 'f', 4));
-    set(5, QString::number(jn(entry, {"correctionGlobal", "dy"}), 'f', 4));
-    set(6, QString::number(jn(entry, {"corrected", "x"}), 'f', 4));
-    set(7, QString::number(jn(entry, {"corrected", "y"}), 'f', 4));
+    set(3, QString::number(jn(entry, {"uCorrectionDeg"}), 'f', 4));
+    set(4, QString::number(jn(entry, {"frameDeltaThetaDeg"}), 'f', 4));
+    set(5, QString::number(jn(entry, {"correctionGlobal", "dx"}), 'f', 4));
+    set(6, QString::number(jn(entry, {"correctionGlobal", "dy"}), 'f', 4));
+    set(7, QString::number(jn(entry, {"corrected", "x"}), 'f', 4));
+    set(8, QString::number(jn(entry, {"corrected", "y"}), 'f', 4));
 }
 
 void RetraceLogViewer::onRowSelectionChanged()
