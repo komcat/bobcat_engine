@@ -2851,9 +2851,23 @@ void SwirBeamWindow::StartDetectionThread()
             }
 
             // Update prev-beam slots from the (possibly re-ordered) results.
-            // For single-result frames, pick the slot whose prior centroid is
-            // closer to the lone candidate so a missed-top frame doesn't
-            // poison slot 0 with the bottom beam's position.
+            // For single-result frames, pick the slot from the lone candidate's
+            // vertical region — top half → B0, bottom half → B1. Prior-centroid
+            // nearest-neighbour was the previous policy; image-region is more
+            // intuitive ("B0 is always the top beam") and stays correct after a
+            // tracking reset when both priors are invalid. Tracking continuity
+            // within a region still works because both halves can host at most
+            // one beam in normal operation.
+            const double frameMidY = static_cast<double>(localH) * 0.5;
+            int loneSlot = -1;
+            if (results.size() == 1) {
+                loneSlot = (results[0].d4.cy >= frameMidY) ? 1 : 0;
+                // Re-label so the broker (label-driven) and on-image text both
+                // reflect the region assignment. The detector default-labels
+                // every result as "B0".
+                results[0].label = (loneSlot == 1) ? "B1" : "B0";
+            }
+
             std::array<bool, 2> updated = {false, false};
             if (results.size() >= 2) {
                 for (int i = 0; i < 2; ++i) {
@@ -2864,21 +2878,11 @@ void SwirBeamWindow::StartDetectionThread()
                     updated[i] = true;
                 }
             } else if (results.size() == 1) {
-                int targetSlot = 0;
-                if (m_prevBeams[0].valid && m_prevBeams[1].valid) {
-                    const double d0 = sqDist(results[0].d4.cx, results[0].d4.cy,
-                                             m_prevBeams[0].cx, m_prevBeams[0].cy);
-                    const double d1 = sqDist(results[0].d4.cx, results[0].d4.cy,
-                                             m_prevBeams[1].cx, m_prevBeams[1].cy);
-                    targetSlot = (d1 < d0) ? 1 : 0;
-                } else if (m_prevBeams[1].valid && !m_prevBeams[0].valid) {
-                    targetSlot = 1;
-                }
-                m_prevBeams[targetSlot].cx = results[0].d4.cx;
-                m_prevBeams[targetSlot].cy = results[0].d4.cy;
-                m_prevBeams[targetSlot].valid = true;
-                m_prevBeams[targetSlot].staleFrames = 0;
-                updated[targetSlot] = true;
+                m_prevBeams[loneSlot].cx = results[0].d4.cx;
+                m_prevBeams[loneSlot].cy = results[0].d4.cy;
+                m_prevBeams[loneSlot].valid = true;
+                m_prevBeams[loneSlot].staleFrames = 0;
+                updated[loneSlot] = true;
             }
             for (int i = 0; i < 2; ++i) {
                 if (!updated[i] && m_prevBeams[i].valid) {
@@ -2899,10 +2903,14 @@ void SwirBeamWindow::StartDetectionThread()
                     m_beamDisplayResults = results;
                 }
 
-                // Push peak intensity into history ring buffers.
-                // No outlier rejection — every detected sample goes in as-is.
+                // Push peak intensity into history ring buffers. For 2-beam
+                // frames the result index already equals the slot. For 1-beam
+                // frames pick the slot from the label set above ("B0"/"B1"),
+                // so a lone bottom beam doesn't poison the B0 chart.
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
-                    int idx = static_cast<int>(bi);
+                    int idx = (m_beamResults.size() == 1)
+                                  ? (m_beamResults[0].label == "B1" ? 1 : 0)
+                                  : static_cast<int>(bi);
                     int wi = m_ceHistoryIndex[idx];
                     m_ceHistory[idx][wi] = static_cast<double>(m_beamResults[bi].peakIntensity);
                     m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;

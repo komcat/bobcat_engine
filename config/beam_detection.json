@@ -39,9 +39,9 @@
         "micronsPerPixel": 0.17
     },
     "gaQuadrantLabels": {
-        "q1": "GA1",
-        "q2": "GA1",
-        "q3": "GA2",
-        "q4": "GA2"
+        "q1": "GA2",
+        "q2": "GA2",
+        "q3": "GA1",
+        "q4": "GA1"
     }
 }

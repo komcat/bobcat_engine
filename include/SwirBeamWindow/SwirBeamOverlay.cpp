@@ -453,8 +453,25 @@ void DrawBeamMagnifiers(Gdiplus::Graphics& gfx,
     int maxRow = static_cast<int>(frameH) - 1;
     int maxCol = static_cast<int>(frameW) - 1;
 
-    for (size_t bi = 0; bi < results.size() && bi < 2; ++bi) {
-        const auto& beam = results[bi];
+    // Slot routing matches DrawBeamCropStrip: slot 0 (top thumbnail) = B0 =
+    // top half of image, slot 1 (bottom thumbnail) = B1 = bottom half. With one
+    // detected beam pick the slot from the centroid's vertical position so a
+    // lone bottom beam doesn't render in the top thumbnail.
+    auto magResultForSlot = [&](int slot) -> const BeamDetectionResult* {
+        if (results.size() == 1) {
+            const bool inBottomHalf = frameH > 0 &&
+                results[0].d4.cy >= static_cast<double>(frameH) * 0.5;
+            const int loneSlot = inBottomHalf ? 1 : 0;
+            return (slot == loneSlot) ? &results[0] : nullptr;
+        }
+        if (static_cast<size_t>(slot) < results.size()) return &results[slot];
+        return nullptr;
+    };
+
+    for (int bi = 0; bi < 2; ++bi) {
+        const BeamDetectionResult* beamPtr = magResultForSlot(bi);
+        if (!beamPtr) continue;
+        const auto& beam = *beamPtr;
         const auto& d4 = beam.d4;
 
         int boxY = renderY + MARGIN + static_cast<int>(bi) * (BOX_SIZE + MARGIN);
@@ -708,12 +725,28 @@ void DrawBeamCropStrip(Gdiplus::Graphics& gfx,
 
     const int tileY = stripRect.top + (stripH - TILE_SIZE) / 2;
 
+    // Slot routing: tile 0 (left) = B0 = top half of image, tile 1 (right) = B1
+    // = bottom half. For single-beam frames we pick the tile from the centroid's
+    // vertical position so the lone beam lands in the region-appropriate tile
+    // instead of always falling into B0. With two beams the detector's cy-sort
+    // already puts the top one at index 0 and the bottom one at index 1.
+    auto resultForTile = [&](int bi) -> const BeamDetectionResult* {
+        if (results.size() == 1) {
+            const bool inBottomHalf = frameH > 0 &&
+                results[0].d4.cy >= static_cast<double>(frameH) * 0.5;
+            const int loneSlot = inBottomHalf ? 1 : 0;
+            return (bi == loneSlot) ? &results[0] : nullptr;
+        }
+        if (static_cast<size_t>(bi) < results.size()) return &results[bi];
+        return nullptr;
+    };
+
     for (int bi = 0; bi < MAX_TILES; ++bi) {
         const int tileX = stripRect.left + MARGIN + bi * (TILE_SIZE + MARGIN);
         if (tileX + TILE_SIZE > stripRect.right) break;
 
-        if (static_cast<size_t>(bi) < results.size()) {
-            DrawSingleBeamCropTile(gfx, results[bi], frameData, frameW, frameH,
+        if (const BeamDetectionResult* beam = resultForTile(bi)) {
+            DrawSingleBeamCropTile(gfx, *beam, frameData, frameW, frameH,
                                    tileX, tileY, TILE_SIZE, bi);
         } else {
             // Empty slot — placeholder + faded label.
