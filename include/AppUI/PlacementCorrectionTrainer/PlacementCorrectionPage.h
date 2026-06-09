@@ -28,6 +28,7 @@ class ExposureAdjustWidget;
 class ImageGalleryWidget;
 class SummaryDiagramWidget;
 class RetraceLogViewer;
+class PlacementConfigEditWidget;
 
 /**
  * @brief Main Placement Correction Trainer page: left nav (30%) + right content (70%)
@@ -127,6 +128,7 @@ private:
     ImageGalleryWidget* m_imageGalleryWidget;
     SummaryDiagramWidget* m_summaryDiagramWidget;
     RetraceLogViewer* m_retraceLogViewer = nullptr;
+    PlacementConfigEditWidget* m_configEditWidget = nullptr;
 
     // Top bar container
     QWidget* m_topBarWidget;

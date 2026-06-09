@@ -700,6 +700,7 @@ set(SOURCES
     include/AppUI/MotionPages/PathPreview.cpp
     include/AppUI/MotionPages/OffsetMoveDialog.cpp
     include/motions/scanning/AdaptiveScanController.cpp
+    include/motions/scanning/DualHexMaximizer.cpp
     include/motions/scanning/ScanContext.cpp
     include/motions/scanning/ScanDataCollector.cpp
     include/motions/scanning/CoarseToFineStrategy.cpp
@@ -877,6 +878,9 @@ set(SOURCES
     include/AppUI/RunProgramPage/VisionHistoryWidget.cpp
     include/AppUI/RunProgramPage/SequenceContextViewer.cpp
     include/AppUI/RunProgramPage/ScanController.cpp
+    include/AppUI/RunProgramPage/GlobalMaximizeWidget.cpp
+    include/AppUI/RunProgramPage/GlobalMaximizeController.cpp
+    include/AppUI/RunProgramPage/GlobalMaximizeExecutor.cpp
     include/AppUI/RunProgramPage/ProgramEditPanel.cpp
     include/AppUI/RunProgramPage/SlotManagerWidget.cpp
     include/AppUI/RunProgramPage/RunPageLeftPanel.cpp
@@ -966,6 +970,7 @@ set(SOURCES
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/PlacementRetraceLogger.cpp
     include/AppUI/PlacementCorrectionTrainer/RetraceLogViewer.cpp
+    include/AppUI/PlacementCorrectionTrainer/PlacementConfigEditWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.cpp
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.cpp
@@ -1100,6 +1105,7 @@ set(HEADERS
     include/AppUI/MotionPages/PathPreview.h 
     include/AppUI/MotionPages/OffsetMoveDialog.h
     include/motions/scanning/AdaptiveScanController.h
+    include/motions/scanning/DualHexMaximizer.h
     include/motions/scanning/ScanTypes.h
     include/motions/scanning/ScanStrategy.h
     include/motions/scanning/ScanStateMachine.h
@@ -1216,6 +1222,9 @@ set(HEADERS
     include/AppUI/RunProgramPage/RunProgramPage.h
     include/AppUI/RunProgramPage/SequenceContextViewer.h
     include/AppUI/RunProgramPage/ScanController.h
+    include/AppUI/RunProgramPage/GlobalMaximizeWidget.h
+    include/AppUI/RunProgramPage/GlobalMaximizeController.h
+    include/AppUI/RunProgramPage/GlobalMaximizeExecutor.h
     include/AppUI/RunProgramPage/ProgramEditPanel.h
     include/AppUI/RunProgramPage/SlotManagerWidget.h
     include/AppUI/RunProgramPage/RunPageLeftPanel.h
@@ -1315,6 +1324,7 @@ set(HEADERS
     include/AppUI/PlacementCorrectionTrainer/ExposureAdjustWidget.h
     include/AppUI/PlacementCorrectionTrainer/ImageGalleryWidget.h
     include/AppUI/PlacementCorrectionTrainer/SummaryDiagramWidget.h
+    include/AppUI/PlacementCorrectionTrainer/PlacementConfigEditWidget.h
     # Edge Transfer Trainer
     include/AppUI/EdgeTransferTrainer/EdgeTransferData.h
     include/AppUI/EdgeTransferTrainer/EdgeTransferStore.h

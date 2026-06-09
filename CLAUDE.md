@@ -174,6 +174,8 @@ All in `include/sequence/*CommandHandler.cpp`. Each handles a specific hardware 
 | RelativePositionCommandHandler | Relative positions | CalculateOffset, MoveRelative |
 | SequenceContextCommandHandler | Context vars | SetVariable, GetVariable, Evaluate |
 | AccuracyTrainerCommandHandler | Accuracy training | RunAlignment (headless, no Qt dependency) |
+| EdgeTransferCommandHandler | Edge-transfer trainer | Headless retrace/apply (`edgetransfer`) |
+| CameraOffsetCommandHandler | Camera offset trainer | Headless offset apply (`cameraoffset`) |
 
 The five biggest handlers are split into a thin orchestrator + per-family helpers — touch the helper, not the orchestrator:
 
@@ -218,11 +220,17 @@ See `docs/ADDING_NEW_COMMANDS_GUIDE.md` for the full guide on extending the sequ
 
 ## Trainer Modules
 
-Three trainer modules share a teach-then-run pattern (data structs + JSON store + teach widgets + run widget + optional headless `*CommandHandler`):
+Seven trainer modules share a teach-then-run pattern (data structs + JSON store + teach widgets + run/apply widget + optional headless `*CommandHandler`). All are hosted as tabs inside `TrainerContainerPage` (F7), which lazily builds each page via `ensurePageBuilt()`. When adding another, follow this same shape and register it in `TrainerContainerPage`.
 
-- **Accuracy Trainer** — `include/AppUI/AccuracyTrainer/`. Bonding-position correction via local coordinate frame. F7 in MainWindow. See [docs/architecture/accuracy_trainer_module.md](docs/architecture/accuracy_trainer_module.md).
+- **Accuracy Trainer** — `include/AppUI/AccuracyTrainer/`. Bonding-position correction via local coordinate frame. Headless handler registered as `accuracytrainer`. See [docs/architecture/accuracy_trainer_module.md](docs/architecture/accuracy_trainer_module.md).
 - **Placement Correction Trainer** — `include/AppUI/PlacementCorrectionTrainer/`. Hexapod placement angle correction by gantry-measured line angles. See [docs/architecture/placement_correction_trainer.md](docs/architecture/placement_correction_trainer.md).
-- **Edge Transfer Trainer** — `include/AppUI/EdgeTransferTrainer/`. Same teach-then-run shape as the other two (8 widgets + `EdgeTransferStore` + `EdgeTransferData`); treat as a peer.
+- **Edge Transfer Trainer** — `include/AppUI/EdgeTransferTrainer/`. Teach-then-run with retrace; headless handler registered as `edgetransfer`.
+- **Camera Offset Trainer** — `include/AppUI/CameraOffsetTrainer/`. Calibrate/test camera-to-tool offset; headless handler registered as `cameraoffset`.
+- **Planar Adjustment Trainer** — `include/AppUI/PlanarAdjustmentTrainer/`. Teach 3 points → compute tilt → retrace-and-apply correction.
+- **Z-Offset Trainer** — `include/AppUI/ZOffsetTrainer/`. Teach Z point → retrace → apply Z correction.
+- **Yaw Trainer** — `include/AppUI/YawTrainer/`. Teach line → retrace → apply yaw correction.
+
+Three of these have headless `*CommandHandler`s for recipe execution, registered in `SequenceEngine.cpp`: `accuracytrainer`, `edgetransfer`, `cameraoffset`.
 
 ## UI Pages and Windows
 
@@ -249,8 +257,11 @@ MainWindow uses a `QStackedWidget` with F-key shortcuts for page switching:
 | F4 | Hardware & Instrument | `HardwareInstrumentPage` |
 | F5 | Settings | `ApplicationSettingsPage` |
 | F6 | Vision Manager | `VisionManagerPage` |
-| F7 | Accuracy Trainer | `TrainerContainerPage` |
+| F7 | Trainers (7 tabs) | `TrainerContainerPage` |
 | F8 | Data Backup | `DataBackupPage` |
+| F9 | Lua Script Runner | `ScriptRunnerPage` |
+
+F9 (`include/AppUI/ScriptRunnerPage/`) is a Lua editor/runner (syntax-highlighted). Navigation away is blocked while a script is running; see the Lua Scripting section.
 
 Window toggles: Ctrl+J (Jog Panel), Ctrl+K (Aux Window), Ctrl+R / Ctrl+T (Camera Monitors).
 

@@ -18,6 +18,8 @@
 #include "UserInteractionOverlay.h"
 #include "ScanControlWidget.h"
 #include "ScanController.h"
+#include "GlobalMaximizeWidget.h"
+#include "GlobalMaximizeController.h"
 #include "RollCorrectionWidget.h"
 #include "RollCorrectionController.h"
 #include "MotionInspectorWidget.h"
@@ -202,6 +204,17 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
     if (m_logTextEdit) m_logTextEdit->appendPlainText(msg);
   };
   m_scanController = new ScanController(std::move(scanDeps), this);
+
+  // Dual-hex global maximize controller — owns its executor, wired to the
+  // GlobalMaximizeWidget built in setupUI.
+  GlobalMaximizeController::Deps gmDeps;
+  gmDeps.dialogParent = this;
+  gmDeps.context      = m_context;
+  gmDeps.widget       = m_globalMaximizeWidget;
+  gmDeps.appendLog    = [this](const QString& msg) {
+    if (m_logTextEdit) m_logTextEdit->appendPlainText(msg);
+  };
+  m_globalMaximizeController = new GlobalMaximizeController(std::move(gmDeps), this);
 
   // Build the execution controller now that setupUI() has constructed
   // the overlay it depends on. Wire its forwarded signals to the
@@ -743,6 +756,10 @@ void RunProgramPage::createExecutionWidget()
   // Scan widget
   m_scanWidget = new ScanControlWidget();
 
+  // Dual-hex global maximize widget — created here (before the initial channel
+  // refresh) so it is populated on first load; added to the layout below.
+  m_globalMaximizeWidget = new GlobalMaximizeWidget();
+
   // Populate channels from DataStore (initial load)
   refreshDataStoreChannels();
 
@@ -766,11 +783,17 @@ void RunProgramPage::createExecutionWidget()
     if (!m_scanWidget || !m_scanWidget->isVisible()) return;
     if (!m_pendingScanDirty.exchange(false, std::memory_order_acquire)) return;
     const float v = m_pendingScanValue.load(std::memory_order_relaxed);
-    m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(v)));
+    const QString text = formatWithSIPrefix(static_cast<double>(v));
+    m_scanWidget->setDisplayText(text);
+    if (m_globalMaximizeWidget) m_globalMaximizeWidget->setDisplayText(text);
   });
   m_scanDisplayTimer->start();
 
   scanTabLayout->addWidget(m_scanWidget);
+
+  // Dual-hex global maximize — a separate section below the scan panel.
+  scanTabLayout->addWidget(m_globalMaximizeWidget);
+
   scanTabLayout->addStretch();  // Push controls to top
 
   m_executionTabWidget->addTab(scanningTab, "Scanning");
@@ -2081,6 +2104,9 @@ void RunProgramPage::refreshDataStoreChannels()
     }
     if (m_rollCorrectionWidget) {
       m_rollCorrectionWidget->setAvailableChannels(channels);
+    }
+    if (m_globalMaximizeWidget) {
+      m_globalMaximizeWidget->setAvailableChannels(channels);
     }
     s_lastChannelList = channels;
 

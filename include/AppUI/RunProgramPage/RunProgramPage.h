@@ -31,6 +31,8 @@ class TransformationMatrixLoader;
 class CameraClickToMoveWidget;
 class RollCorrectionWidget;
 class RollCorrectionController;
+class GlobalMaximizeWidget;
+class GlobalMaximizeController;
 class PlacementRetraceWidget;
 class MotionInspectorWidget;
 #include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
@@ -231,6 +233,8 @@ private:
   class ScanController* m_scanController = nullptr;
   RollCorrectionWidget* m_rollCorrectionWidget = nullptr;
   RollCorrectionController* m_rollCorrectionController = nullptr;
+  GlobalMaximizeWidget* m_globalMaximizeWidget = nullptr;
+  GlobalMaximizeController* m_globalMaximizeController = nullptr;
   PlacementRetraceWidget* m_placementRetraceWidget = nullptr;
   MotionInspectorWidget* m_motionInspectorWidget = nullptr;
   int m_motionInspectorTabIndex = -1;  // Index of the Motion Inspector tab in m_executionTabWidget

@@ -7,6 +7,7 @@
 #include "ImageGalleryWidget.h"
 #include "SummaryDiagramWidget.h"
 #include "RetraceLogViewer.h"
+#include "PlacementConfigEditWidget.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -373,6 +374,7 @@ void PlacementCorrectionPage::setupUI()
     m_navList->addItem("7. Reference Images");
     m_navList->addItem("8. Summary Diagram");
     m_navList->addItem("9. View Retrace Log");
+    m_navList->addItem("10. Edit Config");
     connect(m_navList, &QListWidget::currentRowChanged,
             this, &PlacementCorrectionPage::onNavItemChanged);
     navLayout->addWidget(m_navList);
@@ -488,6 +490,12 @@ void PlacementCorrectionPage::onNavItemChanged(int currentRow)
     case 8:  // View Retrace Log
         if (m_retraceLogViewer) m_retraceLogViewer->SetData(m_currentSet);
         if (m_retraceLogViewer) m_contentStack->setCurrentWidget(m_retraceLogViewer);
+        break;
+    case 9:  // Edit Config
+        if (m_configEditWidget) {
+            m_configEditWidget->SetData(m_currentSet);
+            m_contentStack->setCurrentWidget(m_configEditWidget);
+        }
         break;
     default:
         m_contentStack->setCurrentWidget(m_welcomeWidget);
@@ -642,6 +650,26 @@ void PlacementCorrectionPage::ensureContentBuilt(int navRow)
         if (!m_retraceLogViewer) {
             m_retraceLogViewer = new RetraceLogViewer(m_context, this);
             m_contentStack->addWidget(m_retraceLogViewer);
+        }
+        break;
+    case 9:
+        if (!m_configEditWidget) {
+            m_configEditWidget = new PlacementConfigEditWidget(m_context, this);
+            m_contentStack->addWidget(m_configEditWidget);
+            connect(m_configEditWidget, &PlacementConfigEditWidget::configSaved,
+                    this, [this](const PlacementCorrectionConfig& cfg) {
+                m_currentSet.config = cfg;
+                // Keep the left-panel combos / UVW labels coherent with the
+                // edited names, then recompute and persist.
+                m_currentSet.Recalculate();
+                updateCurrentSet();
+                if (m_hasLoadedSet) {
+                    if (!m_store.SaveSet(m_currentSet)) {
+                        QMessageBox::warning(this, "Save Failed",
+                            "Could not save config to the training set file.");
+                    }
+                }
+            });
         }
         break;
     default:
