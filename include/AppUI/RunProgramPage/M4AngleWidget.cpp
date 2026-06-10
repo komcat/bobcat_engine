@@ -1023,10 +1023,12 @@ std::string M4AngleWidget::selectedPsuName() const {
 }
 
 void M4AngleWidget::setPsuControlsEnabled(bool enabled) {
-  for (QPushButton* b : {m_psuOutputBtn, m_psuPlus10Btn, m_psuMinus10Btn,
-                         m_psuPlus5Btn, m_psuMinus5Btn}) {
-    if (b) b->setEnabled(enabled);
-  }
+  // Only the On/Off bar is briefly disabled while an action is in flight. The
+  // +/- current presets stay enabled so they never appear greyed-out mid-
+  // operation; overlapping clicks are already dropped by the m_psuActionInFlight
+  // guard. (During the auto-correction wizard the whole PSU group box is
+  // disabled, which still greys everything as intended.)
+  if (m_psuOutputBtn) m_psuOutputBtn->setEnabled(enabled);
 }
 
 void M4AngleWidget::updatePsuOutputButton(bool connected, bool outputOn) {
