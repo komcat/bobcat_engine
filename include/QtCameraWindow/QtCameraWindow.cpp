@@ -1599,6 +1599,11 @@ void QtCameraWindow::setBeamServerClient(BeamServerClient* client)
     m_beamServerClient = client;
 }
 
+void QtCameraWindow::setBeamStreamEnabled(bool enabled, const std::string& cameraId)
+{
+    if (m_beamController) m_beamController->setStreamingEnabled(enabled, cameraId);
+}
+
 bool QtCameraWindow::isBeamStreamActive() const
 {
     return m_beamController && m_beamController->isStreamActive();

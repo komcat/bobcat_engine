@@ -73,6 +73,13 @@ public:
   // is preserved if still present in the new list.
   void refreshCameraList(const std::vector<std::string>& cameraIds);
 
+  // Programmatic toggle (mirrors a user click on the enable checkbox).
+  // When enabling with a non-empty cameraId, the camera-selection combo is
+  // pointed at that camera first so the stream pulls from it. Driving the
+  // checkbox reuses the exact start/stop path the UI uses. Used by remote
+  // callers such as the M4 Angle tab's beam-stream button.
+  void setStreamingEnabled(bool enabled, const std::string& cameraId = "");
+
   // Public API (mirrors legacy QtCameraWindow surface).
   bool isStreamActive() const;
   nlohmann::json getLatestResult() const;

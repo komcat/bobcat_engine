@@ -26,6 +26,7 @@
 
 class QLabel;
 class QPushButton;
+class QtCameraWindow;
 struct ApplicationContext;
 struct PositionStruct;
 
@@ -49,13 +50,16 @@ private slots:
   void onMoveToA2();
   void onMoveToMa1();
   void onMoveToMa2();
-  void onMoveToMoeA1Nominal();   // a1 + (-1.50, 0, -0.15) mm
+  void onMoveToMoeA1Nominal();   // a1 + (-1.50, 0, -0.15) mm; auto-captures ma1 on arrival
+  void onMoveYPlus35();          // gantry-main relative Y +3.25 mm
+  void onMoveYMinus35();         // gantry-main relative Y -3.25 mm
   void onApplyDeltaU();          // hex-right U -= delta_U at 0.1 vel
   void onApplyDeltaW();          // hex-right W -= delta_W at 0.1 vel
   void onSaveMoeA1();            // save gantry-main current pos as "MOE-A1" (tol-checked vs ma1)
   void onSaveMoeA2();            // save gantry-main current pos as "MOE-A2" (tol-checked vs ma2)
   void onSwirSet300us();         // swir_camera: exposure=300us, autoexposure=off
   void onSwirSetAutoExposure();  // swir_camera: autoexposure=on
+  void onToggleBeamStream();     // enable/disable beam streaming on swir_camera
   void onClearAll();
 
 private:
@@ -95,6 +99,13 @@ private:
   void   saveMoeNamedPosition(const char* moeName,
                               const Point& referencePoint,
                               const char* referenceTag);
+  // Auto-detect the Qt camera monitor whose beam stream the M4 button should
+  // drive: prefer one already streaming (so toggle-off always finds it), else
+  // whichever window currently targets swir_camera (primary or secondary).
+  // Returns nullptr if no candidate window exists.
+  QtCameraWindow* findSwirBeamWindow() const;
+  // Update the beam-stream button label/colour to reflect the given state.
+  void   updateBeamStreamButton(bool on);
 
   // Generic "do work on a background thread, marshal result back to UI"
   // primitive shared by all motion actions in this widget. The worker
@@ -120,11 +131,15 @@ private:
   QPushButton* m_a2MoveBtn  = nullptr;
   QPushButton* m_ma1MoveBtn = nullptr;
   QPushButton* m_ma2MoveBtn = nullptr;
+  QPushButton* m_captureMa1Btn = nullptr;  // permanently disabled; ma1 is captured automatically after Move-to-MOE-A1-nominal
+  QPushButton* m_yPlus35Btn  = nullptr;
+  QPushButton* m_yMinus35Btn = nullptr;
   QPushButton* m_moveToMoeA1NominalBtn = nullptr;
   QPushButton* m_applyDeltaUBtn = nullptr;
   QPushButton* m_applyDeltaWBtn = nullptr;
   QPushButton* m_saveMoeA1Btn = nullptr;
   QPushButton* m_saveMoeA2Btn = nullptr;
+  QPushButton* m_beamStreamBtn = nullptr;
 
   QLabel* m_angleAXyLabel   = nullptr;
   QLabel* m_angleMaXyLabel  = nullptr;

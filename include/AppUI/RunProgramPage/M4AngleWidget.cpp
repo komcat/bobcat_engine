@@ -6,6 +6,7 @@
 #include "product_position_manager.h"
 #include "CameraManager.h"
 #include "ICameraHardware.h"
+#include "QtCameraWindow/QtCameraWindow.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -24,6 +25,7 @@ namespace {
 constexpr double kRadToDeg = 57.29577951308232;  // 180 / pi
 
 constexpr const char* kGantryDevice = "gantry-main";
+constexpr const char* kSwirCamera   = "swir_camera";
 
 QString fmtPoint(double x, double y, double z) {
   return QString("X=%1  Y=%2  Z=%3 mm")
@@ -57,6 +59,13 @@ void M4AngleWidget::showEvent(QShowEvent* event) {
   if (!anyPopulated) {
     loadFromSavedPositions();
     recompute();
+  }
+  // Reflect the live beam-stream state (it may have been toggled from the
+  // camera monitor's own Beam tab since this widget was last shown).
+  if (QtCameraWindow* win = findSwirBeamWindow()) {
+    updateBeamStreamButton(win->isBeamStreamActive());
+  } else {
+    updateBeamStreamButton(false);
   }
 }
 
@@ -114,7 +123,7 @@ void M4AngleWidget::setupUI() {
   grid->setVerticalSpacing(6);
 
   auto addCaptureRow = [&](int row, const QString& label, QLabel*& readout,
-                           QPushButton*& moveBtn,
+                           QPushButton*& moveBtn, QPushButton*& captureBtnOut,
                            void (M4AngleWidget::*captureSlot)(),
                            void (M4AngleWidget::*moveSlot)()) {
     auto* nameLabel = new QLabel(label);
@@ -122,6 +131,7 @@ void M4AngleWidget::setupUI() {
 
     auto* captureBtn = new QPushButton(QStringLiteral("Capture %1").arg(label));
     captureBtn->setMinimumWidth(140);
+    captureBtnOut = captureBtn;
 
     readout = new QLabel("(not captured)");
     readout->setStyleSheet("color: #888;");
@@ -140,10 +150,27 @@ void M4AngleWidget::setupUI() {
     connect(moveBtn,    &QPushButton::clicked, this, moveSlot);
   };
 
-  addCaptureRow(0, "a1",  m_a1Readout,  m_a1MoveBtn,
+  QPushButton* unusedCaptureBtn = nullptr;  // capture buttons we don't need to keep a handle to
+  addCaptureRow(0, "a1",  m_a1Readout,  m_a1MoveBtn, unusedCaptureBtn,
                 &M4AngleWidget::onCaptureA1,  &M4AngleWidget::onMoveToA1);
-  addCaptureRow(1, "a2",  m_a2Readout,  m_a2MoveBtn,
+
+  // Y +/- 3.25 mm relative jog on gantry-main, in the right-hand column of the
+  // a1 / a2 rows. The two reference points are ~3.25 mm apart in Y, so these
+  // are the rough one-shot jogs to hop between them while teaching.
+  m_yPlus35Btn = new QPushButton("Y +3.25");
+  m_yPlus35Btn->setMinimumWidth(110);
+  m_yPlus35Btn->setToolTip("gantry-main: relative move Y +3.25 mm.");
+  grid->addWidget(m_yPlus35Btn, 0, 4);
+  connect(m_yPlus35Btn, &QPushButton::clicked, this, &M4AngleWidget::onMoveYPlus35);
+
+  addCaptureRow(1, "a2",  m_a2Readout,  m_a2MoveBtn, unusedCaptureBtn,
                 &M4AngleWidget::onCaptureA2,  &M4AngleWidget::onMoveToA2);
+
+  m_yMinus35Btn = new QPushButton("Y -3.25");
+  m_yMinus35Btn->setMinimumWidth(110);
+  m_yMinus35Btn->setToolTip("gantry-main: relative move Y -3.25 mm.");
+  grid->addWidget(m_yMinus35Btn, 1, 4);
+  connect(m_yMinus35Btn, &QPushButton::clicked, this, &M4AngleWidget::onMoveYMinus35);
 
   // Between a2 and ma1: button to drive gantry-main to the nominal MOE-A1
   // station (a1 + dX=-1.50 mm, dZ=-0.15 mm) so the operator can hand-align
@@ -158,9 +185,17 @@ void M4AngleWidget::setupUI() {
   connect(m_moveToMoeA1NominalBtn, &QPushButton::clicked,
           this, &M4AngleWidget::onMoveToMoeA1Nominal);
 
-  addCaptureRow(3, "ma1", m_ma1Readout, m_ma1MoveBtn,
+  addCaptureRow(3, "ma1", m_ma1Readout, m_ma1MoveBtn, m_captureMa1Btn,
                 &M4AngleWidget::onCaptureMa1, &M4AngleWidget::onMoveToMa1);
-  addCaptureRow(4, "ma2", m_ma2Readout, m_ma2MoveBtn,
+  // ma1 is captured automatically when 'Move to a1 + nominal MOE-A1' finishes,
+  // so the manual capture button stays disabled to remove an unsafe race where
+  // the operator clicks it before the move has settled.
+  if (m_captureMa1Btn) {
+    m_captureMa1Btn->setEnabled(false);
+    m_captureMa1Btn->setToolTip(
+      "Disabled - ma1 is captured automatically when the 'Move to a1 + nominal MOE-A1' move completes.");
+  }
+  addCaptureRow(4, "ma2", m_ma2Readout, m_ma2MoveBtn, unusedCaptureBtn,
                 &M4AngleWidget::onCaptureMa2, &M4AngleWidget::onMoveToMa2);
 
   // Save-as-MOE buttons, sitting at col 4 next to the Move-to-ma{1,2} buttons.
@@ -214,6 +249,19 @@ void M4AngleWidget::setupUI() {
     "QPushButton:pressed { background-color: #ad1457; }");
   grid->addWidget(swirAutoBtn, 5, 3);
   connect(swirAutoBtn, &QPushButton::clicked, this, &M4AngleWidget::onSwirSetAutoExposure);
+
+  // Beam-stream toggle — remote-controls the "Enable Beam Stream" controller in
+  // whichever Qt camera monitor is currently showing swir_camera, so the
+  // operator can start/stop beam streaming without leaving the M4 Angle tab.
+  m_beamStreamBtn = new QPushButton();
+  m_beamStreamBtn->setMinimumWidth(110);
+  m_beamStreamBtn->setToolTip(
+    "Enable/disable beam streaming on swir_camera. Drives the 'Enable Beam "
+    "Stream' control in the Qt camera monitor currently displaying swir_camera "
+    "(open one with Ctrl+R / Ctrl+T and select swir_camera first).");
+  grid->addWidget(m_beamStreamBtn, 5, 4);
+  connect(m_beamStreamBtn, &QPushButton::clicked, this, &M4AngleWidget::onToggleBeamStream);
+  updateBeamStreamButton(false);
 
   grid->setColumnStretch(2, 1);
   root->addWidget(captureGroup);
@@ -302,6 +350,7 @@ void M4AngleWidget::setMoveButtonsEnabledForBusy(bool busy) {
   if (busy) {
     for (QPushButton* b : {m_a1MoveBtn, m_a2MoveBtn, m_ma1MoveBtn, m_ma2MoveBtn,
                            m_moveToMoeA1NominalBtn,
+                           m_yPlus35Btn, m_yMinus35Btn,
                            m_applyDeltaUBtn, m_applyDeltaWBtn,
                            m_saveMoeA1Btn, m_saveMoeA2Btn}) {
       if (b) b->setEnabled(false);
@@ -327,6 +376,9 @@ void M4AngleWidget::refreshMoveButtonsFromCaptureState() {
   if (m_ma2MoveBtn) m_ma2MoveBtn->setEnabled(m_ma2.captured);
   // Nominal MOE-A1 needs a1 captured (it's the reference for the offset).
   if (m_moveToMoeA1NominalBtn) m_moveToMoeA1NominalBtn->setEnabled(m_a1.captured);
+  // Y +/- 3.25 are pure relative jogs - always available when idle.
+  if (m_yPlus35Btn)  m_yPlus35Btn->setEnabled(true);
+  if (m_yMinus35Btn) m_yMinus35Btn->setEnabled(true);
   // Save MOE-Ax needs the matching ma{1,2} captured (used as tolerance ref).
   if (m_saveMoeA1Btn) m_saveMoeA1Btn->setEnabled(m_ma1.captured);
   if (m_saveMoeA2Btn) m_saveMoeA2Btn->setEnabled(m_ma2.captured);
@@ -529,6 +581,72 @@ void M4AngleWidget::onSwirSetAutoExposure() {
   }
 }
 
+QtCameraWindow* M4AngleWidget::findSwirBeamWindow() const {
+  if (!m_context) return nullptr;
+  QtCameraWindow* windows[] = { m_context->qtCameraWindow, m_context->qtCameraWindow2 };
+  // Prefer a window already streaming so toggle-off always finds the live one,
+  // even if its displayed camera changed after streaming started.
+  for (QtCameraWindow* w : windows) {
+    if (w && w->isBeamStreamActive()) return w;
+  }
+  // Otherwise the window currently displaying swir_camera (primary or, in dual
+  // mode, secondary) — that's where swir frames are actually arriving.
+  for (QtCameraWindow* w : windows) {
+    if (!w) continue;
+    if (w->getTargetCamera() == kSwirCamera) return w;
+    if (w->isDualCameraMode() && w->getSecondaryCameraId() == kSwirCamera) return w;
+  }
+  return nullptr;
+}
+
+void M4AngleWidget::updateBeamStreamButton(bool on) {
+  if (!m_beamStreamBtn) return;
+  m_beamStreamBtn->setText(on ? "Beam stream: ON" : "Beam stream: OFF");
+  m_beamStreamBtn->setStyleSheet(on
+    ? "QPushButton { background-color: #43a047; color: white; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
+      "QPushButton:hover { background-color: #388e3c; }"
+      "QPushButton:pressed { background-color: #2e7d32; }"
+    : "QPushButton { background-color: #455a64; color: #eeeeee; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
+      "QPushButton:hover { background-color: #546e7a; }"
+      "QPushButton:pressed { background-color: #37474f; }");
+}
+
+void M4AngleWidget::onToggleBeamStream() {
+  QtCameraWindow* win = findSwirBeamWindow();
+  if (!win) {
+    updateBeamStreamButton(false);
+    if (m_moveStatusLabel) {
+      m_moveStatusLabel->setText(QStringLiteral(
+        "[beam] no Qt camera monitor is showing swir_camera. Open one "
+        "(Ctrl+R / Ctrl+T), select swir_camera, then retry."));
+      m_moveStatusLabel->setStyleSheet("color: #ef5350;");
+    }
+    return;
+  }
+
+  const bool enable = !win->isBeamStreamActive();
+  win->setBeamStreamEnabled(enable, kSwirCamera);
+  const bool nowActive = win->isBeamStreamActive();
+  updateBeamStreamButton(nowActive);
+
+  if (m_moveStatusLabel) {
+    QString msg;
+    bool ok = true;
+    if (enable && !nowActive) {
+      msg = QStringLiteral(
+        "[beam] failed to start swir_camera stream (could not reach beam "
+        "server?). See console for details.");
+      ok = false;
+    } else {
+      msg = nowActive
+        ? QStringLiteral("[beam] swir_camera beam streaming enabled.")
+        : QStringLiteral("[beam] swir_camera beam streaming disabled.");
+    }
+    m_moveStatusLabel->setText(msg);
+    m_moveStatusLabel->setStyleSheet(ok ? "color: #4caf50;" : "color: #ef5350;");
+  }
+}
+
 void M4AngleWidget::onSaveMoeA1() {
   saveMoeNamedPosition("MOE-A1", m_ma1, "ma1");
 }
@@ -699,6 +817,9 @@ void M4AngleWidget::onMoveToMoeA1Nominal() {
     }
     return;
   }
+  if (!m_context || !m_context->motionManager) return;
+  auto* motionMgr = m_context->motionManager;
+
   constexpr double kMoeA1DxMm = -1.50;
   constexpr double kMoeA1DzMm = -0.15;
   PositionStruct target;
@@ -706,13 +827,45 @@ void M4AngleWidget::onMoveToMoeA1Nominal() {
   target.y = m_a1.y;
   target.z = m_a1.z + kMoeA1DzMm;
 
-  startBackgroundMove(
-    target,
-    QStringLiteral(
-      "[MOE] moving to MOE-A1 nominal (a1 + dX=-1.50 mm, dZ=-0.15 mm)..."),
-    QStringLiteral(
-      "[MOE] At MOE-A1 nominal. Move the gripper / MOE to the cross-hair, then click 'Capture ma1' to record the position."),
-    QStringLiteral("[MOE] move to MOE-A1 nominal FAILED"));
+  const QString movingMsg = QStringLiteral(
+    "[MOE] moving to MOE-A1 nominal (a1 + dX=-1.50 mm, dZ=-0.15 mm)...");
+
+  // After the blocking move returns ok, queue an auto-capture of ma1 on the UI
+  // thread so the operator does not need (and the Capture ma1 button is no
+  // longer wired) to click capture themselves.
+  runInBackground(movingMsg,
+    [this, motionMgr, target]() -> std::pair<bool, QString> {
+      const bool ok = motionMgr->MoveToAbs6(kGantryDevice, target, true);
+      if (ok) {
+        QMetaObject::invokeMethod(this, [this]() { onCaptureMa1(); },
+                                  Qt::QueuedConnection);
+        return {true, QStringLiteral(
+          "[MOE] At MOE-A1 nominal. ma1 auto-captured from current gantry-main position.")};
+      }
+      return {false, QStringLiteral("[MOE] move to MOE-A1 nominal FAILED")};
+    });
+}
+
+void M4AngleWidget::onMoveYPlus35() {
+  if (!m_context || !m_context->motionManager) return;
+  auto* motionMgr = m_context->motionManager;
+  runInBackground(QStringLiteral("[jog] gantry-main Y +3.25 mm..."),
+    [motionMgr]() -> std::pair<bool, QString> {
+      const bool ok = motionMgr->MoveRelative(kGantryDevice, "Y", 3.25, true);
+      return {ok, ok ? QStringLiteral("[jog] gantry-main Y +3.25 mm done.")
+                     : QStringLiteral("[jog] gantry-main Y +3.25 mm FAILED.")};
+    });
+}
+
+void M4AngleWidget::onMoveYMinus35() {
+  if (!m_context || !m_context->motionManager) return;
+  auto* motionMgr = m_context->motionManager;
+  runInBackground(QStringLiteral("[jog] gantry-main Y -3.25 mm..."),
+    [motionMgr]() -> std::pair<bool, QString> {
+      const bool ok = motionMgr->MoveRelative(kGantryDevice, "Y", -3.25, true);
+      return {ok, ok ? QStringLiteral("[jog] gantry-main Y -3.25 mm done.")
+                     : QStringLiteral("[jog] gantry-main Y -3.25 mm FAILED.")};
+    });
 }
 
 void M4AngleWidget::onClearAll() {

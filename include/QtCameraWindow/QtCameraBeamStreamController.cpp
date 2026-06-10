@@ -122,6 +122,28 @@ void QtCameraBeamStreamController::refreshCameraList(const std::vector<std::stri
   m_cameraCombo->blockSignals(false);
 }
 
+void QtCameraBeamStreamController::setStreamingEnabled(bool enabled,
+                                                       const std::string& cameraId)
+{
+  // Point the combo at the requested camera before enabling so the stream
+  // pulls from it. If the id isn't in the list yet (combo not refreshed),
+  // set the filter id directly so enqueueFrame still accepts its frames.
+  if (enabled && !cameraId.empty() && m_cameraCombo) {
+    const int idx = m_cameraCombo->findText(QString::fromStdString(cameraId));
+    if (idx >= 0) {
+      m_cameraCombo->setCurrentIndex(idx);  // fires onCameraChanged -> m_streamCameraId
+    } else {
+      m_streamCameraId = cameraId;
+    }
+  }
+  if (!m_enableCheck) return;
+  // Toggling the checkbox runs the existing onEnableToggled() start/stop path.
+  // A no-op when already in the requested state.
+  if (m_enableCheck->isChecked() != enabled) {
+    m_enableCheck->setChecked(enabled);
+  }
+}
+
 bool QtCameraBeamStreamController::isStreamActive() const
 {
   return m_streamEnabled.load() && m_threadRunning.load();

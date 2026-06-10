@@ -101,6 +101,10 @@ public:
 
     // Beam streaming
     void setBeamServerClient(BeamServerClient* client);
+    // Programmatically enable/disable the beam stream (same path as the Beam
+    // tab's "Enable Beam Stream" checkbox). When enabling, cameraId selects
+    // which camera feeds the stream. Used by remote callers (e.g. M4 Angle tab).
+    void setBeamStreamEnabled(bool enabled, const std::string& cameraId = "");
     bool isBeamStreamActive() const;
     nlohmann::json getLatestBeamStreamResult() const;
     uint64_t getBeamStreamResultSequence() const;
