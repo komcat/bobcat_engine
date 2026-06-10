@@ -35,6 +35,7 @@ bool PicAdjustStore::Save(const PicAdjustSet& set,
     sj["targetDistanceUm"] = settings.targetDistanceUm;
     sj["invertDistance"] = settings.invertDistance;
     sj["lockSigns"]      = settings.lockSigns;
+    sj["overwriteOnComplete"] = settings.overwriteOnComplete;
     try {
         std::filesystem::path path(filePath);
         if (path.has_parent_path()) {
@@ -79,6 +80,7 @@ bool PicAdjustStore::Load(PicAdjustSet& outSet,
             outSettings.targetDistanceUm = sj.value("targetDistanceUm", outSettings.targetDistanceUm);
             outSettings.invertDistance   = sj.value("invertDistance", outSettings.invertDistance);
             outSettings.lockSigns        = sj.value("lockSigns",      outSettings.lockSigns);
+            outSettings.overwriteOnComplete = sj.value("overwriteOnComplete", outSettings.overwriteOnComplete);
         }
         return true;
     } catch (const std::exception& e) {

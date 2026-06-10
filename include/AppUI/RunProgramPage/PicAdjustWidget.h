@@ -147,6 +147,7 @@ private:
     QPushButton* m_abortAutoBtn        = nullptr;
     QLabel*      m_autoStatusLabel     = nullptr;
     QLabel*      m_autoPointNameLabel  = nullptr;
+    QCheckBox*   m_overwriteOnComplete = nullptr;  // gate file overwrite of confirmed points
     std::array<QLabel*, kPicPointCount> m_autoDots{};
     QPushButton*    m_jogXmBtn  = nullptr;
     QPushButton*    m_jogXpBtn  = nullptr;

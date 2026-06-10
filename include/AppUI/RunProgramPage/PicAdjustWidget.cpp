@@ -341,6 +341,14 @@ void PicAdjustWidget::buildUI() {
     m_autoStatusLabel->setWordWrap(true);
     autoLayout->addWidget(m_autoStatusLabel);
 
+    m_overwriteOnComplete = new QCheckBox("Overwrite saved points with confirmed re-captures");
+    m_overwriteOnComplete->setChecked(m_settings.overwriteOnComplete);
+    m_overwriteOnComplete->setToolTip(
+        "When checked, each confirmed re-capture during auto-correction overwrites the "
+        "saved points file. Uncheck to run the correction without modifying the taught file.");
+    connect(m_overwriteOnComplete, &QCheckBox::toggled, this, &PicAdjustWidget::onSettingsChanged);
+    autoLayout->addWidget(m_overwriteOnComplete);
+
     auto* confirmRow = new QHBoxLayout();
     m_captureContinueBtn = new QPushButton("Capture && Continue");
     m_captureContinueBtn->setEnabled(false);
@@ -656,11 +664,14 @@ void PicAdjustWidget::onCaptureContinueClicked() {
     p.x = pos.x; p.y = pos.y; p.z = pos.z;
     refreshPointLabel(static_cast<int>(id));
     refreshResults();
-    PicAdjustStore::Save(m_set, m_settings, m_filePath);
-    appendLog(QString("Confirmed %1 at X=%2 Y=%3 Z=%4  (Δ=%5 mm; saved)")
+    if (m_settings.overwriteOnComplete) {
+        PicAdjustStore::Save(m_set, m_settings, m_filePath);
+    }
+    appendLog(QString("Confirmed %1 at X=%2 Y=%3 Z=%4  (Δ=%5 mm; %6)")
         .arg(QString::fromUtf8(PicPointName(id)))
         .arg(p.x, 0, 'f', 4).arg(p.y, 0, 'f', 4).arg(p.z, 0, 'f', 4)
-        .arg(dist, 0, 'f', 4));
+        .arg(dist, 0, 'f', 4)
+        .arg(m_settings.overwriteOnComplete ? "saved" : "not saved — file preserved"));
 
     switch (m_autoStep) {
         case PicAutoStep::WaitConfirmS1: m_autoStep = PicAutoStep::NavToS2; break;
@@ -1171,6 +1182,7 @@ void PicAdjustWidget::onLoadClicked() {
         if (idx >= 0) m_targetDeviceCombo->setCurrentIndex(idx);
     }
     if (m_lockSigns) m_lockSigns->setChecked(m_settings.lockSigns);
+    if (m_overwriteOnComplete) m_overwriteOnComplete->setChecked(m_settings.overwriteOnComplete);
     {
         const bool editable = !m_settings.lockSigns;
         if (m_invertU)        m_invertU->setEnabled(editable);
@@ -1193,6 +1205,7 @@ void PicAdjustWidget::onSettingsChanged() {
     if (m_distanceTargetSpin) m_settings.targetDistanceUm = m_distanceTargetSpin->value();
     if (m_targetDeviceCombo)  m_settings.targetDevice    = m_targetDeviceCombo->currentText().toStdString();
     if (m_lockSigns)          m_settings.lockSigns       = m_lockSigns->isChecked();
+    if (m_overwriteOnComplete) m_settings.overwriteOnComplete = m_overwriteOnComplete->isChecked();
     persistAll();
 }
 

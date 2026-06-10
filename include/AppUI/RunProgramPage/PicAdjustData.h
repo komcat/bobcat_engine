@@ -53,6 +53,9 @@ struct PicAdjustSettings {
     double targetDistanceUm = 100.0;   // PIC die -> S1-S2 reference line, in Z (µm)
     bool invertDistance = false;        // flip the sign of the computed hex Z move
     bool lockSigns = false;             // when true, invert-sign checkboxes are read-only
+    bool overwriteOnComplete = true;    // when true, auto-correction overwrites the saved
+                                        // points file with each confirmed re-capture;
+                                        // when false the taught file is left untouched
 };
 
 struct PicDistanceInfo {
