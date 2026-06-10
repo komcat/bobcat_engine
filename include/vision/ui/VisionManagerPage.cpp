@@ -1224,6 +1224,14 @@ void VisionManagerPage::registerPlugins()
     VisionManager::instance().registerPlugin(calibrationPlatePlugin);
 
 #ifdef HAS_HALCON
+    // Guard Halcon plugin construction: the first Halcon handle allocated in the
+    // process triggers engine/license verification (HalconPatternMatchingEdgePlugin
+    // is the first plugin with an HShapeModel member). An expired/missing license
+    // raises HOperatorException from the constructor — without this guard it would
+    // propagate up through MainWindow and Application::initialize() and hard-crash
+    // the app before the UI ever appears. Catch it so the app still starts with the
+    // OpenCV plugins; Halcon plugins are simply unavailable until the license is fixed.
+    try {
     auto halconCirclePlugin = std::make_shared<HalconCircleDetectionPlugin>();
     VisionManager::instance().registerPlugin(halconCirclePlugin);
 
@@ -1264,6 +1272,15 @@ void VisionManagerPage::registerPlugins()
 
     auto halconD4SigmaBeamPlugin = std::make_shared<HalconD4SigmaBeamDetectionPlugin>();
     VisionManager::instance().registerPlugin(halconD4SigmaBeamPlugin);
+    } catch (const HalconCpp::HException& e) {
+        // Most commonly an expired or missing Halcon license. Log and continue —
+        // the application starts with the OpenCV plugins only.
+        const std::string msg = std::string("Halcon vision plugins disabled: ") + e.ErrorMessage().Text();
+        std::cerr << "[VisionManagerPage] " << msg << std::endl;
+        if (m_context && m_context->logManager) {
+            m_context->logManager->Error(msg, "VisionManagerPage");
+        }
+    }
 #endif
 
     if (m_context && m_context->logManager) {

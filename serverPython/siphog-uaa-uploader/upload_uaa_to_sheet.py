@@ -1,5 +1,11 @@
 """Upload SIPHOG888 UAA measurement data from per-bench JSON files into the
-shared Google Sheet (tab 'test').
+shared Google Sheet.
+
+Two upload modes:
+  * Summary  (tab 'test')              - one row per bench, uA-scaled values,
+                                         only writes when the JSON is newer.
+  * Detail   (tab 'detail_uaa_upload') - raw per-measurement values WITH their
+                                         own timestamps; upsert by bench number.
 
 First-time setup:
     pip install gspread google-auth-oauthlib python-dateutil
@@ -7,8 +13,10 @@ First-time setup:
     Run once; a browser window authorizes access and caches token.json.
 
 Usage:
-    python upload_uaa_to_sheet.py              # apply updates
-    python upload_uaa_to_sheet.py --dry-run    # print intended updates, no writes
+    python upload_uaa_to_sheet.py                       # apply summary updates
+    python upload_uaa_to_sheet.py --dry-run             # preview, no writes
+    python upload_uaa_to_sheet.py --detail              # apply detail upsert
+    python upload_uaa_to_sheet.py --detail --dry-run    # preview detail, no writes
 """
 
 from __future__ import annotations
@@ -28,15 +36,19 @@ import gspread
 
 SHEET_ID = "1JTJBXtzsS-YDFxDPkxo9o1DczHtMozSvclQTYMj_jaU"
 TAB_NAME = "test"
+DETAIL_TAB_NAME = "detail_uaa_upload"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 
 DATA_DIR = Path(__file__).parent
 CRED_FILE = DATA_DIR / "credentials.json"
 TOKEN_FILE = DATA_DIR / "token.json"
 
+KEY_STATUS = "$Status"
 KEY_DRY = "pre_uv_value"
 KEY_UV = "post_uv_value"
 KEY_BAKE = "After Bake measurement"
+KEY_BAKE_START = "Timestamp_Start_AFBake"
+KEY_BAKE_END = "Timestamp_END_AFBake"
 
 VALUE_SCALE = 1_000_000  # A -> uA
 
@@ -47,6 +59,23 @@ REQUIRED_COLS = [
     "uaa_uv",
     "uaa_bake",
     "uaa_completed",
+]
+
+# Header of the 'detail_uaa_upload' tab. The detail uploader writes raw,
+# per-measurement values (with their own timestamps) rather than the summary
+# row written to the 'test' tab. Values are RAW amps (no uA scaling) and
+# timestamps are the exact ISO strings from the JSON.
+DETAIL_COLS = [
+    "bench number",
+    "product_name",
+    "$Status",
+    "started_timestamp",
+    "pre_uv_value",
+    "pre_uv_value_timestamp",
+    "post_uv_value",
+    "Timestamp_Start_AFBake",
+    "After Bake measurement",
+    "Timestamp_END_AFBake",
 ]
 
 
@@ -134,13 +163,14 @@ def parse_date(s: str):
         return None
 
 
-def fetch_sheet(ws):
+def fetch_sheet(ws, required_cols=None):
+    required = REQUIRED_COLS if required_cols is None else required_cols
     all_values = ws.get_all_values()
     if not all_values:
         raise RuntimeError("sheet is empty")
     header = all_values[0]
     col_idx = {name: i for i, name in enumerate(header)}
-    missing = [c for c in REQUIRED_COLS if c not in col_idx]
+    missing = [c for c in required if c not in col_idx]
     if missing:
         raise RuntimeError(f"sheet missing required columns: {missing}")
     return all_values, col_idx
@@ -302,10 +332,224 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
     return counts, row_changes, cell_updates, warnings
 
 
-def apply_updates(ws, cell_updates):
+# ---------------------------------------------------------------------------
+# Detail tab ('detail_uaa_upload'): raw per-measurement values + timestamps.
+# Upsert by bench number (update in place if present, append if new).
+# ---------------------------------------------------------------------------
+
+def extract_detail(json_path: Path):
+    """Return a dict of raw per-measurement values + their timestamps for the
+    'detail_uaa_upload' tab, or None if the file carries no relevant entries.
+
+    Values are RAW amps (no scaling). Timestamps are the exact ISO strings
+    from each entry. Where a key appears multiple times (e.g. an original bake
+    plus a re-bake), the latest entry wins.
+    """
+    try:
+        with json_path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        print(f"  WARN: could not parse {json_path.name}: {exc}")
+        return None
+
+    entries = data.get("entries", [])
+    status = pick_latest(entries, KEY_STATUS)
+    pre = pick_latest(entries, KEY_DRY)
+    post = pick_latest(entries, KEY_UV)
+    bake = pick_latest(entries, KEY_BAKE)
+    bake_start = pick_latest(entries, KEY_BAKE_START)
+    bake_end = pick_latest(entries, KEY_BAKE_END)
+
+    relevant = [status, pre, post, bake, bake_start, bake_end]
+    if not any(relevant):
+        return None
+
+    latest_ts = max(e["timestamp"] for e in relevant if e is not None)
+    return {
+        "product_name": data.get("product_name", ""),
+        "status": status["value"] if status else "",
+        "started_ts": status["timestamp"] if status else "",
+        "pre": pre["value"] if pre else None,
+        "pre_ts": pre["timestamp"] if pre else "",
+        "post": post["value"] if post else None,
+        "bake_start_ts": bake_start["timestamp"] if bake_start else "",
+        "bake": bake["value"] if bake else None,
+        "bake_end_ts": bake_end["timestamp"] if bake_end else "",
+        "latest_ts": latest_ts,
+    }
+
+
+def _detail_field_values(stem, detail):
+    """Map detail dict -> {header name: cell value} for the detail tab."""
+    def _num(v):
+        return "" if v is None else v
+    return {
+        "bench number": stem,
+        "product_name": detail["product_name"],
+        "$Status": detail["status"],
+        "started_timestamp": detail["started_ts"],
+        "pre_uv_value": _num(detail["pre"]),
+        "pre_uv_value_timestamp": detail["pre_ts"],
+        "post_uv_value": _num(detail["post"]),
+        "Timestamp_Start_AFBake": detail["bake_start_ts"],
+        "After Bake measurement": _num(detail["bake"]),
+        "Timestamp_END_AFBake": detail["bake_end_ts"],
+    }
+
+
+def _cells_equal(existing_val, new_val):
+    """True if the sheet's existing string cell already matches new_val.
+
+    Numbers are compared with tolerance (the sheet round-trips floats as
+    formatted strings); everything else by trimmed string equality.
+    """
+    e = (existing_val or "").strip()
+    if isinstance(new_val, (int, float)):
+        try:
+            nf = float(new_val)
+            return abs(float(e) - nf) <= 1e-12 + 1e-9 * abs(nf)
+        except (ValueError, TypeError):
+            return False
+    n = "" if new_val is None else str(new_val)
+    return e == n.strip()
+
+
+def compute_detail_plan(all_values, col_idx, data_dir, scope=None):
+    """Scan data_dir and return (counts, row_changes, cell_updates, warnings)
+    for the detail tab. Upsert semantics: an in-scope bench already present in
+    the sheet is updated in place (status UPDATE), a new bench is appended
+    (status APPEND); a present bench whose values already match is skipped
+    (status UNCHANGED). cell_updates contains only APPEND/UPDATE rows.
+
+    scope filters which benches are considered:
+        bench_min, bench_max : int  - inclusive range on bench number
+        date_from, date_to   : date - inclusive range on latest entry date
+    (The detail tab has no 'Lot ID' column, so a lot_id filter is ignored.)
+    """
+    scope = scope or {}
+    bench_min = scope.get("bench_min")
+    bench_max = scope.get("bench_max")
+    date_from = scope.get("date_from")
+    date_to = scope.get("date_to")
+
+    header = all_values[0]
+    n_cols = len(header)
+    bench_col = col_idx["bench number"]
+
+    warnings: list[str] = []
+    if scope.get("lot_id"):
+        warnings.append("Lot ID filter ignored: detail tab has no 'Lot ID' column")
+
+    bench_to_row: dict[str, int] = {}
+    for r, row in enumerate(all_values[1:], start=2):
+        if bench_col >= len(row):
+            continue
+        key = row[bench_col].strip()
+        if not key:
+            continue
+        if key in bench_to_row:
+            warnings.append(f"duplicate bench number {key} "
+                            f"(rows {bench_to_row[key]} and {r}); keeping first")
+            continue
+        bench_to_row[key] = r
+
+    next_row = len(all_values) + 1  # first empty row for appends
+
+    counts = {
+        "scanned": 0,
+        "skipped_not_digit": 0,
+        "skipped_out_of_scope": 0,
+        "skipped_no_data": 0,
+        "unchanged": 0,
+        "updated": 0,
+        "appended": 0,
+    }
+    row_changes = []
+    cell_updates = []
+    last_col_a1 = col_to_a1(n_cols - 1)
+
+    for jf in sorted(Path(data_dir).glob("*.json")):
+        counts["scanned"] += 1
+        stem = jf.stem.strip()
+        if not stem.isdigit():
+            counts["skipped_not_digit"] += 1
+            continue
+
+        bench_int = int(stem)
+        if bench_min is not None and bench_int < bench_min:
+            counts["skipped_out_of_scope"] += 1
+            continue
+        if bench_max is not None and bench_int > bench_max:
+            counts["skipped_out_of_scope"] += 1
+            continue
+
+        detail = extract_detail(jf)
+        if detail is None:
+            counts["skipped_no_data"] += 1
+            continue
+
+        new_date = parse_date(detail["latest_ts"])
+        if new_date is None:
+            counts["skipped_no_data"] += 1
+            continue
+        if date_from is not None and new_date < date_from:
+            counts["skipped_out_of_scope"] += 1
+            continue
+        if date_to is not None and new_date > date_to:
+            counts["skipped_out_of_scope"] += 1
+            continue
+
+        field_values = _detail_field_values(stem, detail)
+        ordered = [field_values.get(h, "") for h in header]
+
+        if stem in bench_to_row:
+            row_num = bench_to_row[stem]
+            existing = all_values[row_num - 1]
+            same = all(
+                _cells_equal(existing[i] if i < len(existing) else "", ordered[i])
+                for i in range(n_cols)
+            )
+            if same:
+                counts["unchanged"] += 1
+                row_changes.append({"bench": stem, "row": row_num,
+                                    "status": "UNCHANGED", "new": field_values})
+                continue
+            status = "UPDATE"
+            counts["updated"] += 1
+        else:
+            row_num = next_row
+            next_row += 1
+            status = "APPEND"
+            counts["appended"] += 1
+
+        cell_updates.append({
+            "range": f"A{row_num}:{last_col_a1}{row_num}",
+            "values": [ordered],
+        })
+        row_changes.append({"bench": stem, "row": row_num,
+                            "status": status, "new": field_values})
+
+    return counts, row_changes, cell_updates, warnings
+
+
+def apply_updates(ws, cell_updates, value_input_option="USER_ENTERED"):
     if not cell_updates:
         return
-    ws.batch_update(cell_updates, value_input_option="USER_ENTERED")
+    ws.batch_update(cell_updates, value_input_option=value_input_option)
+
+
+def _print_plan(counts, row_changes, preview_statuses):
+    print("Summary:")
+    for k, v in counts.items():
+        print(f"  {k:24s} {v}")
+
+    previews = [c for c in row_changes
+                if c["status"] in preview_statuses][:5]
+    if previews:
+        print("\nFirst changes:")
+        for c in previews:
+            print(f"  bench {c['bench']} (row {c['row']}) "
+                  f"[{c['status']}]: {c['new']}")
 
 
 def main() -> int:
@@ -315,45 +559,57 @@ def main() -> int:
     ap.add_argument("--data-dir", type=Path, default=DATA_DIR,
                     help=f"folder containing per-bench JSON files "
                          f"(default: {DATA_DIR})")
-    ap.add_argument("--tab", default=TAB_NAME,
-                    help=f"worksheet tab name (default: {TAB_NAME})")
+    ap.add_argument("--detail", action="store_true",
+                    help=f"upload raw per-measurement detail to the "
+                         f"'{DETAIL_TAB_NAME}' tab (upsert by bench number) "
+                         f"instead of the '{TAB_NAME}' summary")
+    ap.add_argument("--tab", default=None,
+                    help=f"worksheet tab name (default: '{TAB_NAME}', or "
+                         f"'{DETAIL_TAB_NAME}' with --detail)")
     args = ap.parse_args()
 
+    tab = args.tab or (DETAIL_TAB_NAME if args.detail else TAB_NAME)
+
     gc = authorize()
-    ws = gc.open_by_key(SHEET_ID).worksheet(args.tab)
+    ws = gc.open_by_key(SHEET_ID).worksheet(tab)
     try:
-        all_values, col_idx = fetch_sheet(ws)
+        if args.detail:
+            all_values, col_idx = fetch_sheet(ws, DETAIL_COLS)
+        else:
+            all_values, col_idx = fetch_sheet(ws)
     except RuntimeError as e:
         sys.exit(f"ERROR: {e}")
 
-    counts, row_changes, cell_updates, warnings = compute_plan(
-        all_values, col_idx, args.data_dir)
+    if args.detail:
+        counts, row_changes, cell_updates, warnings = compute_detail_plan(
+            all_values, col_idx, args.data_dir)
+        preview_statuses = ("APPEND", "UPDATE")
+        value_input_option = "RAW"
+        covered = counts["updated"] + counts["appended"]
+    else:
+        counts, row_changes, cell_updates, warnings = compute_plan(
+            all_values, col_idx, args.data_dir)
+        preview_statuses = ("UPDATE",)
+        value_input_option = "USER_ENTERED"
+        covered = counts["updated"]
 
     for w in warnings:
         print(f"  WARN: {w}")
 
-    print("Summary:")
-    for k, v in counts.items():
-        print(f"  {k:24s} {v}")
-
-    previews = [c for c in row_changes if c["status"] == "UPDATE"][:5]
-    if previews:
-        print("\nFirst updates:")
-        for c in previews:
-            print(f"  bench {c['bench']} (row {c['row']}): {c['new']}")
+    _print_plan(counts, row_changes, preview_statuses)
 
     if not cell_updates:
         print("\nNo updates to apply.")
         return 0
 
     if args.dry_run:
-        print(f"\n[dry-run] Would send {len(cell_updates)} cell updates "
-              f"covering {counts['updated']} rows.")
+        print(f"\n[dry-run] Would send {len(cell_updates)} row updates "
+              f"covering {covered} rows on '{tab}'.")
         return 0
 
-    apply_updates(ws, cell_updates)
-    print(f"\nApplied {len(cell_updates)} cell updates "
-          f"covering {counts['updated']} rows.")
+    apply_updates(ws, cell_updates, value_input_option=value_input_option)
+    print(f"\nApplied {len(cell_updates)} row updates "
+          f"covering {covered} rows on '{tab}'.")
     return 0
 
 
