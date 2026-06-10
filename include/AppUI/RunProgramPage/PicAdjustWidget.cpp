@@ -7,6 +7,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDoubleSpinBox>
+#include <QFrame>
 #include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -56,6 +57,7 @@ PicAdjustWidget::PicAdjustWidget(ApplicationContext* context, QWidget* parent)
     if (m_invertDistance) m_invertDistance->setEnabled(editable);
     m_loadingSettings = false;
     refreshDistanceLabel();
+    refreshAutoUI();
 }
 
 PicAdjustWidget::~PicAdjustWidget() {
@@ -321,7 +323,71 @@ void PicAdjustWidget::buildUI() {
     hexQuickLayout->addWidget(hexDownBtn);
     rightCol->addWidget(hexQuickBox);
 
+    // Automated correction: navigate to each saved point in order, pause for
+    // user confirmation (with manual jog allowed for crosshair fine-tune),
+    // then apply ΔU / V / ΔW / distance / hex-down sequentially.
+    auto* autoBox = new QGroupBox("Automated Correction");
+    auto* autoLayout = new QVBoxLayout(autoBox);
+
+    m_startCorrectionBtn = new QPushButton("START CORRECTION");
+    m_startCorrectionBtn->setStyleSheet(
+        "background-color: #f0c040; color: black; font-weight: bold; font-size: 14px; padding: 10px;");
+    m_startCorrectionBtn->setMinimumHeight(48);
+    connect(m_startCorrectionBtn, &QPushButton::clicked, this, &PicAdjustWidget::onStartCorrectionClicked);
+    autoLayout->addWidget(m_startCorrectionBtn);
+
+    m_autoStatusLabel = new QLabel("Status: idle");
+    m_autoStatusLabel->setStyleSheet("font-family: monospace; color: #ccc;");
+    m_autoStatusLabel->setWordWrap(true);
+    autoLayout->addWidget(m_autoStatusLabel);
+
+    auto* confirmRow = new QHBoxLayout();
+    m_captureContinueBtn = new QPushButton("Capture && Continue");
+    m_captureContinueBtn->setEnabled(false);
+    connect(m_captureContinueBtn, &QPushButton::clicked, this, &PicAdjustWidget::onCaptureContinueClicked);
+    confirmRow->addWidget(m_captureContinueBtn);
+    m_autoPointNameLabel = new QLabel("---");
+    QFont pnFont = m_autoPointNameLabel->font();
+    pnFont.setBold(true);
+    pnFont.setPointSize(pnFont.pointSize() + 2);
+    m_autoPointNameLabel->setFont(pnFont);
+    confirmRow->addWidget(m_autoPointNameLabel);
+    confirmRow->addStretch();
+    autoLayout->addLayout(confirmRow);
+
+    // Indicator dots:  P1 P2 . S1
+    //                  P3 P4 . S2
+    auto* dotGrid = new QGridLayout();
+    dotGrid->setHorizontalSpacing(8);
+    dotGrid->setVerticalSpacing(6);
+    auto makeDot = [&](PicPointId id, int row, int col) {
+        auto* d = new QLabel(QString::fromUtf8(PicPointName(id)));
+        d->setAlignment(Qt::AlignCenter);
+        d->setFixedSize(30, 30);
+        d->setStyleSheet("background-color: #555; border-radius: 15px; color: black; font-weight: bold;");
+        dotGrid->addWidget(d, row, col);
+        m_autoDots[static_cast<int>(id)] = d;
+    };
+    makeDot(PicPointId::P1, 0, 0);
+    makeDot(PicPointId::P2, 0, 1);
+    makeDot(PicPointId::S1, 0, 3);
+    makeDot(PicPointId::P3, 1, 0);
+    makeDot(PicPointId::P4, 1, 1);
+    makeDot(PicPointId::S2, 1, 3);
+    dotGrid->setColumnStretch(2, 1);
+    autoLayout->addLayout(dotGrid);
+
+    m_abortAutoBtn = new QPushButton("Abort");
+    m_abortAutoBtn->setEnabled(false);
+    connect(m_abortAutoBtn, &QPushButton::clicked, this, &PicAdjustWidget::onAbortAutoClicked);
+    autoLayout->addWidget(m_abortAutoBtn);
+
+    rightCol->addWidget(autoBox);
+
     rightCol->addStretch();
+
+    // Initial dot colors reflect captured/uncaptured state.
+    refreshAutoUI();
 }
 
 void PicAdjustWidget::onCaptureClicked(int slot) {
@@ -428,16 +494,24 @@ void PicAdjustWidget::setRowEnabled(bool enabled) {
         if (m_captureBtns[i]) m_captureBtns[i]->setEnabled(enabled);
         if (m_moveBtns[i])    m_moveBtns[i]->setEnabled(enabled);
     }
-    if (m_applyUBtn)        m_applyUBtn->setEnabled(enabled);
-    if (m_applyVBtn)        m_applyVBtn->setEnabled(enabled);
-    if (m_applyWBtn)        m_applyWBtn->setEnabled(enabled);
-    if (m_applyDistanceBtn) m_applyDistanceBtn->setEnabled(enabled);
+    // Manual action buttons stay disabled during automation, even when no
+    // motion is in flight (between auto steps), to prevent the user from
+    // hijacking the sequence.
+    const bool manualOk = enabled && !m_autoMode;
+    if (m_applyUBtn)        m_applyUBtn->setEnabled(manualOk);
+    if (m_applyVBtn)        m_applyVBtn->setEnabled(manualOk);
+    if (m_applyWBtn)        m_applyWBtn->setEnabled(manualOk);
+    if (m_applyDistanceBtn) m_applyDistanceBtn->setEnabled(manualOk);
+    // Jog must remain usable in WaitConfirm states for crosshair fine-tune,
+    // so it's only gated on motion-in-flight, not auto mode.
     if (m_jogXmBtn) m_jogXmBtn->setEnabled(enabled);
     if (m_jogXpBtn) m_jogXpBtn->setEnabled(enabled);
     if (m_jogYmBtn) m_jogYmBtn->setEnabled(enabled);
     if (m_jogYpBtn) m_jogYpBtn->setEnabled(enabled);
     if (m_jogZmBtn) m_jogZmBtn->setEnabled(enabled);
     if (m_jogZpBtn) m_jogZpBtn->setEnabled(enabled);
+    // Auto-panel button state is managed centrally by refreshAutoUI().
+    refreshAutoUI();
 }
 
 void PicAdjustWidget::onJogClicked(const QString& axis, int sign) {
@@ -453,6 +527,449 @@ void PicAdjustWidget::onJogClicked(const QString& axis, int sign) {
     else if (m_jogStep10 && m_jogStep10->isChecked()) stepUm = 10.0;
     const double distMm = (sign >= 0 ? +1.0 : -1.0) * stepUm / 1000.0;
     startJogAsync(axis, distMm);
+}
+
+// ============================================================================
+// Automated correction state machine
+// ============================================================================
+
+bool PicAdjustWidget::isWaitConfirm(PicAutoStep s) const {
+    switch (s) {
+        case PicAutoStep::WaitConfirmS1:
+        case PicAutoStep::WaitConfirmS2:
+        case PicAutoStep::WaitConfirmP1:
+        case PicAutoStep::WaitConfirmP2:
+        case PicAutoStep::WaitConfirmP3:
+        case PicAutoStep::WaitConfirmP4:
+            return true;
+        default: return false;
+    }
+}
+
+PicPointId PicAdjustWidget::waitConfirmId(PicAutoStep s) const {
+    switch (s) {
+        case PicAutoStep::WaitConfirmS1: return PicPointId::S1;
+        case PicAutoStep::WaitConfirmS2: return PicPointId::S2;
+        case PicAutoStep::WaitConfirmP1: return PicPointId::P1;
+        case PicAutoStep::WaitConfirmP2: return PicPointId::P2;
+        case PicAutoStep::WaitConfirmP3: return PicPointId::P3;
+        case PicAutoStep::WaitConfirmP4: return PicPointId::P4;
+        default: return PicPointId::Count;
+    }
+}
+
+PicPointId PicAdjustWidget::navTargetId(PicAutoStep s) const {
+    switch (s) {
+        case PicAutoStep::NavToS1: return PicPointId::S1;
+        case PicAutoStep::NavToS2: return PicPointId::S2;
+        case PicAutoStep::NavToP1: return PicPointId::P1;
+        case PicAutoStep::NavToP2: return PicPointId::P2;
+        case PicAutoStep::NavToP3: return PicPointId::P3;
+        case PicAutoStep::NavToP4: return PicPointId::P4;
+        default: return PicPointId::Count;
+    }
+}
+
+void PicAdjustWidget::onStartCorrectionClicked() {
+    if (m_autoMode) return;
+    if (!m_context || !m_context->motionManager) {
+        QMessageBox::warning(this, "PIC Adjust", "Motion manager not available.");
+        return;
+    }
+    // Require all 6 points captured — automation re-navigates to them.
+    for (int i = 0; i < kPicPointCount; ++i) {
+        if (!m_set.points[i].captured) {
+            QMessageBox::information(this, "PIC Adjust",
+                QString("Cannot start automation: %1 not captured yet. Capture all 6 "
+                        "points manually first.")
+                    .arg(QString::fromUtf8(PicPointName(static_cast<PicPointId>(i)))));
+            return;
+        }
+    }
+    QMessageBox::StandardButton confirm = QMessageBox::question(this, "Start Correction",
+        "Begin automated correction?\n\n"
+        "Sequence: navigate to S1 → confirm → S2 → P1 → P2 → P3 → P4, then\n"
+        "apply ΔU, V, ΔW, distance move (target 100 µm), and hex-right X− 150 µm.\n\n"
+        "Gantry velocity: 5 mm/s · hex system velocity: 0.2 mm/s.",
+        QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+    if (confirm != QMessageBox::Yes) return;
+
+    m_autoMode = true;
+    m_autoAbortRequested = false;
+    m_autoStep = PicAutoStep::NavToS1;
+    appendLog("==== Auto-correction started ====");
+    setRowEnabled(true);   // re-evaluate button states under auto mode
+    runNextAutoStep();
+}
+
+void PicAdjustWidget::onAbortAutoClicked() {
+    if (!m_autoMode) return;
+    m_autoAbortRequested = true;
+    appendLog("Abort requested; will stop after the current move completes.");
+    if (!m_moveInFlight) {
+        // Not currently moving — abort immediately.
+        finishAuto(true);
+    }
+}
+
+void PicAdjustWidget::onCaptureContinueClicked() {
+    if (!m_autoMode || !isWaitConfirm(m_autoStep)) return;
+    if (!m_context || !m_context->motionManager) return;
+    const PicPointId id = waitConfirmId(m_autoStep);
+    if (id == PicPointId::Count) return;
+
+    // Read current and taught positions BEFORE overwriting, so we can guardrail
+    // against drift / re-teach errors. If the operator nudged the crosshair more
+    // than 1 mm from the taught XYZ, the saved positions are stale and the auto
+    // sequence is no longer trustworthy — abort and force a manual re-teach.
+    const PicPoint taught = m_set.points[static_cast<int>(id)];
+    const PositionStruct pos = m_context->motionManager->GetCurrentPosition(m_deviceName);
+    const double dx = pos.x - taught.x;
+    const double dy = pos.y - taught.y;
+    const double dz = pos.z - taught.z;
+    const double dist = std::sqrt(dx * dx + dy * dy + dz * dz);
+    constexpr double kMaxDeviationMm = 1.0;
+    if (dist > kMaxDeviationMm) {
+        const QString name = QString::fromUtf8(PicPointName(id));
+        const QString msg = QString(
+            "Confirmed %1 deviates %2 mm from the taught position\n"
+            "(Δx=%3, Δy=%4, Δz=%5 mm).\n\n"
+            "Limit is %6 mm. Saved positions look stale — re-teach S1, S2 and "
+            "P1..P4 manually, then try Start Correction again.")
+            .arg(name)
+            .arg(dist, 0, 'f', 4)
+            .arg(dx,   0, 'f', 4)
+            .arg(dy,   0, 'f', 4)
+            .arg(dz,   0, 'f', 4)
+            .arg(kMaxDeviationMm, 0, 'f', 1);
+        QMessageBox::warning(this, "Deviation too large — re-teach required", msg);
+        appendLog(QString("GUARDRAIL: %1 deviation %2 mm > %3 mm; aborting")
+            .arg(name).arg(dist, 0, 'f', 4).arg(kMaxDeviationMm, 0, 'f', 1));
+        m_autoAbortRequested = true;
+        finishAuto(true);
+        return;
+    }
+
+    // Within limit — accept the re-capture.
+    auto& p = m_set.points[static_cast<int>(id)];
+    p.captured = true;
+    p.x = pos.x; p.y = pos.y; p.z = pos.z;
+    refreshPointLabel(static_cast<int>(id));
+    refreshResults();
+    PicAdjustStore::Save(m_set, m_settings, m_filePath);
+    appendLog(QString("Confirmed %1 at X=%2 Y=%3 Z=%4  (Δ=%5 mm; saved)")
+        .arg(QString::fromUtf8(PicPointName(id)))
+        .arg(p.x, 0, 'f', 4).arg(p.y, 0, 'f', 4).arg(p.z, 0, 'f', 4)
+        .arg(dist, 0, 'f', 4));
+
+    switch (m_autoStep) {
+        case PicAutoStep::WaitConfirmS1: m_autoStep = PicAutoStep::NavToS2; break;
+        case PicAutoStep::WaitConfirmS2: m_autoStep = PicAutoStep::NavToP1; break;
+        case PicAutoStep::WaitConfirmP1: m_autoStep = PicAutoStep::NavToP2; break;
+        case PicAutoStep::WaitConfirmP2: m_autoStep = PicAutoStep::NavToP3; break;
+        case PicAutoStep::WaitConfirmP3: m_autoStep = PicAutoStep::NavToP4; break;
+        case PicAutoStep::WaitConfirmP4: m_autoStep = PicAutoStep::ApplyU;  break;
+        default: break;
+    }
+    runNextAutoStep();
+}
+
+void PicAdjustWidget::runNextAutoStep() {
+    if (m_autoAbortRequested) {
+        finishAuto(true);
+        return;
+    }
+    refreshAutoUI();
+    switch (m_autoStep) {
+        case PicAutoStep::NavToS1:
+        case PicAutoStep::NavToS2:
+        case PicAutoStep::NavToP1:
+        case PicAutoStep::NavToP2:
+        case PicAutoStep::NavToP3:
+        case PicAutoStep::NavToP4:
+            autoNavigateAsync(navTargetId(m_autoStep));
+            break;
+        case PicAutoStep::WaitConfirmS1:
+        case PicAutoStep::WaitConfirmS2:
+        case PicAutoStep::WaitConfirmP1:
+        case PicAutoStep::WaitConfirmP2:
+        case PicAutoStep::WaitConfirmP3:
+        case PicAutoStep::WaitConfirmP4:
+            // UI is now waiting on the user; nothing to dispatch.
+            break;
+        case PicAutoStep::ApplyU:        autoApplyCorrectionAsync('U'); break;
+        case PicAutoStep::ApplyV:        autoApplyCorrectionAsync('V'); break;
+        case PicAutoStep::ApplyW:        autoApplyCorrectionAsync('W'); break;
+        case PicAutoStep::ApplyDistance: autoDistanceMoveAsync();       break;
+        case PicAutoStep::ApplyHexDown:  autoHexDownXAsync();            break;
+        case PicAutoStep::Done:          finishAuto(false); break;
+        case PicAutoStep::Aborted:       finishAuto(true);  break;
+        case PicAutoStep::Idle:          break;
+    }
+}
+
+void PicAdjustWidget::finishAuto(bool aborted) {
+    m_autoMode = false;
+    m_autoStep = aborted ? PicAutoStep::Aborted : PicAutoStep::Done;
+    appendLog(aborted ? "==== Auto-correction ABORTED ====" : "==== Auto-correction DONE ====");
+    setRowEnabled(true);  // re-enables manual buttons now that auto is off
+    refreshAutoUI();
+}
+
+void PicAdjustWidget::refreshAutoUI() {
+    // Status string
+    if (m_autoStatusLabel) {
+        QString s;
+        switch (m_autoStep) {
+            case PicAutoStep::Idle:           s = "Status: idle"; break;
+            case PicAutoStep::NavToS1:        s = "Status: navigating to S1..."; break;
+            case PicAutoStep::WaitConfirmS1:  s = "Status: confirm S1 — jog to crosshair-on-corner if needed"; break;
+            case PicAutoStep::NavToS2:        s = "Status: navigating to S2..."; break;
+            case PicAutoStep::WaitConfirmS2:  s = "Status: confirm S2"; break;
+            case PicAutoStep::NavToP1:        s = "Status: navigating to P1..."; break;
+            case PicAutoStep::WaitConfirmP1:  s = "Status: confirm P1"; break;
+            case PicAutoStep::NavToP2:        s = "Status: navigating to P2..."; break;
+            case PicAutoStep::WaitConfirmP2:  s = "Status: confirm P2"; break;
+            case PicAutoStep::NavToP3:        s = "Status: navigating to P3..."; break;
+            case PicAutoStep::WaitConfirmP3:  s = "Status: confirm P3"; break;
+            case PicAutoStep::NavToP4:        s = "Status: navigating to P4..."; break;
+            case PicAutoStep::WaitConfirmP4:  s = "Status: confirm P4"; break;
+            case PicAutoStep::ApplyU:         s = "Status: applying ΔU..."; break;
+            case PicAutoStep::ApplyV:         s = "Status: applying V..."; break;
+            case PicAutoStep::ApplyW:         s = "Status: applying ΔW..."; break;
+            case PicAutoStep::ApplyDistance:  s = "Status: moving hex Z toward target..."; break;
+            case PicAutoStep::ApplyHexDown:   s = "Status: hex-right X − 150 µm..."; break;
+            case PicAutoStep::Done:           s = "Status: done"; break;
+            case PicAutoStep::Aborted:        s = "Status: aborted"; break;
+        }
+        m_autoStatusLabel->setText(s);
+    }
+    const bool inWait = isWaitConfirm(m_autoStep);
+    if (m_captureContinueBtn) m_captureContinueBtn->setEnabled(inWait && !m_moveInFlight);
+    if (m_autoPointNameLabel) {
+        const PicPointId id = waitConfirmId(m_autoStep);
+        m_autoPointNameLabel->setText(id == PicPointId::Count ? "---" : QString::fromUtf8(PicPointName(id)));
+    }
+    if (m_startCorrectionBtn) m_startCorrectionBtn->setEnabled(!m_autoMode && !m_moveInFlight);
+    if (m_abortAutoBtn)       m_abortAutoBtn->setEnabled(m_autoMode);
+
+    // Dot colors:
+    //   yellow = current target (nav or waiting),
+    //   green  = captured,
+    //   gray   = not captured.
+    PicPointId current = waitConfirmId(m_autoStep);
+    if (current == PicPointId::Count) current = navTargetId(m_autoStep);
+    for (int i = 0; i < kPicPointCount; ++i) {
+        if (!m_autoDots[i]) continue;
+        QString color;
+        if (static_cast<PicPointId>(i) == current)         color = "#f0c040";
+        else if (m_set.points[i].captured)                  color = "#33aa55";
+        else                                                color = "#555";
+        m_autoDots[i]->setStyleSheet(
+            QString("background-color: %1; border-radius: 15px; color: black; font-weight: bold;")
+                .arg(color));
+    }
+}
+
+void PicAdjustWidget::autoNavigateAsync(PicPointId target) {
+    if (m_moveInFlight) return;
+    const auto& p = m_set.points[static_cast<int>(target)];
+    if (!p.captured) {
+        appendLog(QString("Auto-nav: %1 not captured; aborting")
+            .arg(QString::fromUtf8(PicPointName(target))));
+        m_autoAbortRequested = true;
+        runNextAutoStep();
+        return;
+    }
+    setRowEnabled(false);
+    m_moveInFlight = true;
+
+    auto* mm = m_context->motionManager;
+    const std::string dev = m_deviceName;
+    const double safe = m_gantryAutoVelocity;
+    const PicPoint pt = p;
+    const QString name = QString::fromUtf8(PicPointName(target));
+
+    appendLog(QString("Auto-nav to %1: X=%2 Y=%3 Z=%4 at %5 mm/s")
+        .arg(name).arg(pt.x, 0, 'f', 4).arg(pt.y, 0, 'f', 4).arg(pt.z, 0, 'f', 4)
+        .arg(safe, 0, 'f', 1));
+
+    m_moveFuture = std::async(std::launch::async, [this, mm, dev, pt, name, safe]() {
+        const char* axes[3] = { "X", "Y", "Z" };
+        double v0[3] = { 0.0, 0.0, 0.0 };
+        bool have[3] = { false, false, false };
+        for (int i = 0; i < 3; ++i) {
+            have[i] = mm->GetVelocity(dev, axes[i], v0[i]);
+            mm->SetVelocity(dev, axes[i], safe);
+        }
+        const bool ok = mm->MoveToAbs(dev, pt.x, pt.y, pt.z, safe, /*blocking*/ true);
+        for (int i = 0; i < 3; ++i) {
+            if (have[i]) mm->SetVelocity(dev, axes[i], v0[i]);
+        }
+        const QString line = ok
+            ? QString("Auto-nav to %1 complete").arg(name)
+            : QString("Auto-nav to %1 FAILED").arg(name);
+
+        QMetaObject::invokeMethod(this, [this, line, ok]() {
+            appendLog(line);
+            m_moveInFlight = false;
+            if (!ok) {
+                m_autoAbortRequested = true;
+            } else {
+                switch (m_autoStep) {
+                    case PicAutoStep::NavToS1: m_autoStep = PicAutoStep::WaitConfirmS1; break;
+                    case PicAutoStep::NavToS2: m_autoStep = PicAutoStep::WaitConfirmS2; break;
+                    case PicAutoStep::NavToP1: m_autoStep = PicAutoStep::WaitConfirmP1; break;
+                    case PicAutoStep::NavToP2: m_autoStep = PicAutoStep::WaitConfirmP2; break;
+                    case PicAutoStep::NavToP3: m_autoStep = PicAutoStep::WaitConfirmP3; break;
+                    case PicAutoStep::NavToP4: m_autoStep = PicAutoStep::WaitConfirmP4; break;
+                    default: break;
+                }
+            }
+            setRowEnabled(true);
+            runNextAutoStep();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PicAdjustWidget::autoApplyCorrectionAsync(char axis) {
+    const PicAdjustResult r = PicAdjustMath::Compute(m_set);
+    std::optional<double> delta;
+    bool invert = false;
+    QString label;
+    switch (axis) {
+        case 'U': delta = r.deltaUDeg; invert = m_settings.invertU; label = "ΔU"; break;
+        case 'V': delta = r.vAvgDeg;   invert = m_settings.invertV; label = "V";  break;
+        case 'W': delta = r.deltaWDeg; invert = m_settings.invertW; label = "ΔW"; break;
+        default: return;
+    }
+    if (!delta) {
+        appendLog(QString("Auto-apply %1: missing result; aborting").arg(label));
+        m_autoAbortRequested = true;
+        runNextAutoStep();
+        return;
+    }
+    const double signedDelta = invert ? -*delta : *delta;
+    setRowEnabled(false);
+    m_moveInFlight = true;
+
+    auto* mm = m_context->motionManager;
+    const std::string dev = m_settings.targetDevice;
+    const double safe = m_hexSafeVelocity;
+    appendLog(QString("Auto-apply %1: %2° on %3%4 at %5 mm/s")
+        .arg(label).arg(signedDelta, 0, 'f', 5).arg(QString::fromStdString(dev))
+        .arg(invert ? " [inverted]" : "").arg(safe, 0, 'f', 2));
+
+    m_moveFuture = std::async(std::launch::async, [this, mm, dev, axis, signedDelta, safe, label]() {
+        PositionStruct cur = mm->GetCurrentPosition(dev);
+        PositionStruct tgt = cur;
+        switch (axis) {
+            case 'U': tgt.u = cur.u + signedDelta; break;
+            case 'V': tgt.v = cur.v + signedDelta; break;
+            case 'W': tgt.w = cur.w + signedDelta; break;
+        }
+        double v0 = 0.0;
+        const bool haveV0 = mm->GetSystemVelocity(dev, v0);
+        if (haveV0) mm->SetSystemVelocity(dev, safe);
+        const bool ok = mm->MoveToAbs6(dev, tgt, /*blocking*/ true);
+        if (haveV0) mm->SetSystemVelocity(dev, v0);
+
+        const QString line = ok
+            ? QString("Auto-apply %1 complete").arg(label)
+            : QString("Auto-apply %1 FAILED").arg(label);
+        QMetaObject::invokeMethod(this, [this, line, ok]() {
+            appendLog(line);
+            m_moveInFlight = false;
+            if (!ok) {
+                m_autoAbortRequested = true;
+            } else {
+                switch (m_autoStep) {
+                    case PicAutoStep::ApplyU: m_autoStep = PicAutoStep::ApplyV; break;
+                    case PicAutoStep::ApplyV: m_autoStep = PicAutoStep::ApplyW; break;
+                    case PicAutoStep::ApplyW: m_autoStep = PicAutoStep::ApplyDistance; break;
+                    default: break;
+                }
+            }
+            setRowEnabled(true);
+            runNextAutoStep();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PicAdjustWidget::autoDistanceMoveAsync() {
+    const PicDistanceInfo info = PicAdjustMath::ComputeDistance(m_set);
+    if (!info.currentGapMm) {
+        appendLog("Auto-distance: missing gap; aborting");
+        m_autoAbortRequested = true;
+        runNextAutoStep();
+        return;
+    }
+    const double gapMm    = *info.currentGapMm;
+    const double targetMm = 0.100;   // fixed 100 µm per automation spec
+    const double naive    = -(gapMm - targetMm);
+    const double signedDelta = m_settings.invertDistance ? -naive : naive;
+
+    setRowEnabled(false);
+    m_moveInFlight = true;
+    auto* mm = m_context->motionManager;
+    const std::string dev = m_settings.targetDevice;
+    const double safe = m_hexSafeVelocity;
+    appendLog(QString("Auto-distance: %1 Z by %2 mm (gap=%3, target=%4)")
+        .arg(QString::fromStdString(dev))
+        .arg(signedDelta, 0, 'f', 5).arg(gapMm, 0, 'f', 5).arg(targetMm, 0, 'f', 5));
+
+    m_moveFuture = std::async(std::launch::async, [this, mm, dev, signedDelta, safe]() {
+        PositionStruct cur = mm->GetCurrentPosition(dev);
+        PositionStruct tgt = cur;
+        tgt.z = cur.z + signedDelta;
+        double v0 = 0.0;
+        const bool haveV0 = mm->GetSystemVelocity(dev, v0);
+        if (haveV0) mm->SetSystemVelocity(dev, safe);
+        const bool ok = mm->MoveToAbs6(dev, tgt, /*blocking*/ true);
+        if (haveV0) mm->SetSystemVelocity(dev, v0);
+
+        const QString line = ok ? "Auto-distance complete" : "Auto-distance FAILED";
+        QMetaObject::invokeMethod(this, [this, line, ok]() {
+            appendLog(line);
+            m_moveInFlight = false;
+            if (!ok) m_autoAbortRequested = true;
+            else      m_autoStep = PicAutoStep::ApplyHexDown;
+            setRowEnabled(true);
+            runNextAutoStep();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void PicAdjustWidget::autoHexDownXAsync() {
+    setRowEnabled(false);
+    m_moveInFlight = true;
+    auto* mm = m_context->motionManager;
+    const std::string dev = "hex-right";
+    const double safe = m_hexSafeVelocity;
+    const double deltaMm = -0.150;
+    appendLog(QString("Auto hex-right X by %1 mm at %2 mm/s")
+        .arg(deltaMm, 0, 'f', 5).arg(safe, 0, 'f', 2));
+
+    m_moveFuture = std::async(std::launch::async, [this, mm, dev, safe, deltaMm]() {
+        PositionStruct cur = mm->GetCurrentPosition(dev);
+        PositionStruct tgt = cur;
+        tgt.x = cur.x + deltaMm;
+        double v0 = 0.0;
+        const bool haveV0 = mm->GetSystemVelocity(dev, v0);
+        if (haveV0) mm->SetSystemVelocity(dev, safe);
+        const bool ok = mm->MoveToAbs6(dev, tgt, /*blocking*/ true);
+        if (haveV0) mm->SetSystemVelocity(dev, v0);
+
+        const QString line = ok ? "Auto hex-down complete" : "Auto hex-down FAILED";
+        QMetaObject::invokeMethod(this, [this, line, ok]() {
+            appendLog(line);
+            m_moveInFlight = false;
+            if (!ok) m_autoAbortRequested = true;
+            else      m_autoStep = PicAutoStep::Done;
+            setRowEnabled(true);
+            runNextAutoStep();
+        }, Qt::QueuedConnection);
+    });
 }
 
 void PicAdjustWidget::onMoveHexDownClicked() {
@@ -663,6 +1180,7 @@ void PicAdjustWidget::onLoadClicked() {
     }
     m_loadingSettings = false;
     refreshDistanceLabel();
+    refreshAutoUI();
     appendLog(QString("Loaded from %1").arg(QString::fromStdString(m_filePath)));
 }
 
@@ -825,6 +1343,7 @@ void PicAdjustWidget::refreshResults() {
     m_deltaWLabel ->setText(QString("ΔW (W_pic - W_ref)         = %1").arg(fmt(r.deltaWDeg)));
     m_vAvgLabel   ->setText(QString("V  (avg V_pitch)           = %1").arg(fmt(r.vAvgDeg)));
     refreshDistanceLabel();
+    refreshAutoUI();
 }
 
 void PicAdjustWidget::appendLog(const QString& s) {
