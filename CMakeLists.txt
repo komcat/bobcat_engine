@@ -1250,6 +1250,11 @@ set(HEADERS
     include/AppUI/RunProgramPage/RollCorrectionController.cpp
     include/AppUI/RunProgramPage/MotionInspectorWidget.h
     include/AppUI/RunProgramPage/MotionInspectorWidget.cpp
+    include/AppUI/RunProgramPage/PicAdjustData.h
+    include/AppUI/RunProgramPage/PicAdjustStore.h
+    include/AppUI/RunProgramPage/PicAdjustStore.cpp
+    include/AppUI/RunProgramPage/PicAdjustWidget.h
+    include/AppUI/RunProgramPage/PicAdjustWidget.cpp
     include/motions/scanning/ScanExecutor.h
     # Lighting system
     include/lighting/LightingTypes.h

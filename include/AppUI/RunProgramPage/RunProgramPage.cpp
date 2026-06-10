@@ -23,6 +23,7 @@
 #include "RollCorrectionWidget.h"
 #include "RollCorrectionController.h"
 #include "MotionInspectorWidget.h"
+#include "PicAdjustWidget.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -673,7 +674,8 @@ void RunProgramPage::createExecutionWidget()
     m_liveViewWidget = nullptr;
   }
 
-  m_executionTabWidget->addTab(liveViewTab, "Live View");
+  const int liveViewTabIndex = m_executionTabWidget->addTab(liveViewTab, "Live View");
+  m_executionTabWidget->setTabVisible(liveViewTabIndex, false);  // suppressed in m2aa_custom
 
   // === CONTEXT TAB (Index 2) ===
   m_contextViewer = new SequenceContextViewer();
@@ -796,7 +798,8 @@ void RunProgramPage::createExecutionWidget()
 
   scanTabLayout->addStretch();  // Push controls to top
 
-  m_executionTabWidget->addTab(scanningTab, "Scanning");
+  const int scanningTabIndex = m_executionTabWidget->addTab(scanningTab, "Scanning");
+  m_executionTabWidget->setTabVisible(scanningTabIndex, false);  // suppressed in m2aa_custom
 
   // === VISION TAB (Index 4) ===
   QWidget* visionTab = new QWidget();
@@ -808,7 +811,8 @@ void RunProgramPage::createExecutionWidget()
   m_visionHistoryWidget = new VisionHistoryWidget();
   visionTabLayout->addWidget(m_visionHistoryWidget, 1);
 
-  m_executionTabWidget->addTab(visionTab, "Vision");
+  const int visionTabIndex = m_executionTabWidget->addTab(visionTab, "Vision");
+  m_executionTabWidget->setTabVisible(visionTabIndex, false);  // suppressed in m2aa_custom
 
   // === ROLL CORRECTION TAB (Index 5) ===
   QWidget* rollCorrectionTab = new QWidget();
@@ -839,6 +843,10 @@ void RunProgramPage::createExecutionWidget()
   m_motionInspectorWidget = new MotionInspectorWidget();
   m_motionInspectorTabIndex = m_executionTabWidget->addTab(
     m_motionInspectorWidget, "Motion Inspector");
+
+  // === PIC ADJUST TAB ===
+  PicAdjustWidget* picAdjustTab = new PicAdjustWidget(m_context);
+  m_executionTabWidget->addTab(picAdjustTab, "PIC adjust");
 
   // Roll-correction business logic lives in RollCorrectionController. The page
   // keeps the widget (it's the tab body, and the page feeds it the DataStore
