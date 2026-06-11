@@ -135,6 +135,37 @@ public:
 };
 
 //=============================================================================
+// PSU ALL OUTPUT OFF PLUGIN — disables every channel on every PSU.
+// Routed via the sentinel "psu" device; handler dispatches to
+// PowerSupplyManager::disableAllOutputs() before any per-device lookup.
+//=============================================================================
+
+class PSUAllOutputOffPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override { return "PSU All Output OFF"; }
+  std::string GetCategory() const override { return "Power Supply"; }
+  std::string GetDescription() const override {
+    return "Turn output OFF on every channel of every PSU device (SAFETY broadcast)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};  // No parameters - operates on all devices
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    (void)widget;
+    (void)instance;
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    sequence->AddAction("psu", "DisableAllOutputs", {});
+    std::cout << "[PSUProcesses] Built PSU All Output OFF sequence" << std::endl;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // PSU SET VOLTAGE PLUGIN
 //=============================================================================
 
@@ -765,6 +796,7 @@ namespace {
       registry.RegisterPlugin(std::make_unique<PSUConnectPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUDisconnectPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUOutputPlugin>());
+      registry.RegisterPlugin(std::make_unique<PSUAllOutputOffPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUSetVoltagePlugin>());
       registry.RegisterPlugin(std::make_unique<PSUSetCurrentPlugin>());
       registry.RegisterPlugin(std::make_unique<PSUReadVoltagePlugin>());

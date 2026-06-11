@@ -584,6 +584,68 @@ public:
 };
 
 //=============================================================================
+// SMU ALL OUTPUT OFF PLUGIN — disables outputs on every connected SMU.
+// Routed via the sentinel "smu" device; handler dispatches to
+// SMUManager::OutputOffAll() before any per-device lookup.
+//=============================================================================
+
+class SMUAllOutputOffPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override { return "SMU All Output OFF"; }
+  std::string GetCategory() const override { return "SMU Control"; }
+  std::string GetDescription() const override {
+    return "Turn output OFF on every connected SMU device (SAFETY broadcast)";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};  // No parameters - operates on all devices
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    (void)widget;
+    (void)instance;
+  }
+
+  void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
+    seq->AddAction("smu", "OutputOffAll", {});
+    std::cout << "[SMUAllOutputOffPlugin] Built sequence: OutputOffAll on all SMUs" << std::endl;
+    (void)step;
+  }
+};
+
+//=============================================================================
+// SMU ALL STOP POLLING PLUGIN — halts polling on every SMU device.
+// Routed via the sentinel "smu" device; handler dispatches to
+// SMUPollingManager::StopAllPolling().
+//=============================================================================
+
+class SMUAllStopPollingPlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override { return "SMU All Stop Polling"; }
+  std::string GetCategory() const override { return "SMU Control"; }
+  std::string GetDescription() const override {
+    return "Stop polling on every SMU device";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {};
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    (void)widget;
+    (void)instance;
+  }
+
+  void BuildSequence(SequenceBuilder* seq, const ProcessInstance* step) override {
+    seq->AddAction("smu", "StopPollingAll", {});
+    std::cout << "[SMUAllStopPollingPlugin] Built sequence: StopPollingAll on all SMUs" << std::endl;
+    (void)step;
+  }
+};
+
+//=============================================================================
 // SMU CONNECT PLUGIN
 //=============================================================================
 
@@ -862,6 +924,8 @@ static bool RegisterSMUPlugins()
   registry.RegisterPlugin(std::make_unique<SMUSetCompliancePlugin>());
   registry.RegisterPlugin(std::make_unique<SMUOutputOnPlugin>());
   registry.RegisterPlugin(std::make_unique<SMUOutputOffPlugin>());
+  registry.RegisterPlugin(std::make_unique<SMUAllOutputOffPlugin>());
+  registry.RegisterPlugin(std::make_unique<SMUAllStopPollingPlugin>());
 
   std::cout << "[SMUProcesses] Registered 12 SMU process plugins" << std::endl;
   return true;
