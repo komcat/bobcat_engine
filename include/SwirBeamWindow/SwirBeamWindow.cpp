@@ -2,6 +2,7 @@
 #include "SwirBeamWindow.h"
 #include "BeamOptimizer/BeamResultBroker.h"
 #include "SwirAutoSatController.h"
+#include "SwirBeamFitController.h"
 #include "SwirBeamConfigStore.h"
 #include "SwirBeamFocusController.h"
 #include "SwirBeamOverlay.h"
@@ -25,6 +26,7 @@
 #include <nlohmann/json.hpp>
 #include <shellapi.h>
 #include <QSettings>
+#include <QString>
 
 // Static members
 bool SwirBeamWindow::s_classRegistered = false;
@@ -104,6 +106,9 @@ SwirBeamWindow::SwirBeamWindow()
 
     // AUTO SAT one-shot algorithm worker.
     m_autoSat = std::make_unique<SwirAutoSatController>();
+
+    // BEAM FIT one-shot Z-waist sweep worker (independent of AUTO SAT).
+    m_beamFit = std::make_unique<SwirBeamFitController>();
 }
 
 SwirBeamWindow::~SwirBeamWindow()
@@ -158,6 +163,7 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
     m_markerStore->SetFilePath("swir_markers.session.json");
     m_markerStore->LoadFromFile();
     LoadMagnification();
+    LoadBeamSlotLabels();
     std::cout << "[SwirBeamWindow] Window created" << std::endl;
     return true;
 }
@@ -199,6 +205,7 @@ void SwirBeamWindow::Destroy()
         m_tecPresetFuture.wait();
     }
     if (m_autoSat) m_autoSat->Stop();
+    if (m_beamFit) m_beamFit->Stop();
     StopDetectionThread();
     if (m_hwnd) {
         SaveMarkersToFile();
@@ -310,9 +317,16 @@ void SwirBeamWindow::HandleClickToMove(int mouseX, int mouseY) {
     }
 
     // Image-space mm (what the sensor sees), then divide by magnification
-    // to get real-world gantry distance
-    double offsetX_mm = (pixelOffsetX * effectivePixelToMmX) / m_magnification;
-    double offsetY_mm = (pixelOffsetY * effectivePixelToMmY) / m_magnification;
+    // to get real-world gantry distance.
+    //
+    // The camera is mounted rotated 90 deg, so the gantry axes are NOT aligned
+    // with the image pixel axes. Per the on-screen orientation:
+    //     gantry X+  ->  image UP    (negative pixel-Y)
+    //     gantry Y+  ->  image RIGHT (positive pixel-X)
+    // so the vertical-image offset drives gantry X and the horizontal drives
+    // gantry Y (same mapping as OnCenterBeamsXY).
+    double offsetX_mm = (-pixelOffsetY * effectivePixelToMmY) / m_magnification;
+    double offsetY_mm = ( pixelOffsetX * effectivePixelToMmX) / m_magnification;
 
     std::cout << "[SwirBeamWindow] Click-to-move: pixel offset (" << pixelOffsetX << ", " << pixelOffsetY
               << ") image-mm=(" << pixelOffsetX * effectivePixelToMmX << ", " << pixelOffsetY * effectivePixelToMmY
@@ -330,6 +344,92 @@ void SwirBeamWindow::HandleClickToMove(int mouseX, int mouseY) {
     if (!success) {
         std::cerr << "[SwirBeamWindow] Click-to-move failed!" << std::endl;
     }
+}
+
+void SwirBeamWindow::OnCenterBeamsXY()
+{
+    if (!m_motionManager) {
+        MessageBoxW(m_hwnd, L"No motion manager available.",
+                    L"Center On Beams", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    if (m_frameWidth == 0 || m_frameHeight == 0 || m_magnification <= 0.0) {
+        MessageBoxW(m_hwnd, L"No camera frame / calibration available.",
+                    L"Center On Beams", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // Average centroid of whatever beams are currently detected (1 or 2).
+    // cx_px/cy_px are in frame-pixel coordinates (see GetBeamSnapshots).
+    auto snaps = GetBeamSnapshots();
+    if (snaps.empty()) {
+        MessageBoxW(m_hwnd, L"No beams detected. Enable detection first.",
+                    L"Center On Beams", MB_OK | MB_ICONWARNING);
+        return;
+    }
+    double avgCx = 0.0, avgCy = 0.0;
+    for (const auto& s : snaps) { avgCx += s.cx_px; avgCy += s.cy_px; }
+    avgCx /= static_cast<double>(snaps.size());
+    avgCy /= static_cast<double>(snaps.size());
+
+    // Pixel offset of the beam midpoint from frame center (the crosshair the
+    // gantry is looking at). +X = beam right of center, +Y = beam below center.
+    const double pixelOffsetX = avgCx - static_cast<double>(m_frameWidth) / 2.0;
+    const double pixelOffsetY = avgCy - static_cast<double>(m_frameHeight) / 2.0;
+
+    // Calibration chain identical to HandleClickToMove (auto-scale if the
+    // current resolution differs from the calibration reference, then divide
+    // by magnification for the real-world distance). effectivePixelToMmX/Y are
+    // per IMAGE pixel axis.
+    double effectivePixelToMmX = m_pixelToMmFactorX;
+    double effectivePixelToMmY = m_pixelToMmFactorY;
+    if (m_calibrationRefWidth > 0 && m_calibrationRefHeight > 0 &&
+        m_frameWidth > 0 && m_frameHeight > 0) {
+        effectivePixelToMmX = m_pixelToMmFactorX * static_cast<double>(m_calibrationRefWidth) / m_frameWidth;
+        effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
+    }
+
+    // The camera is mounted rotated 90 deg, so the gantry axes are NOT aligned
+    // with the image pixel axes. Per the on-screen orientation:
+    //     gantry X+  ->  image UP    (negative pixel-Y)
+    //     gantry Y+  ->  image RIGHT (positive pixel-X)
+    // Projecting the centering offset onto the gantry axes (same positive sign
+    // rule click-to-move uses for the aligned case) gives the axis swap below:
+    // the vertical-image offset drives gantry X, the horizontal drives gantry Y.
+    const double offsetX_mm = (-pixelOffsetY * effectivePixelToMmY) / m_magnification;
+    const double offsetY_mm = ( pixelOffsetX * effectivePixelToMmX) / m_magnification;
+
+    // Confirm the relative move before touching the stage.
+    const PositionStruct currentPos = m_motionManager->GetCurrentPosition("gantry-main");
+    wchar_t msg[512];
+    swprintf_s(msg,
+        L"Center gantry-main on %zu beam%s.\n\n"
+        L"Beam midpoint: (%.1f, %.1f) px\n"
+        L"Frame center:  (%.1f, %.1f) px\n\n"
+        L"Relative move:\n"
+        L"    dX = %+.4f mm  (%+.1f um)\n"
+        L"    dY = %+.4f mm  (%+.1f um)\n\n"
+        L"Proceed?",
+        snaps.size(), (snaps.size() == 1 ? L"" : L"s"),
+        avgCx, avgCy,
+        static_cast<double>(m_frameWidth) / 2.0,
+        static_cast<double>(m_frameHeight) / 2.0,
+        offsetX_mm, offsetX_mm * 1000.0,
+        offsetY_mm, offsetY_mm * 1000.0);
+
+    if (MessageBoxW(m_hwnd, msg, L"Center On Beams - Confirm Move",
+                    MB_OKCANCEL | MB_ICONQUESTION) != IDOK) {
+        std::cout << "[SwirBeamWindow] Center-on-beams cancelled by user" << std::endl;
+        return;
+    }
+
+    const double newX = currentPos.x + offsetX_mm;
+    const double newY = currentPos.y + offsetY_mm;
+    const bool ok = m_motionManager->MoveToAbs("gantry-main", newX, newY,
+                                               currentPos.z, 10.0, false);
+    std::cout << "[SwirBeamWindow] Center-on-beams: dXY=(" << offsetX_mm << ", "
+              << offsetY_mm << ") mm -> (" << newX << ", " << newY << ") "
+              << (ok ? "ok" : "FAILED") << std::endl;
 }
 
 void SwirBeamWindow::SetTargetCamera(const std::string& cameraId)
@@ -879,6 +979,31 @@ void SwirBeamWindow::EnableAutoSatPrevention(bool enable)
     else        m_autoSat->Stop();
 }
 
+// ============================================================================
+// BEAM FIT — standalone Z-waist sweep; algorithm lives in SwirBeamFitController
+// ============================================================================
+
+void SwirBeamWindow::WireBeamFitDeps()
+{
+    if (!m_beamFit) return;
+    SwirBeamFitController::Deps d;
+    d.motion          = m_motionManager;
+    d.snapshotBeams   = [this]() { return GetBeamSnapshots(); };
+    d.ensureBeamDetect = [this](bool on) { EnableBeamDetection(on); };
+    d.invalidatePanel = [this]() {
+        InvalidatePanel();
+        if (m_hwnd) PostMessage(m_hwnd, WM_USER + 1, 0, 0);
+    };
+    m_beamFit->SetDeps(std::move(d));
+}
+
+void SwirBeamWindow::OnBeamFitToggle()
+{
+    if (!m_beamFit) return;
+    WireBeamFitDeps();
+    m_beamFit->Toggle();
+}
+
 void SwirBeamWindow::EnableBeamDetection(bool enable)
 {
     if (m_beamDetectionEnabled == enable) return;
@@ -1380,6 +1505,47 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     y += labelHeight;
 
     y += groupPad;
+
+    // === BEAM FIT button (lives in the bottom beam-crop strip, to the right
+    // of the B0/B1 tiles — not in the control panel). Only present when the
+    // strip is actually drawn (beam detection on + enough vertical room).
+    // Geometry mirrors DrawBeamCropStrip: two 200px tiles, 10px margins. ===
+    {
+        constexpr int STRIP_HEIGHT     = 220;  // matches OnPaint carve-out
+        constexpr int MIN_IMAGE_HEIGHT = 250;  // matches OnPaint carve-out
+        constexpr int TILE_SIZE        = 200;  // matches DrawBeamCropStrip
+        constexpr int TILE_MARGIN      = 10;   // matches DrawBeamCropStrip
+        const int stripTop = panelRect.bottom - STRIP_HEIGHT;
+        const bool drawStrip = m_beamDetectionEnabled && stripTop >= MIN_IMAGE_HEIGHT;
+        if (drawStrip) {
+            const int colW = 132;
+            const int colH = 52;
+            const int colGap = 10;
+            const int colX = panelRect.right + TILE_MARGIN +
+                             2 * (TILE_SIZE + TILE_MARGIN) + TILE_MARGIN;
+            // Two buttons stacked, vertically centered within the strip.
+            const int stackH = 2 * colH + colGap;
+            const int fitY = stripTop + (STRIP_HEIGHT - stackH) / 2;
+            const int centerY = fitY + colH + colGap;
+
+            SwirButton fitBtn;
+            fitBtn.rect = {colX, fitY, colX + colW, fitY + colH};
+            const bool running = m_beamFit && m_beamFit->IsRunning();
+            fitBtn.label = running ? L"STOP" : L"BEAM FIT";
+            fitBtn.isToggle = true;
+            fitBtn.toggled = running;
+            fitBtn.tag = TAG_BEAM_FIT;
+            fitBtn.onClick = [this]() { OnBeamFitToggle(); };
+            m_buttons.push_back(fitBtn);
+
+            SwirButton centerBtn;
+            centerBtn.rect = {colX, centerY, colX + colW, centerY + colH};
+            centerBtn.label = L"CENTER XY";
+            centerBtn.tag = TAG_BEAM_CENTER;
+            centerBtn.onClick = [this]() { OnCenterBeamsXY(); };
+            m_buttons.push_back(centerBtn);
+        }
+    }
 }
 
 void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
@@ -1399,8 +1565,10 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
         } else {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : CLR_BTN_OFF);
         }
-    } else if (btn.tag == TAG_BEAM_FOCUS) {
-        // BF button: red when running (to indicate "click to stop"), normal otherwise
+    } else if (btn.tag == TAG_BEAM_FOCUS || btn.tag == TAG_BEAM_FIT
+               || btn.tag == TAG_BEAM_CENTER) {
+        // BF / BEAM FIT: red when running (to indicate "click to stop"), normal
+        // otherwise. CENTER XY is not a toggle, so it always renders normal.
         if (btn.toggled) {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : Gdiplus::Color(255, 180, 40, 40));
         } else {
@@ -1760,6 +1928,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += btnHeight + btnSpacing;  // Row 3: B DETECT | B CONFIG | B OPTIM
     y += btnHeight + btnSpacing;  // Row 4: SAVE IMG | SAVE PKG
     y += btnHeight + btnSpacing;  // Row 5: AUTO SAT
+    y += btnHeight + btnSpacing;  // Row 6: Z- 10um | Z+ 10um
     y += groupPad;
 
     RECT toolsGroupRect = { panelRect.left + margin, toolsGroupTop,
@@ -2584,10 +2753,12 @@ void SwirBeamWindow::SaveMagnification()
 
 void SwirBeamWindow::LoadMagnification()
 {
-    QSettings settings("Fabrinet", "BobcatEngine");
-    m_magnification = settings.value("SwirBeamWindow/magnification", 20.0).toDouble();
-    if (m_magnification < 1.0) m_magnification = 1.0;
-    std::cout << "[SwirBeamWindow] Loaded magnification: " << m_magnification << "x" << std::endl;
+    // Hardcoded for this hardware/software branch: the SWIR objective is 100x.
+    // Forced here (rather than read from QSettings) so a machine that still has
+    // an old value persisted always comes up at the correct magnification.
+    m_magnification = 100.0;
+    std::cout << "[SwirBeamWindow] Magnification hardcoded: " << m_magnification
+              << "x" << std::endl;
 }
 
 // ============================================================================
@@ -2664,7 +2835,158 @@ void SwirBeamWindow::JogGantryZ(double dzMm)
               << newZ << "mm " << (ok ? "ok" : "FAILED") << std::endl;
 }
 
+namespace {
+
+// Selectable display labels for the two beam slots, offered by B CONFIG.
+const wchar_t* const kBeamLabelChoices[] = {L"RX", L"TX", L"GA1", L"GA2"};
+constexpr int kNumBeamLabelChoices =
+    static_cast<int>(sizeof(kBeamLabelChoices) / sizeof(kBeamLabelChoices[0]));
+constexpr INT_PTR BCFG_EDIT_JSON = 1000;  // EndDialog code: user chose "Edit JSON..."
+
+struct BeamLabelDlgState {
+    std::wstring b0;
+    std::wstring b1;
+};
+
+INT_PTR CALLBACK BeamConfigDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+    switch (msg) {
+    case WM_INITDIALOG: {
+        auto* st = reinterpret_cast<BeamLabelDlgState*>(lParam);
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(st));
+        for (int combo = 201; combo <= 202; ++combo) {
+            int sel = 0;
+            const std::wstring& cur = (combo == 201) ? st->b0 : st->b1;
+            for (int i = 0; i < kNumBeamLabelChoices; ++i) {
+                SendDlgItemMessageW(hDlg, combo, CB_ADDSTRING, 0,
+                                    reinterpret_cast<LPARAM>(kBeamLabelChoices[i]));
+                if (cur == kBeamLabelChoices[i]) sel = i;
+            }
+            SendDlgItemMessageW(hDlg, combo, CB_SETCURSEL, sel, 0);
+        }
+        return TRUE;
+    }
+    case WM_COMMAND:
+        if (LOWORD(wParam) == IDOK) {
+            auto* st = reinterpret_cast<BeamLabelDlgState*>(
+                GetWindowLongPtr(hDlg, GWLP_USERDATA));
+            int s0 = static_cast<int>(SendDlgItemMessageW(hDlg, 201, CB_GETCURSEL, 0, 0));
+            int s1 = static_cast<int>(SendDlgItemMessageW(hDlg, 202, CB_GETCURSEL, 0, 0));
+            if (s0 >= 0 && s0 < kNumBeamLabelChoices) st->b0 = kBeamLabelChoices[s0];
+            if (s1 >= 0 && s1 < kNumBeamLabelChoices) st->b1 = kBeamLabelChoices[s1];
+            EndDialog(hDlg, IDOK);
+            return TRUE;
+        }
+        if (LOWORD(wParam) == IDCANCEL) {
+            EndDialog(hDlg, IDCANCEL);
+            return TRUE;
+        }
+        if (LOWORD(wParam) == 301) {  // "Edit JSON..."
+            EndDialog(hDlg, BCFG_EDIT_JSON);
+            return TRUE;
+        }
+        break;
+    case WM_CLOSE:
+        EndDialog(hDlg, IDCANCEL);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+}  // anonymous namespace
+
 void SwirBeamWindow::OnEditBeamConfig()
+{
+    // Build an in-memory dialog: two dropdowns (B0 / B1 display label) plus
+    // OK / Cancel / "Edit JSON..." (the legacy notepad editor for the full
+    // detection config).
+    alignas(4) BYTE dlgBuf[1024] = {};
+    DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(dlgBuf);
+    dlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
+    dlg->cdit = 7;
+    dlg->cx = 170;
+    dlg->cy = 92;
+
+    WORD* ptr = reinterpret_cast<WORD*>(dlg + 1);
+    *ptr++ = 0;  // no menu
+    *ptr++ = 0;  // default class
+    const wchar_t* title = L"Beam Config - Labels";
+    for (const wchar_t* c = title; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+    *ptr++ = 9;  // font size
+    const wchar_t* fontName = L"Segoe UI";
+    for (const wchar_t* c = fontName; *c; ++c) *ptr++ = *c;
+    *ptr++ = 0;
+
+    auto addControl = [&](DWORD style, short x, short y, short cx, short cy,
+                          WORD id, const wchar_t* className, const wchar_t* text) {
+        ptr = reinterpret_cast<WORD*>((reinterpret_cast<uintptr_t>(ptr) + 3) & ~3);
+        DLGITEMTEMPLATE* item = reinterpret_cast<DLGITEMTEMPLATE*>(ptr);
+        item->style = WS_CHILD | WS_VISIBLE | style;
+        item->x = x; item->y = y; item->cx = cx; item->cy = cy;
+        item->id = id;
+        ptr = reinterpret_cast<WORD*>(item + 1);
+        for (const wchar_t* c = className; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        for (const wchar_t* c = text; *c; ++c) *ptr++ = *c;
+        *ptr++ = 0;
+        *ptr++ = 0;
+    };
+
+    // cy on dropdown combos is the full open height (list shows on click).
+    addControl(SS_LEFT, 10, 12, 40, 10, 0xFFFF, L"Static", L"B0 label:");
+    addControl(CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 10, 64, 80, 201, L"ComboBox", L"");
+    addControl(SS_LEFT, 10, 34, 40, 10, 0xFFFF, L"Static", L"B1 label:");
+    addControl(CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 56, 32, 64, 80, 202, L"ComboBox", L"");
+    addControl(WS_TABSTOP, 10, 68, 60, 16, 301, L"Button", L"Edit JSON...");
+    addControl(BS_DEFPUSHBUTTON | WS_TABSTOP, 78, 68, 40, 16, IDOK, L"Button", L"OK");
+    addControl(WS_TABSTOP, 122, 68, 40, 16, IDCANCEL, L"Button", L"Cancel");
+
+    BeamLabelDlgState st;
+    st.b0.assign(m_beamSlotLabels[0].begin(), m_beamSlotLabels[0].end());
+    st.b1.assign(m_beamSlotLabels[1].begin(), m_beamSlotLabels[1].end());
+
+    INT_PTR result = DialogBoxIndirectParamW(
+        GetModuleHandle(nullptr), dlg, m_hwnd, BeamConfigDlgProc,
+        reinterpret_cast<LPARAM>(&st));
+
+    if (result == BCFG_EDIT_JSON) {
+        EditBeamConfigJson();
+        return;
+    }
+    if (result == IDOK) {
+        {
+            // Guard against the detection thread reading these under m_beamMutex.
+            std::lock_guard<std::mutex> lock(m_beamMutex);
+            m_beamSlotLabels[0] = std::string(st.b0.begin(), st.b0.end());
+            m_beamSlotLabels[1] = std::string(st.b1.begin(), st.b1.end());
+        }
+        SaveBeamSlotLabels();
+        std::cout << "[SwirBeamWindow] Beam labels set: B0=" << m_beamSlotLabels[0]
+                  << " B1=" << m_beamSlotLabels[1] << std::endl;
+        if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+    }
+}
+
+void SwirBeamWindow::LoadBeamSlotLabels()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    m_beamSlotLabels[0] =
+        settings.value("SwirBeamWindow/beam0Label", "RX").toString().toStdString();
+    m_beamSlotLabels[1] =
+        settings.value("SwirBeamWindow/beam1Label", "TX").toString().toStdString();
+}
+
+void SwirBeamWindow::SaveBeamSlotLabels()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    settings.setValue("SwirBeamWindow/beam0Label",
+                      QString::fromStdString(m_beamSlotLabels[0]));
+    settings.setValue("SwirBeamWindow/beam1Label",
+                      QString::fromStdString(m_beamSlotLabels[1]));
+}
+
+void SwirBeamWindow::EditBeamConfigJson()
 {
     // Save current config first so the file is up to date
     SaveBeamConfig();
@@ -2719,6 +3041,11 @@ void SwirBeamWindow::OnBeamDetectToggle()
     m_beamDetectionEnabled = !m_beamDetectionEnabled;
     std::cout << "[SwirBeamWindow] Beam detection "
               << (m_beamDetectionEnabled ? "enabled" : "disabled") << std::endl;
+
+    // Force RebuildButtons to re-run so the BEAM FIT strip button is added
+    // (detection on) or dropped (detection off) — otherwise the early-out on
+    // unchanged panel width would leave a phantom button over the image area.
+    m_panelWidth = 0;
 
     if (m_beamDetectionEnabled) {
         LoadBeamConfig();  // reload config each time detection starts
@@ -2935,6 +3262,10 @@ void SwirBeamWindow::StartDetectionThread()
             {
                 std::lock_guard<std::mutex> lock(m_beamMutex);
                 if (!results.empty()) {
+                    // Stamp the user-selected per-slot display label (B CONFIG).
+                    for (size_t bi = 0; bi < results.size() && bi < 2; ++bi) {
+                        results[bi].sideLabel = m_beamSlotLabels[bi];
+                    }
                     m_beamResults = results;
                     m_beamDisplayResults = results;
                 }
@@ -3197,6 +3528,21 @@ void SwirBeamWindow::OnPaint()
                               static_cast<INT>(stripRect.top),
                               static_cast<INT>(stripRect.right - stripRect.left),
                               static_cast<INT>(stripRect.bottom - stripRect.top));
+
+            // BEAM FIT button lives in the strip (RebuildButtons placed it in
+            // m_buttons with strip-relative coords). The panel-cache draw loop
+            // clips it away, so render it here directly. Refresh its live
+            // running/label state since RebuildButtons may be stale.
+            for (auto& btn : m_buttons) {
+                if (btn.tag == TAG_BEAM_FIT) {
+                    const bool running = m_beamFit && m_beamFit->IsRunning();
+                    btn.toggled = running;
+                    btn.label = running ? L"STOP" : L"BEAM FIT";
+                    DrawButton(gfx, btn);
+                } else if (btn.tag == TAG_BEAM_CENTER) {
+                    DrawButton(gfx, btn);
+                }
+            }
 
             std::vector<BeamDetectionResult> resultsCopy;
             {
