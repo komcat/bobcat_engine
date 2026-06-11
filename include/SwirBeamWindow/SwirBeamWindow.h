@@ -315,6 +315,11 @@ private:
     int m_lastRenderW = 0;
     int m_lastRenderH = 0;
 
+    // Bottom beam-crop strip rect (saved from OnPaint). Used so the per-frame
+    // invalidate also refreshes the crops at the live feed rate; empty when the
+    // strip is not drawn.
+    RECT m_lastStripRect = {0, 0, 0, 0};
+
     // PSU multi-device support
     mutable std::mutex m_psuMutex;
     std::vector<PSUDeviceState> m_psuDevices;
