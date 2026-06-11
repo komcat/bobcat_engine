@@ -1639,15 +1639,18 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
 
     row->addWidget(applyBtn);
 
-    // 3x2 step grid, coarse-to-fine top-to-bottom: -10k/+10k, -1k/+1k, -100/+100.
-    // Each click adjusts the spinbox value (clamped to its min/max) and applies immediately.
+    // 2x3 step grid, coarse-to-fine left-to-right; each column is a -/+ pair:
+    // (-10k/+10k) (-1k/+1k) (-100/+100). Buttons expand to fill the width to
+    // the right. Each click adjusts the spinbox value (clamped) and applies.
     QGridLayout* stepGrid = new QGridLayout();
     stepGrid->setSpacing(2);
     stepGrid->setContentsMargins(0, 0, 0, 0);
 
     auto makeStepButton = [this, cameraId = cfg.cameraId, spinBox](const QString& text, int delta) {
       QPushButton* b = new QPushButton(text);
-      b->setFixedSize(40, 20);
+      b->setFixedHeight(20);
+      b->setMinimumWidth(40);
+      b->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
       b->setStyleSheet(
         "QPushButton { "
         "  background-color: #3c3c3c; "
@@ -1672,15 +1675,19 @@ void JogPanelWindow::createExposurePanel(QWidget* parent)
       return b;
     };
 
-    stepGrid->addWidget(makeStepButton("-10k", -10000), 0, 0);
-    stepGrid->addWidget(makeStepButton("+10k", +10000), 0, 1);
-    stepGrid->addWidget(makeStepButton("-1k",   -1000), 1, 0);
-    stepGrid->addWidget(makeStepButton("+1k",   +1000), 1, 1);
-    stepGrid->addWidget(makeStepButton("-100",   -100), 2, 0);
-    stepGrid->addWidget(makeStepButton("+100",   +100), 2, 1);
+    // Labels use repeated +/- to denote magnitude: --- / +++ = 10k, -- / ++ = 1k, - / + = 100.
+    stepGrid->addWidget(makeStepButton("---", -10000), 0, 0);
+    stepGrid->addWidget(makeStepButton("--",   -1000), 0, 1);
+    stepGrid->addWidget(makeStepButton("-",     -100), 0, 2);
+    stepGrid->addWidget(makeStepButton("+++", +10000), 1, 0);
+    stepGrid->addWidget(makeStepButton("++",   +1000), 1, 1);
+    stepGrid->addWidget(makeStepButton("+",     +100), 1, 2);
+    stepGrid->setColumnStretch(0, 1);
+    stepGrid->setColumnStretch(1, 1);
+    stepGrid->setColumnStretch(2, 1);
 
-    row->addLayout(stepGrid);
-    row->addStretch();  // Anything past the step grid is empty space on the right.
+    // Step grid takes the remaining width to the right (no trailing stretch).
+    row->addLayout(stepGrid, 1);
 
     layout->addLayout(row);
   }

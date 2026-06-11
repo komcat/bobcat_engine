@@ -57,9 +57,12 @@ OutputButton::OutputButton(const QString& displayName, size_t index, QWidget* pa
   });
   layout->addWidget(m_button);
 
-  // Status label
+  // Status indicator block. Fixed height so the ON/OFF colour shows as a
+  // consistent, readable card instead of stretching to fill the window — the
+  // grid row would otherwise hand all leftover vertical space to this label.
   m_statusLabel = new QLabel("OFF");
   m_statusLabel->setAlignment(Qt::AlignCenter);
+  m_statusLabel->setFixedHeight(64);
   m_statusLabel->setStyleSheet(
     "QLabel { "
     "  font-size: 10px; "
@@ -401,6 +404,12 @@ void QuickOutputWidget::createOutputButtons()
     m_outputButtons.push_back(button);
   }
 
+  // Absorb leftover vertical space below the last row so cards keep their
+  // natural fixed height instead of the grid stretching every row to fill
+  // the scroll area.
+  int lastRow = (static_cast<int>(pinCount) - 1) / columns;
+  m_outputGrid->setRowStretch(lastRow + 1, 1);
+
   m_statusLabel->setText(QString("Loaded %1 output(s)").arg(pinCount));
 }
 
@@ -413,6 +422,12 @@ void QuickOutputWidget::clearOutputButtons()
       delete item->widget();
     }
     delete item;
+  }
+
+  // Clear any stretch row set by a previous createOutputButtons() so a stale
+  // row index can't distort the next layout.
+  for (int r = 0; r < m_outputGrid->rowCount(); ++r) {
+    m_outputGrid->setRowStretch(r, 0);
   }
 
   m_outputButtons.clear();
