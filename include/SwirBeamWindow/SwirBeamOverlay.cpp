@@ -160,8 +160,8 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       const std::vector<BeamDetectionResult>& results,
                       int renderX, int renderY, int renderW, int renderH,
                       uint32_t frameW, uint32_t frameH,
-                      bool blobMode,
-                      double micronsPerPixel) {
+                      bool /*blobMode*/,
+                      double /*micronsPerPixel*/) {
     if (results.empty() || frameW == 0 || frameH == 0 || renderW <= 0 || renderH <= 0) return;
 
     static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
@@ -182,6 +182,12 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
         nowTp - s_lastRebuild).count();
     const bool rebuildLabelCache = (sinceMs >= LABEL_CACHE_MS);
     if (rebuildLabelCache) s_lastRebuild = nowTp;
+
+    // Per-quadrant label occupancy for this frame. Labels are anchored at the
+    // center of the visual quadrant their beam falls in; when two beams share a
+    // quadrant (e.g. TX/RX close together), stack the later ones downward so the
+    // info blocks don't render on top of each other. Index: q0..q3 below.
+    int quadrantLabelCount[4] = {0, 0, 0, 0};
 
     for (size_t bi = 0; bi < results.size(); ++bi) {
         const auto& beam = results[bi];
@@ -210,32 +216,24 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
             // Refresh cached label strings for this beam (throttled). The crosshair,
             // EE ellipse, and label position update live above.
             if (rebuildLabelCache && bi < MAX_CACHED_BEAMS) {
-                // Title line
+                // Title line: B<bi> (<side>). Slot order is deterministic in
+                // poynt mode — slot 0 = RX (top), slot 1 = TX (bottom).
                 std::wstring titleLine;
                 {
                     std::wostringstream ss;
                     ss << std::wstring(beam.label.begin(), beam.label.end());
-                    if (!beam.gaLabel.empty())
-                        ss << L" (" << std::wstring(beam.gaLabel.begin(), beam.gaLabel.end()) << L")";
+                    const wchar_t* side = (bi == 0) ? L"RX" : (bi == 1) ? L"TX" : nullptr;
+                    if (side) ss << L" (" << side << L")";
                     if (beam.saturated)
                         ss << L"  SAT!";
                     titleLine = ss.str();
                 }
 
-                // dx/dy are d4sigma diameters; ellipse area = pi * (dx/2) * (dy/2)
-                const double dxUm = d4.dx * micronsPerPixel;
-                const double dyUm = d4.dy * micronsPerPixel;
-                const double areaUm2 = 3.14159265358979323846 * (dxUm * 0.5) * (dyUm * 0.5);
-
                 int nr = 0;
                 swprintf_s(s_cachedRows[bi][nr++], 40, L"%ls", titleLine.c_str());
-                swprintf_s(s_cachedRows[bi][nr++], 40, L"AR: %7.1f um2", areaUm2);
-                if (blobMode) {
-                    swprintf_s(s_cachedRows[bi][nr++], 40, L"SP: %5d", beam.saturatedPixelCount);
-                } else {
-                    swprintf_s(s_cachedRows[bi][nr++], 40, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
-                }
-                swprintf_s(s_cachedRows[bi][nr++], 40, L"PK: %5d", static_cast<int>(beam.peakIntensity));
+                // Peak pixel value + count of fully-saturated (==255) pixels.
+                swprintf_s(s_cachedRows[bi][nr++], 40, L"PK:  %5d", static_cast<int>(beam.peakIntensity));
+                swprintf_s(s_cachedRows[bi][nr++], 40, L"SAT: %5d", beam.saturatedPixelCount);
                 s_cachedNumRows[bi] = nr;
                 s_cachedSaturated[bi] = beam.saturated;
                 s_cachedValid[bi] = true;
@@ -254,7 +252,7 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
             static float cachedMaxW = 0.0f;
             if (cachedMaxW < 1.0f) {
                 Gdiplus::RectF m;
-                gfx.MeasureString(L"AR: 99999.9 um2", -1, &labelFont, Gdiplus::PointF(0, 0), &m);
+                gfx.MeasureString(L"SAT: 99999", -1, &labelFont, Gdiplus::PointF(0, 0), &m);
                 cachedMaxW = m.Width;
             }
             const float maxW = cachedMaxW;
@@ -274,6 +272,12 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
 
             float labelX = qCenterX - maxW * 0.5f;
             float labelY = qCenterY - totalH * 0.5f;
+
+            // If another beam already claimed this quadrant this frame, stack
+            // this block below it so the two don't overlap exactly.
+            const int qi = (right ? 1 : 0) + (topVisual ? 0 : 2);
+            labelY += static_cast<float>(quadrantLabelCount[qi]) * (totalH + 4.0f);
+            ++quadrantLabelCount[qi];
 
             // Clamp inside viewport
             const float maxRight = static_cast<float>(renderX + renderW) - maxW - 6.0f;
