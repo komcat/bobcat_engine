@@ -178,10 +178,19 @@ private:
     void LoadMarkersFromFile();
     double GetDisplayPxPerMm() const;
 
-    // Magnification
+    // Magnification + camera orientation (the SET MAG dialog edits both)
     void OnSetMagnification();
     void SaveMagnification();
     void LoadMagnification();
+    void SaveCameraOrientation();
+    void LoadCameraOrientation();
+
+    // Map a frame-pixel offset (+X right, +Y down) to a gantry XY move (mm),
+    // applying the configured camera orientation (0 or 90 deg) and the current
+    // magnification. Shared by click-to-move and center-on-beams.
+    void PixelOffsetToGantryMm(double pxOffX, double pxOffY,
+                               double effPxToMmX, double effPxToMmY,
+                               double& outDxMm, double& outDyMm) const;
 
     // SWIR Head pneumatic
     void OnSwirHeadToggle();
@@ -398,6 +407,11 @@ private:
 
     // Magnification (optical objective)
     double m_magnification = 100.0;  // hardcoded for this branch (100x objective)
+
+    // Camera mount orientation relative to the gantry XY axes. 90 = the M4AA
+    // setup (gantry X+ = image up, Y+ = image right); 0 = normal (axes aligned).
+    // Selectable via the SET MAG dialog, persisted in QSettings. Default 90.
+    int m_cameraRotationDeg = 90;
 
     // World-locked markers
     // World markers are owned by SwirWorldMarkerStore (forward decl above).
