@@ -26,6 +26,7 @@ struct BeamDetectionResult {
     D4SigmaResult d4;
     std::string label;             // "B0" or "B1"
     std::string gaLabel;           // "GA1", "GA2", or ""
+    std::string sideLabel;         // user-selected display label: RX/TX/GA1/GA2 (overlay title)
     bool saturated = false;        // any pixel > saturationValue
     uint8_t peakIntensity = 0;     // max raw pixel value in beam ROI
     int saturatedPixelCount = 0;   // count of pixels at 255 in beam ROI

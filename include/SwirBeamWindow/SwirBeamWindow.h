@@ -192,6 +192,17 @@ private:
     void DisableAutoSat();   // called by manual exposure/current changes
     void WireAutoSatDeps();  // populate controller deps from current state
 
+    // BEAM FIT: gantry-main Z waist sweep, independent of AUTO SAT. Button
+    // sits next to the bottom beam-crop strip. Algorithm lives in
+    // SwirBeamFitController.
+    void OnBeamFitToggle();
+    void WireBeamFitDeps();
+
+    // CENTER XY: move gantry-main so the midpoint of the detected beam(s) sits
+    // at the frame center. Shows a confirm dialog with the relative ΔX/ΔY
+    // first. Reuses the click-to-move calibration chain. Strip button.
+    void OnCenterBeamsXY();
+
     // Save current frame to disk (button handlers — private; UI-only)
     void OnSaveImage();
     void OnSaveImagePackage();
@@ -233,7 +244,10 @@ private:
     // Beam config
     void LoadBeamConfig();
     void SaveBeamConfig();
-    void OnEditBeamConfig();
+    void OnEditBeamConfig();          // B CONFIG: per-beam label selector dialog
+    void EditBeamConfigJson();        // open beam_detection.local.json in notepad
+    void LoadBeamSlotLabels();        // restore m_beamSlotLabels from QSettings
+    void SaveBeamSlotLabels();        // persist m_beamSlotLabels to QSettings
 
     // (legacy CheckAndAdjustSaturation removed; superseded by AUTO SAT)
 
@@ -370,6 +384,8 @@ private:
     static constexpr int TAG_TEC_30C = 1010;
     static constexpr int TAG_Z_JOG_MINUS = 1020;
     static constexpr int TAG_Z_JOG_PLUS = 1030;
+    static constexpr int TAG_BEAM_FIT = 1040;     // strip button (next to crops)
+    static constexpr int TAG_BEAM_CENTER = 1050;  // strip button (center XY on beams)
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};
@@ -381,7 +397,7 @@ private:
     static constexpr double EXPOSURE_STEP_US = 50.0;      // 50us step
 
     // Magnification (optical objective)
-    double m_magnification = 20.0;
+    double m_magnification = 100.0;  // hardcoded for this branch (100x objective)
 
     // World-locked markers
     // World markers are owned by SwirWorldMarkerStore (forward decl above).
@@ -417,6 +433,11 @@ private:
     bool m_useBlobDetection = false;     // false=d4sigma, true=blob
     bool m_useHalconDetection = false;   // takes precedence over blob/d4sigma when true
     bool m_usePoyntDetection = false;    // poynt-faithful mode; precedence below Halcon, above blob/d4sigma
+
+    // User-selected per-slot display label shown in the overlay title for
+    // B0 / B1 (one of RX / TX / GA1 / GA2). Chosen via B CONFIG, persisted in
+    // QSettings. Defaults mirror the legacy hardcoded slot labels.
+    std::string m_beamSlotLabels[2] = {"RX", "TX"};
 
     // Beam focus optimization. Worker future + cancel flag live in
     // SwirBeamFocusController; the score provider and config remain here
@@ -470,6 +491,10 @@ private:
     // "STOP". Any manual exposure/current change calls DisableAutoSat
     // → controller.Stop() so the user always wins.
     std::unique_ptr<class SwirAutoSatController> m_autoSat;
+
+    // BEAM FIT one-shot Z-waist sweep worker. Standalone — shares no state
+    // with AUTO SAT. Default OFF; clicking flips the strip button to "STOP".
+    std::unique_ptr<class SwirBeamFitController> m_beamFit;
 
     // (legacy SAT_* constants removed; AUTO SAT now uses local constants
     //  in SwirBeamWindow.cpp's anonymous namespace.)

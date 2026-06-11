@@ -854,6 +854,7 @@ set(SOURCES
     include/SwirBeamWindow/SwirImageSaver.cpp
     include/SwirBeamWindow/SwirBeamFocusController.cpp
     include/SwirBeamWindow/SwirAutoSatController.cpp
+    include/SwirBeamWindow/SwirBeamFitController.cpp
     include/BeamOptimizer/BeamResultBroker.cpp
     include/BeamOptimizer/BeamOptimizerManager.cpp
     include/BeamOptimizer/BeamHillClimb.cpp

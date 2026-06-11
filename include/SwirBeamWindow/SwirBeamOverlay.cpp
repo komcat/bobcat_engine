@@ -216,14 +216,18 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
             // Refresh cached label strings for this beam (throttled). The crosshair,
             // EE ellipse, and label position update live above.
             if (rebuildLabelCache && bi < MAX_CACHED_BEAMS) {
-                // Title line: B<bi> (<side>). Slot order is deterministic in
-                // poynt mode — slot 0 = RX (top), slot 1 = TX (bottom).
+                // Title line: B<bi> (<side>). The side label is user-selectable
+                // per slot via B CONFIG (RX/TX/GA1/GA2), carried on the result
+                // as sideLabel. Fall back to the legacy slot default (slot 0 =
+                // RX, slot 1 = TX) when it hasn't been set.
                 std::wstring titleLine;
                 {
                     std::wostringstream ss;
                     ss << std::wstring(beam.label.begin(), beam.label.end());
-                    const wchar_t* side = (bi == 0) ? L"RX" : (bi == 1) ? L"TX" : nullptr;
-                    if (side) ss << L" (" << side << L")";
+                    std::wstring side(beam.sideLabel.begin(), beam.sideLabel.end());
+                    if (side.empty())
+                        side = (bi == 0) ? L"RX" : (bi == 1) ? L"TX" : L"";
+                    if (!side.empty()) ss << L" (" << side << L")";
                     if (beam.saturated)
                         ss << L"  SAT!";
                     titleLine = ss.str();
@@ -234,6 +238,8 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                 // Peak pixel value + count of fully-saturated (==255) pixels.
                 swprintf_s(s_cachedRows[bi][nr++], 40, L"PK:  %5d", static_cast<int>(beam.peakIntensity));
                 swprintf_s(s_cachedRows[bi][nr++], 40, L"SAT: %5d", beam.saturatedPixelCount);
+                // Encircled energy within the d4sigma radius (0..1 -> percent).
+                swprintf_s(s_cachedRows[bi][nr++], 40, L"EE: %5.1f%%", beam.encircledEnergy * 100.0);
                 s_cachedNumRows[bi] = nr;
                 s_cachedSaturated[bi] = beam.saturated;
                 s_cachedValid[bi] = true;
