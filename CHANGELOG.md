@@ -4,6 +4,66 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ---
 
+## v1.14.0 — 2026-06-11
+
+### Highlights
+
+- **SWIR poynt beam-tracking mode** — New swappable detection backend faithful to the poynt `server_v2.py` live-tracking path: 4-corner background subtraction + `find_roi` + per-ROI d4sigma with no rejection filters. Slot assignment is a deterministic per-frame `cy`-sort (top → B0/RX, bottom → B1/TX) so labels stay stable. Selected via `usePoyntDetection` in `config/beam_detection.json` (nested `poynt` block); dispatch priority is Halcon > Poynt > Blob > d4sigma. Scope is live per-frame tracking only — the z-scan FIT path keeps using the Python beam_server over TCP. Overlay was reworked to match: per-beam label reads `B0 (RX) / B1 (TX)`, AR/EE rows dropped, `PK` kept, new `SAT` row (saturated pixel count) and history charts now track SAT instead of peak intensity. Stacked-label collision avoidance added so co-quadrant labels no longer overlap. Lone single-beam frames pick their slot from the centroid's vertical half (top → B0, bottom → B1) instead of nearest-prior, keeping overlay magnifiers, crop tiles, history charts, and the broker label consistent.
+- **Dual-Hex Global Maximize** — New "2-device maximize" routine on the Scanning tab of RunProgramPage that coordinates both hexapods to maximize one shared signal. A collimating device steps `-Z` while a search device runs a centered NxN XY grid and moves to peak; iterates while the session-peak signal improves >1%, then returns both devices to the session peak. Stop/error always restores both devices to the session peak and the hexapods' original system velocity. Qt-free algorithm runs on a worker thread with halt flag, RAII velocity guard (1 mm/s during run), centered grid search, and averaged DataStore measurement.
+- **Bulk DUT/PSU/SMU "all off" recipe commands** — Three new manager-level safety/cleanup steps: `DUT Insert All from DataStore` (snapshots every DataStore channel into one grouped DUT entry; soft no-op when no DUT is active so it doesn't fail the sequence), `PSU All Output OFF` (auto-connects every PSU before disabling — fixes silent skip when running fresh), `SMU All Output OFF` (per-channel `SelectChannel + SetOutputOff` loop on TSP adapters — fixes 2602B leaving `smub` on when only `smua` was killed), and `SMU All Stop Polling`. Routed through new sentinel device names `"psu"` / `"smu"` (mirrors the existing `"pneumatic"` pattern for `RetractAll`).
+- **Keithley TSP per-channel routing fix** — `SmuHelpers::SelectChannelIfSupported` was only dynamic-casting to `Keithley6482Adapter`, so on `KeithleySMUAdapter` (2400/2600 series including the 2602B) every per-channel command (`SetVoltage`, `SetCurrent`, `SetCompliance`, `OutputOn`, `OutputOff`) silently ignored the requested channel and operated on whichever TSP channel was last selected — including across recipe runs. Now selects the channel on both adapter families.
+- **RunProgramPage Snapshot quick-action** — New green "Snap shot" button next to the Idle badge prompts for a label and dispatches `system/CaptureSnapshot` through a stack-local `SystemCommandHandler`, matching the Init DUT pattern. Recipe page's `SequenceEngine` is also now wired with `StateSnapshotManager` so recipe runs can capture snapshots via the same path.
+
+### All Changes (by date)
+
+## 2026-06-11
+
+- **Recipes: bulk DUT/PSU/SMU off + Keithley TSP channel routing fix** (e4fd660)
+  - `DUT.InsertAllFromDataStore` — new command in `DutInsertCommands`. Snapshots every DataStore channel into a single grouped `nlohmann::json` entry on the active DUT (optional `prefix` filter strips the prefix from field names). Soft no-op when no DUT is active — logs Info and returns true rather than failing the sequence, so recipes can capture readings without forcing every run to create a DUT first. New `DUTInsertAllFromDataStorePlugin` recipe step (`entry_name` default `"datastore"`, optional `prefix`).
+  - `PSU.DisableAllOutputs` — manager-level broadcast routed via new sentinel device name `"psu"`. Handler intercepts before per-device lookup, iterates `getDeviceNames()`, calls `psu->connect()` on any disconnected device, then disables every channel via `psuManager->getDeviceChannelCount` + `setOutputOff`. Fixes the silent no-op where `PowerSupplyManager::disableAllOutputs()` (written originally for the E-stop cascade where everything is already connected) skipped any PSU whose `isConnected()` was false. New `PSUAllOutputOffPlugin`.
+  - `SMU.OutputOffAll` — manager-level broadcast routed via new sentinel `"smu"`. Handler dynamic-casts to `KeithleySMUAdapter` and loops `GetEnabledChannels()` calling `SelectChannel + SetOutputOff` per channel; single-channel devices (e.g., Keithley 6482, where `:OUTP OFF` is global) keep the single-call path. Fixes the 2602B leaving `smub` energized when `SMUManager::OutputOffAll()`'s single `device->SetOutputOff()` call only killed `smua` (whichever was selected last). New `SMUAllOutputOffPlugin`.
+  - `SMU.StopPollingAll` — manager-level broadcast to `SMUPollingManager::StopAllPolling()`. New `SMUAllStopPollingPlugin`.
+  - `SmuHelpers::SelectChannelIfSupported` — now dynamic-casts to **both** `Keithley6482Adapter` and `KeithleySMUAdapter`. Previously only the 6482 path worked; on the 2602B the channel parameter was silently ignored, so SMU Configure with channel 1 selected would operate on whichever TSP channel was last left active (typically channel 2 after a prior run). This makes `SetVoltage`, `SetCurrent`, `SetCompliance`, `OutputOn`, and `OutputOff` honor the requested channel on both adapter families.
+  - `SequenceEngine` registers sentinel `"psu"` and `"smu"` devices in `m_deviceToManagerMap` (mirrors the existing `"pneumatic"` sentinel for `RetractAll`); `IsDeviceConnected` returns true for the sentinel when any device of that type is registered.
+
+- **SWIR poynt: mirror server tracking, live crop refresh, SAT charts** (11b0b50)
+  - `PoyntBeamDetector` — dropped all rejection filters and intensity ranking; select beams purely by centroid `Y` (topmost → B0/RX, bottommost → B1/TX), mirroring poynt `server_v2_ui.py sorted_b[0]/sorted_b[-1]` exactly.
+  - `SwirBeamWindow` — bottom beam-crop strip now included in the per-frame invalidate and the detection-thread repaint so the crops refresh at the live feed rate. `BeginPaint` was previously clipping the present to the image rect, leaving the strip stale.
+  - Top-right history charts track saturated-pixel count (count of `==255` pixels) instead of peak intensity; relabeled `B0 SAT` / `B1 SAT`.
+  - Silenced per-100-frame `[BeamDetect]` detect-time mean/p95 console spam (rolling histogram is still kept internally).
+
+- **SWIR: add poynt beam-tracking mode (server_v2 port) + overlay/jog tweaks** (a5cc5fa)
+  - New swappable `poynt` detection mode reusing shared `SwirBeamDetector` helpers — 4-corner background subtraction + `find_roi` + per-ROI d4sigma with no rejection filters. Slots assigned by deterministic per-frame `cy`-sort (no nearest-neighbour tracking). Selected via `usePoyntDetection` in `config/beam_detection.json` (nested `poynt` block); dispatch priority Halcon > Poynt > Blob > d4sigma.
+  - Overlay — per-beam label now `B0 (RX)` / `B1 (TX)`, dropped AR/EE rows, kept PK, added SAT (count of saturated `==255` pixels). Stack labels in the same visual quadrant so they no longer overlap. d4sigma `RunBeamDetection` now also computes `saturatedPixelCount` and uses `>=` for the saturated flag (was always false).
+  - UI — added Z-/Z+ 10µm jog buttons for `gantry-main` on the SWIR left panel.
+  - Scope: live per-frame tracking only; the z-scan FIT path keeps using the Python beam_server over TCP.
+
+## 2026-06-09
+
+- **SwirBeam: route single-beam frames to B0/B1 by image region** (ba3f6bd)
+  - Lone candidates now pick their slot from the centroid's vertical half (top → B0, bottom → B1) instead of nearest-prior, keeping overlay magnifiers, crop tiles, history charts, and the broker label consistent with "B0 is always the top beam". Swapped GA1/GA2 quadrant labels in `beam_detection.json` to match the new orientation.
+
+- **RunProgramPage: add Dual-Hex Global Maximize routine to Scanning tab** (c463f56)
+  - New "2-device maximize" feature coordinates both hexapods to maximize one shared signal. Collimating device steps `-Z` while a search device runs a centered NxN XY grid and moves to peak; iterates while session-peak signal improves >1%, then returns both devices to the session peak. Stop/error always restores both devices to the session peak and the hexapods' original system velocity.
+  - `DualHexMaximizer` (`include/motions/scanning`) — Qt-free algorithm on a worker thread with halt flag, RAII velocity guard (1 mm/s during run), centered grid search, and averaged DataStore measurement.
+  - `GlobalMaximizeExecutor` / `GlobalMaximizeController` / `GlobalMaximizeWidget` (`RunProgramPage`) — Qt UI section below "Hexapod Scanning" with channel, beam direction, Z step, grid step, grid size, and settle-time selectors; mirrors the existing scan stack.
+  - Includes an in-progress `PlacementConfigEditWidget` for the Placement Correction Trainer and a CLAUDE.md docs refresh (trainer module list, F-key table).
+
+## 2026-06-08
+
+- **Placement Correction: fix U-angle correction** (01b757d)
+  - Bug fix in the placement-angle math for the U rotation axis.
+
+## 2026-05-31
+
+- **QtCameraChartOverlay: gate per-overlay throughput diagnostics behind a runtime flag** (bedc91e)
+  - Disables the per-overlay `std::cout` stats by default to keep the console quiet. Flag is intentionally non-const so the `std::cout` chain still compiles under `/W4` without C4127 and the stats locals stay referenced.
+
+- **RunProgramPage: Snapshot quick-action button right of status badge** (bc8772d)
+  - New green "Snap shot" button next to the Idle badge prompts for a label and dispatches `system/CaptureSnapshot` through a stack-local `SystemCommandHandler`, matching the Init DUT pattern. Also wires `StateSnapshotManager` into the Recipe page's `SequenceEngine` so recipe runs can capture snapshots via the same path.
+
+---
+
 ## v1.13.0 — 2026-05-28
 
 ### Highlights

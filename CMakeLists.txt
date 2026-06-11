@@ -13,7 +13,7 @@ endif()
 # BOBCAT_VERSION_MINOR line in this file. So MICRO resets to 0 on every MINOR
 # bump and increments by 1 with every commit on top.
 set(BOBCAT_VERSION_MAJOR 1)
-set(BOBCAT_VERSION_MINOR 13)
+set(BOBCAT_VERSION_MINOR 14)
 
 set(BOBCAT_VERSION_MICRO 0)
 find_package(Git QUIET)
