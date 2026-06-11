@@ -18,6 +18,44 @@ bool PSUCommandHandler::ExecuteCommand(
 {
   PowerSupplyManager* psuManager = static_cast<PowerSupplyManager*>(manager);
 
+  // Manager-level commands routed through the sentinel "psu" device.
+  // Handled here BEFORE the per-device lookup since they don't target a
+  // specific PSU.
+  if (methodName == "DisableAllOutputs") {
+    // Per-device handlers auto-connect lazily on first command; mirror that
+    // here, otherwise disableAllOutputs() silently skips any PSU that hasn't
+    // been touched yet this session (its isConnected() guard is true).
+    int disabled = 0;
+    int skipped = 0;
+    for (const auto& name : psuManager->getDeviceNames()) {
+      auto psu = psuManager->getPowerSupply(name);
+      if (!psu) continue;
+
+      if (!psu->isConnected()) {
+        if (!psu->connect()) {
+          if (m_logger) {
+            m_logger->Warning("DisableAllOutputs: could not connect '" + name + "': " + psu->getLastError(),
+                              "PSUHandler");
+          }
+          ++skipped;
+          continue;
+        }
+      }
+
+      int channels = psuManager->getDeviceChannelCount(name);
+      for (int ch = 1; ch <= channels; ++ch) {
+        psu->setOutputOff(ch);
+      }
+      ++disabled;
+    }
+
+    if (m_logger) {
+      m_logger->Info("PSU DisableAllOutputs: disabled outputs on " + std::to_string(disabled) +
+                     " PSU(s) (skipped " + std::to_string(skipped) + ")", "PSUHandler");
+    }
+    return true;
+  }
+
   // Check if device exists
   if (!psuManager->hasDevice(deviceName)) {
     errorMessage = "PSU device '" + deviceName + "' not found";

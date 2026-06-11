@@ -12,6 +12,8 @@ struct ApplicationContext;
  * Supports commands:
  * - OutputOn: Turn output ON
  * - OutputOff: Turn output OFF
+ * - OutputOffAll: Turn output OFF on every connected SMU (manager-level,
+ *                 routed via sentinel device name "smu")
  * - SetVoltage: Set source voltage (for voltage source devices)
  * - SetCurrent: Set source current (for current source devices)
  * - ReadVoltage: Single voltage reading
@@ -20,6 +22,8 @@ struct ApplicationContext;
  * - SetVoltageCompliance: Set voltage compliance limit (over-voltage protection)
  * - StartPolling: Begin continuous measurement with polling manager
  * - StopPolling: Stop continuous measurement
+ * - StopPollingAll: Stop polling on every SMU device (manager-level,
+ *                   routed via sentinel device name "smu")
  * - SetMode: Configure measurement mode (ACCURATE/FAST/ULTRA_FAST)
  */
 class SMUCommandHandler : public ICommandHandler

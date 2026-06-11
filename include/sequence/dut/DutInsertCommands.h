@@ -1,10 +1,13 @@
 // DutInsertCommands.h
 // DUT data ingest:
 //   - InsertString / InsertDouble / InsertInteger : append a typed entry
-//   - InsertFromContext     : copy a single context value into a DUT entry
-//                             (auto/string/double/integer coercion)
-//   - BulkInsertFromContext : sweep all context keys with a given prefix into
-//                             one nlohmann::json object entry
+//   - InsertFromContext       : copy a single context value into a DUT entry
+//                               (auto/string/double/integer coercion)
+//   - BulkInsertFromContext   : sweep all context keys with a given prefix into
+//                               one nlohmann::json object entry
+//   - InsertAllFromDataStore  : snapshot all DataStore channels into one
+//                               nlohmann::json object entry (optional prefix
+//                               filter)
 #pragma once
 
 #include "DutCommandDeps.h"
