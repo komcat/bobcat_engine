@@ -492,15 +492,18 @@ std::vector<BeamDetectionResult> RunBeamDetection(
 
         // Saturation check and peak intensity on original uint8 data within ROI
         uint8_t maxPixel = 0;
+        int satCount = 0;
         const Roi& roi = cand.roi;
         for (int r = roi.y0; r < roi.y1; ++r) {
             for (int c = roi.x0; c < roi.x1; ++c) {
                 uint8_t val = grayData[r * w + c];
                 if (val > maxPixel) maxPixel = val;
+                if (val >= config.saturationValue) ++satCount;
             }
         }
         res.peakIntensity = maxPixel;
-        res.saturated = (maxPixel > config.saturationValue);
+        res.saturated = (maxPixel >= config.saturationValue);
+        res.saturatedPixelCount = satCount;
 
         // Extract 1D profiles at centroid row/column
         int centroidRow = static_cast<int>(std::round(cand.d4.cy));

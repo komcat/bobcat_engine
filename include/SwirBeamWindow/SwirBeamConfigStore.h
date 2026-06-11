@@ -10,6 +10,7 @@
 
 #include <string>
 #include "SwirBeamDetector.h"
+#include "PoyntBeamDetector.h"
 
 namespace SwirBeamConfigStore {
 
@@ -20,8 +21,10 @@ namespace SwirBeamConfigStore {
 std::string Load(BeamDetectionConfig& d4,
                  BlobDetectionConfig& blob,
                  HalconBeamDetectionConfig& halcon,
+                 PoyntDetectionConfig& poynt,
                  bool& useBlob,
                  bool& useHalcon,
+                 bool& usePoynt,
                  bool& trackingEnabled,
                  double& trackingMaxJumpPx,
                  int& trackingStaleMax);
@@ -32,8 +35,10 @@ std::string Load(BeamDetectionConfig& d4,
 bool Save(const BeamDetectionConfig& d4,
           const BlobDetectionConfig& blob,
           const HalconBeamDetectionConfig& halcon,
+          const PoyntDetectionConfig& poynt,
           bool useBlob,
           bool useHalcon,
+          bool usePoynt,
           bool trackingEnabled,
           double trackingMaxJumpPx,
           int trackingStaleMax);

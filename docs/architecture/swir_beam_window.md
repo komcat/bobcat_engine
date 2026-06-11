@@ -12,6 +12,7 @@ Real-time beam profiling/tracking shown in a Win32+GDI+ window (not Qt). The win
 |------|------|
 | `SwirBeamWindow.{h,cpp}` | Win32 message pump, frame ingestion (`CameraFrameSubscriber`), detection thread + B0/B1 tracking, panel/button rendering, click-to-move, PSU/TEC actions, magnification dialog. The orchestrator — should stay focused. |
 | `SwirBeamDetector.{h,cpp}` | Three detection algorithms (d4σ / blob / Halcon) — see table below. |
+| `PoyntBeamDetector.{h,cpp}` | `poynt` mode — faithful C++ port of poynt `server_v2.py` live tracking. Reuses `find_roi`/`d4sigma_fast`/`ComputeEncircledEnergy` from `SwirBeamDetector`. |
 | `SwirPeakFinder.{h,cpp}` | 1-D peak detection used by the d4sigma path. |
 | `SwirBeamOverlay.{h,cpp}` | All GDI+ overlay drawing: beam ROIs, centroids, EE ellipse, CE/EE charts, bottom-strip beam crops (heatmap-coloured). |
 | `SwirBeamConfigStore.{h,cpp}` | JSON I/O for `config/beam_detection.json` — the d4σ + blob + Halcon configs and tracking flags. Pure load/save. |
@@ -25,13 +26,14 @@ When extending the SWIR window, prefer adding a new helper class over enlarging 
 
 ## Detection modes
 
-Three detection modes coexist in `SwirBeamDetector.cpp` and are selected at runtime via `config/beam_detection.json`:
+Four detection modes coexist and are selected at runtime via `config/beam_detection.json`. Dispatch priority (`SwirBeamWindow.cpp`): **Halcon > Poynt > Blob > d4sigma**.
 
 | Mode | Function | Notes |
 |------|----------|-------|
 | `halcon` (plan of record) | `RunHalconBeamDetection` | HDevelop port: local-mean BG (51×51) + threshold + connected components + per-region first-moment D4σ. Requires `HAS_HALCON`. Toggle: `useHalconDetection: true`. |
+| `poynt` | `RunPoyntDetection` (`PoyntBeamDetector.cpp`) | Faithful port of poynt `server_v2.py` live tracking: **4-corner** BG + X/Y projection peak finding + per-ROI D4σ, **no rejection filters**. Tracks dim/odd beams better than legacy d4sigma. Toggle: `usePoyntDetection: true`. Config under nested `"poynt"` key. |
 | `blob` | `RunBlobDetection` | OpenCV threshold + contour. Toggle: `useBlobDetection: true`. |
-| `d4sigma` (legacy) | `RunBeamDetection` | OpenCV X/Y projection peak finding + corner-patch BG. Default if neither flag is set. Has known robustness issues vs Halcon. |
+| `d4sigma` (legacy) | `RunBeamDetection` | OpenCV X/Y projection peak finding + **2-corner** BG + aggressive rejection filters. Default if no flag is set. Has known robustness issues vs Halcon/Poynt. |
 
 For new tuning/fixes prefer the Halcon path. Don't propose tuning d4sigma thresholds (`minPeakValue`, `aspectRatioMax`, etc.) unless the miss log shows `mode=d4sigma`.
 
