@@ -163,6 +163,7 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
     m_markerStore->SetFilePath("swir_markers.session.json");
     m_markerStore->LoadFromFile();
     LoadMagnification();
+    LoadCameraOrientation();
     LoadBeamSlotLabels();
     std::cout << "[SwirBeamWindow] Window created" << std::endl;
     return true;
@@ -291,6 +292,25 @@ void SwirBeamWindow::LoadCalibrationFromConfig() {
               << m_pixelToMmFactorX << " mm/px" << std::endl;
 }
 
+void SwirBeamWindow::PixelOffsetToGantryMm(double pxOffX, double pxOffY,
+                                           double effPxToMmX, double effPxToMmY,
+                                           double& outDxMm, double& outDyMm) const
+{
+    const double mag = (m_magnification > 0.0) ? m_magnification : 1.0;
+    const double imgMmX = pxOffX * effPxToMmX;  // sensor-plane mm along image X
+    const double imgMmY = pxOffY * effPxToMmY;  // sensor-plane mm along image Y
+    if (m_cameraRotationDeg == 90) {
+        // 90 deg mount (M4AA): gantry X+ = image up (-Y), Y+ = image right (+X).
+        // The vertical-image offset drives gantry X, the horizontal drives Y.
+        outDxMm = (-imgMmY) / mag;
+        outDyMm = ( imgMmX) / mag;
+    } else {
+        // 0 deg (normal): gantry axes aligned with image axes (X->X, Y->Y).
+        outDxMm = imgMmX / mag;
+        outDyMm = imgMmY / mag;
+    }
+}
+
 void SwirBeamWindow::HandleClickToMove(int mouseX, int mouseY) {
     if (!m_motionManager || m_lastRenderW <= 0 || m_lastRenderH <= 0) return;
 
@@ -316,17 +336,12 @@ void SwirBeamWindow::HandleClickToMove(int mouseX, int mouseY) {
         effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
     }
 
-    // Image-space mm (what the sensor sees), then divide by magnification
-    // to get real-world gantry distance.
-    //
-    // The camera is mounted rotated 90 deg, so the gantry axes are NOT aligned
-    // with the image pixel axes. Per the on-screen orientation:
-    //     gantry X+  ->  image UP    (negative pixel-Y)
-    //     gantry Y+  ->  image RIGHT (positive pixel-X)
-    // so the vertical-image offset drives gantry X and the horizontal drives
-    // gantry Y (same mapping as OnCenterBeamsXY).
-    double offsetX_mm = (-pixelOffsetY * effectivePixelToMmY) / m_magnification;
-    double offsetY_mm = ( pixelOffsetX * effectivePixelToMmX) / m_magnification;
+    // Image-space mm -> real-world gantry distance, applying the configured
+    // camera orientation (0 or 90 deg) and magnification.
+    double offsetX_mm = 0.0, offsetY_mm = 0.0;
+    PixelOffsetToGantryMm(pixelOffsetX, pixelOffsetY,
+                          effectivePixelToMmX, effectivePixelToMmY,
+                          offsetX_mm, offsetY_mm);
 
     std::cout << "[SwirBeamWindow] Click-to-move: pixel offset (" << pixelOffsetX << ", " << pixelOffsetY
               << ") image-mm=(" << pixelOffsetX * effectivePixelToMmX << ", " << pixelOffsetY * effectivePixelToMmY
@@ -389,15 +404,12 @@ void SwirBeamWindow::OnCenterBeamsXY()
         effectivePixelToMmY = m_pixelToMmFactorY * static_cast<double>(m_calibrationRefHeight) / m_frameHeight;
     }
 
-    // The camera is mounted rotated 90 deg, so the gantry axes are NOT aligned
-    // with the image pixel axes. Per the on-screen orientation:
-    //     gantry X+  ->  image UP    (negative pixel-Y)
-    //     gantry Y+  ->  image RIGHT (positive pixel-X)
-    // Projecting the centering offset onto the gantry axes (same positive sign
-    // rule click-to-move uses for the aligned case) gives the axis swap below:
-    // the vertical-image offset drives gantry X, the horizontal drives gantry Y.
-    const double offsetX_mm = (-pixelOffsetY * effectivePixelToMmY) / m_magnification;
-    const double offsetY_mm = ( pixelOffsetX * effectivePixelToMmX) / m_magnification;
+    // Map the centering offset onto the gantry axes per the configured camera
+    // orientation (0 or 90 deg) and magnification.
+    double offsetX_mm = 0.0, offsetY_mm = 0.0;
+    PixelOffsetToGantryMm(pixelOffsetX, pixelOffsetY,
+                          effectivePixelToMmX, effectivePixelToMmY,
+                          offsetX_mm, offsetY_mm);
 
     // Confirm the relative move before touching the stage.
     const PositionStruct currentPos = m_motionManager->GetCurrentPosition("gantry-main");
@@ -2277,19 +2289,31 @@ void SwirBeamWindow::LoadMarkersFromFile()
 // Magnification Setting
 // ============================================================================
 
-// Win32 dialog proc for magnification input
+// Shared state for the SET MAG dialog: magnification + camera orientation.
+namespace {
+struct CameraSetupState {
+    double mag = 100.0;
+    int    rotationDeg = 90;  // 0 (normal XY) or 90 (M4AA)
+};
+}  // anonymous namespace
+
+// Win32 dialog proc for magnification + camera orientation input.
 static INT_PTR CALLBACK MagDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
     switch (msg) {
     case WM_INITDIALOG: {
-        // lParam is pointer to the current magnification value
-        auto* magPtr = reinterpret_cast<double*>(lParam);
-        SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(magPtr));
-        // Set current value in the edit control
+        auto* st = reinterpret_cast<CameraSetupState*>(lParam);
+        SetWindowLongPtr(hDlg, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(st));
         wchar_t buf[32];
-        swprintf_s(buf, L"%.1f", *magPtr);
+        swprintf_s(buf, L"%.1f", st->mag);
         SetDlgItemTextW(hDlg, 101, buf);
-        // Select all text for easy overwrite
+        // Orientation combo: index 0 = 0 deg, index 1 = 90 deg.
+        SendDlgItemMessageW(hDlg, 102, CB_ADDSTRING, 0,
+                            reinterpret_cast<LPARAM>(L"0 deg (normal XY)"));
+        SendDlgItemMessageW(hDlg, 102, CB_ADDSTRING, 0,
+                            reinterpret_cast<LPARAM>(L"90 deg (M4AA)"));
+        SendDlgItemMessageW(hDlg, 102, CB_SETCURSEL,
+                            (st->rotationDeg == 90) ? 1 : 0, 0);
         SendDlgItemMessageW(hDlg, 101, EM_SETSEL, 0, -1);
         SetFocus(GetDlgItem(hDlg, 101));
         return FALSE;  // We set focus manually
@@ -2300,8 +2324,12 @@ static INT_PTR CALLBACK MagDlgProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lP
             GetDlgItemTextW(hDlg, 101, buf, 32);
             double val = _wtof(buf);
             if (val >= 1.0 && val <= 1000.0) {
-                auto* magPtr = reinterpret_cast<double*>(GetWindowLongPtr(hDlg, GWLP_USERDATA));
-                *magPtr = val;
+                auto* st = reinterpret_cast<CameraSetupState*>(
+                    GetWindowLongPtr(hDlg, GWLP_USERDATA));
+                st->mag = val;
+                int sel = static_cast<int>(
+                    SendDlgItemMessageW(hDlg, 102, CB_GETCURSEL, 0, 0));
+                st->rotationDeg = (sel == 1) ? 90 : 0;
                 EndDialog(hDlg, IDOK);
             } else {
                 MessageBoxW(hDlg, L"Enter a value between 1 and 1000.", L"Invalid", MB_OK | MB_ICONWARNING);
@@ -2327,17 +2355,17 @@ void SwirBeamWindow::OnSetMagnification()
     alignas(4) BYTE dlgBuf[1024] = {};
     DLGTEMPLATE* dlg = reinterpret_cast<DLGTEMPLATE*>(dlgBuf);
     dlg->style = DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | DS_SETFONT;
-    dlg->cdit = 4;  // 4 controls: label, edit, OK, Cancel
-    dlg->cx = 160;
-    dlg->cy = 70;
+    dlg->cdit = 6;  // label, edit, orientation label, orientation combo, OK, Cancel
+    dlg->cx = 170;
+    dlg->cy = 98;
 
     // Dialog title follows DLGTEMPLATE + menu(0) + class(0) + title
     WORD* ptr = reinterpret_cast<WORD*>(dlg + 1);
     *ptr++ = 0;  // no menu
     *ptr++ = 0;  // default class
 
-    // Title: "Set Magnification"
-    const wchar_t* title = L"Set Magnification";
+    // Title: "Camera Setup"
+    const wchar_t* title = L"Camera Setup";
     for (const wchar_t* c = title; *c; ++c) *ptr++ = *c;
     *ptr++ = 0;
 
@@ -2366,23 +2394,29 @@ void SwirBeamWindow::OnSetMagnification()
         *ptr++ = 0;
     };
 
-    // Static label
-    addControl(SS_LEFT, 8, 8, 144, 10, 0xFFFF, L"Static", L"Enter magnification (1-1000):");
-    // Edit control
-    addControl(ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, 8, 22, 144, 14, 101, L"Edit", L"");
-    // OK button
-    addControl(BS_DEFPUSHBUTTON | WS_TABSTOP, 50, 46, 50, 16, IDOK, L"Button", L"OK");
-    // Cancel button
-    addControl(WS_TABSTOP, 104, 46, 50, 16, IDCANCEL, L"Button", L"Cancel");
+    // Magnification label + edit
+    addControl(SS_LEFT, 8, 8, 154, 10, 0xFFFF, L"Static", L"Enter magnification (1-1000):");
+    addControl(ES_AUTOHSCROLL | WS_BORDER | WS_TABSTOP, 8, 20, 154, 14, 101, L"Edit", L"");
+    // Camera orientation label + dropdown (cy is full open height)
+    addControl(SS_LEFT, 8, 40, 154, 10, 0xFFFF, L"Static", L"Camera orientation:");
+    addControl(CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP, 8, 52, 154, 80, 102, L"ComboBox", L"");
+    // OK / Cancel
+    addControl(BS_DEFPUSHBUTTON | WS_TABSTOP, 56, 76, 50, 16, IDOK, L"Button", L"OK");
+    addControl(WS_TABSTOP, 110, 76, 50, 16, IDCANCEL, L"Button", L"Cancel");
 
-    double newMag = m_magnification;
+    CameraSetupState st;
+    st.mag = m_magnification;
+    st.rotationDeg = m_cameraRotationDeg;
     INT_PTR result = DialogBoxIndirectParamW(
-        GetModuleHandle(nullptr), dlg, m_hwnd, MagDlgProc, reinterpret_cast<LPARAM>(&newMag));
+        GetModuleHandle(nullptr), dlg, m_hwnd, MagDlgProc, reinterpret_cast<LPARAM>(&st));
 
     if (result == IDOK) {
-        m_magnification = newMag;
-        std::cout << "[SwirBeamWindow] Magnification set to " << m_magnification << "x" << std::endl;
+        m_magnification = st.mag;
+        m_cameraRotationDeg = st.rotationDeg;
+        std::cout << "[SwirBeamWindow] Camera setup: mag=" << m_magnification
+                  << "x orientation=" << m_cameraRotationDeg << "deg" << std::endl;
         SaveMagnification();
+        SaveCameraOrientation();
         if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
     }
 }
@@ -2759,6 +2793,22 @@ void SwirBeamWindow::LoadMagnification()
     m_magnification = 100.0;
     std::cout << "[SwirBeamWindow] Magnification hardcoded: " << m_magnification
               << "x" << std::endl;
+}
+
+void SwirBeamWindow::SaveCameraOrientation()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    settings.setValue("SwirBeamWindow/cameraRotationDeg", m_cameraRotationDeg);
+}
+
+void SwirBeamWindow::LoadCameraOrientation()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    // Default 90 = current M4AA mount. Anything other than 0 is treated as 90.
+    int deg = settings.value("SwirBeamWindow/cameraRotationDeg", 90).toInt();
+    m_cameraRotationDeg = (deg == 0) ? 0 : 90;
+    std::cout << "[SwirBeamWindow] Camera orientation: " << m_cameraRotationDeg
+              << "deg" << std::endl;
 }
 
 // ============================================================================
