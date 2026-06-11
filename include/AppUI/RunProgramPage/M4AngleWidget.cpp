@@ -1,6 +1,7 @@
 // M4AngleWidget.cpp - see M4AngleWidget.h for overview.
 
 #include "M4AngleWidget.h"
+#include "Bezel3dStyle.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -93,6 +94,9 @@ void M4AngleWidget::showEvent(QShowEvent* event) {
   // each time the tab is shown, then refresh the live readouts immediately.
   discoverPsuDevices();
   pollSelectedPsu();
+  // Surface the most recent saved thumbnail for this product so the box isn't
+  // blank on open. Skip while the wizard is running — it owns the box then.
+  if (!m_autoActive) loadLatestThumbnail();
 }
 
 void M4AngleWidget::adoptPoint(Point& dst, QLabel* readout, QPushButton* moveBtn,
@@ -152,16 +156,16 @@ void M4AngleWidget::setupUI() {
   // Column order per row: name | Move-to (yellow) | Capture (cyan) | readout |
   // right-side action (Y jog / Save MOE). Yellow = recall a taught point,
   // cyan = capture the current position into that slot.
-  const char* kMoveBtnStyle =
-    "QPushButton { background-color: #ffea00; color: #1a1a1a; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #fff350; }"
-    "QPushButton:pressed { background-color: #fdd835; }"
-    "QPushButton:disabled { background-color: #5a5a3a; color: #9a9a8a; }";
-  const char* kCaptureBtnStyle =
-    "QPushButton { background-color: #18ffff; color: #00363a; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #6effff; }"
-    "QPushButton:pressed { background-color: #00e5ff; }"
-    "QPushButton:disabled { background-color: #9e9e9e; color: #5a5a5a; }";
+  const QString kMoveBtnStyle =
+    bezel3d("#fff350", "#fbc02d", "#fff59d", "#f9a825", "#1a1a1a", "#5a5a3a", "#9a9a8a");
+  const QString kCaptureBtnStyle =
+    bezel3d("#84ffff", "#00e5ff", "#b2ffff", "#00b8d4", "#00363a", "#9e9e9e", "#5a5a5a");
+  // Shared 3D styles for the navigation / save / apply actions (blue) and the
+  // low-emphasis "Clear all" (slate).
+  const QString kBlueStyle =
+    bezel3d("#42a5f5", "#1e88e5", "#64b5f6", "#1565c0", "white");
+  const QString kNeutralStyle =
+    bezel3d("#78909c", "#546e7a", "#90a4ae", "#455a64", "white");
 
   auto addCaptureRow = [&](int row, const QString& label, QLabel*& readout,
                            QPushButton*& moveBtn, QPushButton*& captureBtnOut,
@@ -205,6 +209,7 @@ void M4AngleWidget::setupUI() {
   // are the rough one-shot jogs to hop between them while teaching.
   m_yPlus35Btn = new QPushButton("Y +3.25");
   m_yPlus35Btn->setMinimumWidth(110);
+  m_yPlus35Btn->setStyleSheet(kBlueStyle);
   m_yPlus35Btn->setToolTip("gantry-main: relative move Y +3.25 mm.");
   grid->addWidget(m_yPlus35Btn, 0, 4);
   connect(m_yPlus35Btn, &QPushButton::clicked, this, &M4AngleWidget::onMoveYPlus35);
@@ -214,6 +219,7 @@ void M4AngleWidget::setupUI() {
 
   m_yMinus35Btn = new QPushButton("Y -3.25");
   m_yMinus35Btn->setMinimumWidth(110);
+  m_yMinus35Btn->setStyleSheet(kBlueStyle);
   m_yMinus35Btn->setToolTip("gantry-main: relative move Y -3.25 mm.");
   grid->addWidget(m_yMinus35Btn, 1, 4);
   connect(m_yMinus35Btn, &QPushButton::clicked, this, &M4AngleWidget::onMoveYMinus35);
@@ -261,6 +267,7 @@ void M4AngleWidget::setupUI() {
   m_saveMoeA1Btn = new QPushButton("Save MOE-A1");
   m_saveMoeA1Btn->setMinimumWidth(110);
   m_saveMoeA1Btn->setEnabled(false);
+  m_saveMoeA1Btn->setStyleSheet(kBlueStyle);
   m_saveMoeA1Btn->setToolTip(
     "Save the current gantry-main position as named position 'MOE-A1'. "
     "Only succeeds when current position is within 0.1 mm of ma1.");
@@ -271,6 +278,7 @@ void M4AngleWidget::setupUI() {
   m_saveMoeA2Btn = new QPushButton("Save MOE-A2");
   m_saveMoeA2Btn->setMinimumWidth(110);
   m_saveMoeA2Btn->setEnabled(false);
+  m_saveMoeA2Btn->setStyleSheet(kBlueStyle);
   m_saveMoeA2Btn->setToolTip(
     "Save the current gantry-main position as named position 'MOE-A2'. "
     "Only succeeds when current position is within 0.1 mm of ma2.");
@@ -279,6 +287,7 @@ void M4AngleWidget::setupUI() {
           this, &M4AngleWidget::onSaveMoeA2);
 
   auto* clearBtn = new QPushButton("Clear all");
+  clearBtn->setStyleSheet(kNeutralStyle);
   grid->addWidget(clearBtn, 5, 1);
   connect(clearBtn, &QPushButton::clicked, this, &M4AngleWidget::onClearAll);
 
@@ -290,9 +299,7 @@ void M4AngleWidget::setupUI() {
   swirFixedBtn->setToolTip(
     "swir_camera: set exposure_time=300 us, auto_exposure=off, auto_gain=off.");
   swirFixedBtn->setStyleSheet(
-    "QPushButton { background-color: #fb8c00; color: white; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #ef6c00; }"
-    "QPushButton:pressed { background-color: #e65100; }");
+    bezel3d("#ffa726", "#f57c00", "#ffb74d", "#ef6c00", "white"));
   grid->addWidget(swirFixedBtn, 5, 2);
   connect(swirFixedBtn, &QPushButton::clicked, this, &M4AngleWidget::onSwirSet300us);
 
@@ -300,9 +307,7 @@ void M4AngleWidget::setupUI() {
   swirAutoBtn->setMinimumWidth(170);
   swirAutoBtn->setToolTip("swir_camera: enable auto_exposure.");
   swirAutoBtn->setStyleSheet(
-    "QPushButton { background-color: #ec407a; color: white; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #d81b60; }"
-    "QPushButton:pressed { background-color: #ad1457; }");
+    bezel3d("#f06292", "#ec407a", "#f48fb1", "#ad1457", "white"));
   grid->addWidget(swirAutoBtn, 5, 3);
   connect(swirAutoBtn, &QPushButton::clicked, this, &M4AngleWidget::onSwirSetAutoExposure);
 
@@ -377,14 +382,11 @@ void M4AngleWidget::setupUI() {
   m_psuMinus10Btn = new QPushButton("-10");
   m_psuPlus5Btn   = new QPushButton("+5");
   m_psuMinus5Btn  = new QPushButton("-5");
-  const char* kPsuStepStyle =
-    "QPushButton { background-color: #c2c7cc; color: #1a1a1a; font-weight: bold; "
-    "min-width: 64px; min-height: 36px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #d4d9de; }"
-    "QPushButton:pressed { background-color: #a8adb2; }"
-    "QPushButton:disabled { background-color: #555; color: #888; }";
+  const QString kPsuStepStyle =
+    bezel3d("#d4d9de", "#aeb4ba", "#e2e6ea", "#9aa0a6", "#1a1a1a", "#555555", "#888888");
   for (QPushButton* b : {m_psuPlus10Btn, m_psuMinus10Btn, m_psuPlus5Btn, m_psuMinus5Btn}) {
     b->setStyleSheet(kPsuStepStyle);
+    b->setMinimumSize(64, 36);
     b->setToolTip("Adjust the channel-1 set current of the selected PSU (mA).");
   }
   auto* stepGrid = new QGridLayout();
@@ -426,11 +428,7 @@ void M4AngleWidget::setupUI() {
 
   m_autoStartBtn = new QPushButton("Start correction");
   m_autoStartBtn->setMinimumHeight(40);
-  m_autoStartBtn->setStyleSheet(
-    "QPushButton { background-color: #ffea00; color: #1a1a1a; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #fff350; }"
-    "QPushButton:pressed { background-color: #fdd835; }"
-    "QPushButton:disabled { background-color: #5a5a3a; color: #9a9a8a; }");
+  m_autoStartBtn->setStyleSheet(kMoveBtnStyle);
   m_autoStartBtn->setToolTip(
     "Run the guided M4 correction sequence. Requires a1 and a2 already taught.");
   ag->addWidget(m_autoStartBtn, 0, 0);
@@ -481,21 +479,14 @@ void M4AngleWidget::setupUI() {
   m_autoCaptureBtn = new QPushButton("Capture");
   m_autoCaptureBtn->setMinimumHeight(48);
   m_autoCaptureBtn->setEnabled(false);
-  m_autoCaptureBtn->setStyleSheet(
-    "QPushButton { background-color: #18ffff; color: #00363a; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #6effff; }"
-    "QPushButton:pressed { background-color: #00e5ff; }"
-    "QPushButton:disabled { background-color: #9e9e9e; color: #5a5a5a; }");
+  m_autoCaptureBtn->setStyleSheet(kCaptureBtnStyle);
   ag->addWidget(m_autoCaptureBtn, 3, 0);
 
   m_autoAbortBtn = new QPushButton("Abort");
   m_autoAbortBtn->setMinimumHeight(48);
   m_autoAbortBtn->setEnabled(false);
   m_autoAbortBtn->setStyleSheet(
-    "QPushButton { background-color: #e53935; color: white; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #d32f2f; }"
-    "QPushButton:pressed { background-color: #c62828; }"
-    "QPushButton:disabled { background-color: #5a3a3a; color: #9a8a8a; }");
+    bezel3d("#ef5350", "#e53935", "#f44336", "#c62828", "white", "#5a3a3a", "#9a8a8a"));
   ag->addWidget(m_autoAbortBtn, 3, 1);
 
   ag->setColumnStretch(0, 1);
@@ -554,6 +545,7 @@ void M4AngleWidget::setupUI() {
   // Apply U correction: hex-right U -= delta_U at system velocity 0.1.
   m_applyDeltaUBtn = new QPushButton("Apply U correction");
   m_applyDeltaUBtn->setEnabled(false);
+  m_applyDeltaUBtn->setStyleSheet(kBlueStyle);
   m_applyDeltaUBtn->setToolTip(
     "Move hex-right U by -delta_U (at system velocity 0.1). Positive delta -> "
     "U moves negative; negative delta -> U moves positive.");
@@ -574,6 +566,7 @@ void M4AngleWidget::setupUI() {
                "roll(a1a2) - roll(ma1ma2) -> adjust hex-right W");
   m_applyDeltaWBtn = new QPushButton("Apply W correction");
   m_applyDeltaWBtn->setEnabled(false);
+  m_applyDeltaWBtn->setStyleSheet(kBlueStyle);
   m_applyDeltaWBtn->setToolTip(
     "Move hex-right W by -delta_W (at system velocity 0.1). Positive delta -> "
     "W moves negative; negative delta -> W moves positive.");
@@ -874,12 +867,8 @@ void M4AngleWidget::updateBeamStreamButton(bool on) {
   if (!m_beamStreamBtn) return;
   m_beamStreamBtn->setText(on ? "Beam stream: ON" : "Beam stream: OFF");
   m_beamStreamBtn->setStyleSheet(on
-    ? "QPushButton { background-color: #43a047; color: white; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
-      "QPushButton:hover { background-color: #388e3c; }"
-      "QPushButton:pressed { background-color: #2e7d32; }"
-    : "QPushButton { background-color: #455a64; color: #eeeeee; font-weight: bold; padding: 6px 12px; border: none; border-radius: 3px; }"
-      "QPushButton:hover { background-color: #546e7a; }"
-      "QPushButton:pressed { background-color: #37474f; }");
+    ? bezel3d("#66bb6a", "#43a047", "#81c784", "#2e7d32", "white")
+    : bezel3d("#607d8b", "#455a64", "#78909c", "#37474f", "#eeeeee"));
 }
 
 void M4AngleWidget::onToggleBeamStream() {
@@ -1037,22 +1026,13 @@ void M4AngleWidget::updatePsuOutputButton(bool connected, bool outputOn) {
                                     : "On/Off");
   // Green when output is on; red bar (mockup) when connected-but-off; grey when
   // there is no link yet.
-  const char* style;
+  QString style;
   if (outputOn) {
-    style =
-      "QPushButton { background-color: #43a047; color: white; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-      "QPushButton:hover { background-color: #388e3c; }"
-      "QPushButton:pressed { background-color: #2e7d32; }";
+    style = bezel3d("#66bb6a", "#43a047", "#81c784", "#2e7d32", "white");
   } else if (connected) {
-    style =
-      "QPushButton { background-color: #e53935; color: white; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-      "QPushButton:hover { background-color: #d32f2f; }"
-      "QPushButton:pressed { background-color: #c62828; }";
+    style = bezel3d("#ef5350", "#e53935", "#f44336", "#c62828", "white");
   } else {
-    style =
-      "QPushButton { background-color: #455a64; color: #eeeeee; font-weight: bold; padding: 8px 12px; border: none; border-radius: 3px; }"
-      "QPushButton:hover { background-color: #546e7a; }"
-      "QPushButton:pressed { background-color: #37474f; }";
+    style = bezel3d("#607d8b", "#455a64", "#78909c", "#37474f", "#eeeeee");
   }
   m_psuOutputBtn->setStyleSheet(style);
 }
@@ -1545,16 +1525,10 @@ QWidget* M4AngleWidget::buildGantryJogPanel() {
   v->addLayout(stepRow);
 
   // Arrow pads: X/Y (teal) on the left, Z (blue) on the right.
-  const char* kTeal =
-    "QPushButton { background-color:#4f8f8f; color:#10242a; font-weight:bold; font-size:16px; min-width:44px; min-height:44px; border:none; border-radius:3px; }"
-    "QPushButton:hover { background-color:#5fa3a3; }"
-    "QPushButton:pressed { background-color:#3f7373; }"
-    "QPushButton:disabled { background-color:#3a4a4a; color:#6a7a7a; }";
-  const char* kBlue =
-    "QPushButton { background-color:#6aa0d8; color:#0a1a2a; font-weight:bold; font-size:16px; min-width:44px; min-height:44px; border:none; border-radius:3px; }"
-    "QPushButton:hover { background-color:#7fb0e0; }"
-    "QPushButton:pressed { background-color:#5a90c8; }"
-    "QPushButton:disabled { background-color:#3a4656; color:#6a7686; }";
+  const QString kTeal =
+    bezel3d("#5fa3a3", "#3f7373", "#6fb3b3", "#356363", "#10242a", "#3a4a4a", "#6a7a7a");
+  const QString kBlue =
+    bezel3d("#7fb0e0", "#5a90c8", "#8fc0f0", "#4a80b8", "#0a1a2a", "#3a4656", "#6a7686");
 
   m_jogXPlusBtn  = new QPushButton(QString::fromUtf8("\xE2\x86\x91"));  // up    = X+
   m_jogXMinusBtn = new QPushButton(QString::fromUtf8("\xE2\x86\x93"));  // down  = X-
@@ -1562,6 +1536,16 @@ QWidget* M4AngleWidget::buildGantryJogPanel() {
   m_jogYPlusBtn  = new QPushButton(QString::fromUtf8("\xE2\x86\x92"));  // right = Y+
   m_jogZMinusBtn = new QPushButton(QString::fromUtf8("\xE2\x86\x91"));  // up    = Z-
   m_jogZPlusBtn  = new QPushButton(QString::fromUtf8("\xE2\x86\x93"));  // down  = Z+
+  // Bevel QSS doesn't carry the 16px arrow size / 44px min-square, so set those
+  // on the widgets directly (the bezel3d builder only owns colours + borders).
+  for (QPushButton* b : {m_jogXPlusBtn, m_jogXMinusBtn, m_jogYMinusBtn, m_jogYPlusBtn,
+                         m_jogZMinusBtn, m_jogZPlusBtn}) {
+    b->setMinimumSize(44, 44);
+    QFont f = b->font();
+    f.setPointSize(14);
+    f.setBold(true);
+    b->setFont(f);
+  }
   for (QPushButton* b : {m_jogXPlusBtn, m_jogXMinusBtn, m_jogYMinusBtn, m_jogYPlusBtn})
     b->setStyleSheet(kTeal);
   for (QPushButton* b : {m_jogZMinusBtn, m_jogZPlusBtn})
@@ -1612,9 +1596,8 @@ void M4AngleWidget::selectJogStep(double stepUm) {
     const bool sel = (std::abs(vals[i] - stepUm) < 1e-9);
     m_jogStepBtns[i]->setChecked(sel);
     m_jogStepBtns[i]->setStyleSheet(sel
-      ? "QPushButton { background-color:#1976d2; color:white; font-weight:bold; border:none; border-radius:3px; }"
-      : "QPushButton { background-color:#c2c7cc; color:#1a1a1a; font-weight:bold; border:none; border-radius:3px; }"
-        "QPushButton:hover { background-color:#d4d9de; }");
+      ? bezel3d("#42a5f5", "#1565c0", "#64b5f6", "#0d47a1", "white")
+      : bezel3d("#d4d9de", "#aeb4ba", "#e2e6ea", "#9aa0a6", "#1a1a1a"));
   }
 }
 
@@ -1669,6 +1652,30 @@ void M4AngleWidget::loadThumbnailForStep(const char* tag) {
     pm.scaled(m_autoThumbnailLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
+void M4AngleWidget::loadLatestThumbnail() {
+  if (!m_autoThumbnailLabel) return;
+  const std::string dir = thumbnailDir();
+  if (dir.empty()) return;  // no product loaded — keep whatever is shown
+
+  // Pick the most recently written of the four step thumbnails so the box
+  // reflects the latest capture for this product.
+  const char* tags[4] = {"a1", "a2", "ma1", "ma2"};
+  const char* newestTag = nullptr;
+  std::filesystem::file_time_type newestTime{};
+  for (const char* tag : tags) {
+    const std::string path = dir + "/thumbnail_" + tag + ".bmp";
+    std::error_code ec;
+    if (!std::filesystem::exists(path, ec)) continue;
+    const auto t = std::filesystem::last_write_time(path, ec);
+    if (ec) continue;
+    if (!newestTag || t > newestTime) {
+      newestTime = t;
+      newestTag = tag;
+    }
+  }
+  if (newestTag) loadThumbnailForStep(newestTag);
+}
+
 void M4AngleWidget::saveThumbnail(const char* tag) {
   if (!m_context || !m_context->cameraManager) {
     if (m_moveStatusLabel) {
@@ -1702,10 +1709,20 @@ void M4AngleWidget::saveThumbnail(const char* tag) {
     return;
   }
 
+  // swir_camera only delivers frames while it is connected and grabbing — which
+  // normally happens only when a camera monitor / beam stream has it live. The
+  // wizard runs the teach steps before any of that, so without this CaptureImage
+  // returns no frame and the thumbnail silently stays blank. Make sure the
+  // camera is live first.
+  auto* cam = m_context->cameraManager;
+  const auto status = cam->GetCameraStatus(kSwirCamera);
+  if (!status.connected) cam->ConnectCamera(kSwirCamera);
+  if (!status.grabbing)  cam->StartGrabbing(kSwirCamera);
+
   // SetImageOutputDirectory creates the directory; CaptureImage grabs a SWIR
   // frame and writes it as BMP under that directory with our custom name.
-  m_context->cameraManager->SetImageOutputDirectory(dir);
-  const bool ok = m_context->cameraManager->CaptureImage(kSwirCamera, filename);
+  cam->SetImageOutputDirectory(dir);
+  const bool ok = cam->CaptureImage(kSwirCamera, filename);
   loadThumbnailForStep(tag);
   if (m_moveStatusLabel) {
     m_moveStatusLabel->setText(ok

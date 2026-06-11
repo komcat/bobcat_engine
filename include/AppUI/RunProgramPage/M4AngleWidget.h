@@ -178,6 +178,9 @@ private:
   // Load <product>/m4_thumbnails/thumbnail_<tag>.bmp into the thumbnail box
   // (placeholder text when missing / no product).
   void   loadThumbnailForStep(const char* tag);
+  // Show the most recently saved thumbnail (any of a1/a2/ma1/ma2) for the loaded
+  // product, so the box isn't blank when the tab opens while the wizard is idle.
+  void   loadLatestThumbnail();
   // Absolute path of the thumbnail directory for the loaded product ("" if none).
   std::string thumbnailDir() const;
 

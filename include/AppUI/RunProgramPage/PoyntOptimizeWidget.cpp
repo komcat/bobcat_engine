@@ -1,6 +1,7 @@
 // PoyntOptimizeWidget.cpp - see PoyntOptimizeWidget.h for overview.
 
 #include "PoyntOptimizeWidget.h"
+#include "Bezel3dStyle.h"
 #include "ApplicationContext.h"
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
@@ -78,27 +79,38 @@ void PoyntOptimizeWidget::setupUI() {
   header->setWordWrap(true);
   root->addWidget(header);
 
+  // Shared 3D bevel styles (see Bezel3dStyle.h). Green = DUT lifecycle / save,
+  // yellow = automation / move-to, orange = single measurement, grey = step
+  // nudges, blue = the X/Y/Z + U/V/W jog ladder, red = Stop.
+  const QString kGreenStyle  = bezel3d("#66bb6a", "#43a047", "#81c784", "#2e7d32", "white");
+  const QString kYellowStyle = bezel3d("#fff350", "#fbc02d", "#fff59d", "#f9a825", "#1a1a1a");
+  const QString kOrangeStyle = bezel3d("#ffa726", "#f57c00", "#ffb74d", "#ef6c00", "white");
+  const QString kGrayStyle   = bezel3d("#d4d9de", "#aeb4ba", "#e2e6ea", "#9aa0a6", "#1a1a1a");
+  const QString kJogBlueStyle = bezel3d("#42a5f5", "#1e88e5", "#64b5f6", "#1565c0", "white");
+  const QString kRedStyle    = bezel3d("#ef5350", "#e53935", "#f44336", "#c62828", "white", "#5a3a3a", "#aa9999");
+
   // --- Top action row -------------------------------------------------------
   auto* topRow = new QHBoxLayout();
   topRow->setSpacing(8);
 
   m_dutInitBtn   = new QPushButton("DUT Init");
   m_dutInitBtn->setToolTip("Run dut_init.lua in the background.");
+  m_dutInitBtn->setStyleSheet(kGreenStyle);
   m_dutCloseBtn  = new QPushButton("DUT Close");
   m_dutCloseBtn->setToolTip("Run dut_close.lua in the background.");
+  m_dutCloseBtn->setStyleSheet(kGreenStyle);
   m_automateBtn  = new QPushButton("Automate correction");
   m_automateBtn->setToolTip(
     "Run CLAUDE_step_all.lua in the background. Stop button breaks it.");
+  m_automateBtn->setStyleSheet(kYellowStyle);
   m_singleBtn    = new QPushButton("Single measurement");
   m_singleBtn->setToolTip("Run CLAUDE_step1_baseline.lua in the background.");
+  m_singleBtn->setStyleSheet(kOrangeStyle);
   m_stopBtn      = new QPushButton("Stop");
   m_stopBtn->setToolTip(
     "Request a stop on whatever script is running. Has no effect on a "
     "blocking motion move that has already been dispatched.");
-  m_stopBtn->setStyleSheet(
-    "QPushButton { background-color: #ef5350; color: white; font-weight: bold; padding: 6px 14px; border: none; border-radius: 3px; }"
-    "QPushButton:hover { background-color: #d32f2f; }"
-    "QPushButton:disabled { background-color: #5a3a3a; color: #aa9999; }");
+  m_stopBtn->setStyleSheet(kRedStyle);
 
   for (QPushButton* b : {m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_singleBtn}) {
     b->setMinimumWidth(150);
@@ -150,6 +162,8 @@ void PoyntOptimizeWidget::setupUI() {
     m_translationStepMinusBtn = new QPushButton(QStringLiteral("-%1").arg(kTranslationStepUmIncrement, 0, 'f', 1));
     m_translationStepPlusBtn->setToolTip("Add 0.5 um to step.");
     m_translationStepMinusBtn->setToolTip("Subtract 0.5 um from step.");
+    m_translationStepPlusBtn->setStyleSheet(kGrayStyle);
+    m_translationStepMinusBtn->setStyleSheet(kGrayStyle);
     g->addWidget(m_translationStepPlusBtn,  1, 0);
     g->addWidget(m_translationStepMinusBtn, 1, 1);
     connect(m_translationStepPlusBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onTranslationStepInc);
@@ -158,6 +172,8 @@ void PoyntOptimizeWidget::setupUI() {
     // +X / +Y / +Z (row 2), -X / -Y / -Z (row 3).
     m_xPlusBtn  = new QPushButton("+X");  m_yPlusBtn  = new QPushButton("+Y");  m_zPlusBtn  = new QPushButton("+Z");
     m_xMinusBtn = new QPushButton("-X");  m_yMinusBtn = new QPushButton("-Y");  m_zMinusBtn = new QPushButton("-Z");
+    for (QPushButton* b : {m_xPlusBtn, m_yPlusBtn, m_zPlusBtn, m_xMinusBtn, m_yMinusBtn, m_zMinusBtn})
+      b->setStyleSheet(kJogBlueStyle);
     g->addWidget(m_xPlusBtn,  2, 0);  g->addWidget(m_yPlusBtn,  2, 1);  g->addWidget(m_zPlusBtn,  2, 2);
     g->addWidget(m_xMinusBtn, 3, 0);  g->addWidget(m_yMinusBtn, 3, 1);  g->addWidget(m_zMinusBtn, 3, 2);
     connect(m_xPlusBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onJogXPlus);
@@ -195,6 +211,8 @@ void PoyntOptimizeWidget::setupUI() {
     m_rotationStepMinusBtn = new QPushButton(QStringLiteral("-%1").arg(kRotationStepMilliDegIncrement, 0, 'f', 0));
     m_rotationStepPlusBtn->setToolTip("Add 10 millideg to step.");
     m_rotationStepMinusBtn->setToolTip("Subtract 10 millideg from step.");
+    m_rotationStepPlusBtn->setStyleSheet(kGrayStyle);
+    m_rotationStepMinusBtn->setStyleSheet(kGrayStyle);
     g->addWidget(m_rotationStepPlusBtn,  1, 0);
     g->addWidget(m_rotationStepMinusBtn, 1, 1);
     connect(m_rotationStepPlusBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onRotationStepInc);
@@ -202,6 +220,8 @@ void PoyntOptimizeWidget::setupUI() {
 
     m_uPlusBtn  = new QPushButton("+U");  m_vPlusBtn  = new QPushButton("+V");  m_wPlusBtn  = new QPushButton("+W");
     m_uMinusBtn = new QPushButton("-U");  m_vMinusBtn = new QPushButton("-V");  m_wMinusBtn = new QPushButton("-W");
+    for (QPushButton* b : {m_uPlusBtn, m_vPlusBtn, m_wPlusBtn, m_uMinusBtn, m_vMinusBtn, m_wMinusBtn})
+      b->setStyleSheet(kJogBlueStyle);
     g->addWidget(m_uPlusBtn,  2, 0);  g->addWidget(m_vPlusBtn,  2, 1);  g->addWidget(m_wPlusBtn,  2, 2);
     g->addWidget(m_uMinusBtn, 3, 0);  g->addWidget(m_vMinusBtn, 3, 1);  g->addWidget(m_wMinusBtn, 3, 2);
     connect(m_uPlusBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onJogUPlus);
@@ -225,6 +245,7 @@ void PoyntOptimizeWidget::setupUI() {
 
     m_moveToMoeA1Btn = new QPushButton("Move to MOE-A1");
     m_moveToMoeA1Btn->setMinimumWidth(150);
+    m_moveToMoeA1Btn->setStyleSheet(kYellowStyle);
     m_moveToMoeA1Btn->setToolTip(
       "Move gantry-main to the saved 'MOE-A1' named position. "
       "Save it from the M4 Angle tab first.");
@@ -232,6 +253,7 @@ void PoyntOptimizeWidget::setupUI() {
 
     m_moveToMoeA2Btn = new QPushButton("Move to MOE-A2");
     m_moveToMoeA2Btn->setMinimumWidth(150);
+    m_moveToMoeA2Btn->setStyleSheet(kYellowStyle);
     m_moveToMoeA2Btn->setToolTip(
       "Move gantry-main to the saved 'MOE-A2' named position. "
       "Save it from the M4 Angle tab first.");
@@ -239,6 +261,7 @@ void PoyntOptimizeWidget::setupUI() {
 
     m_saveMoeA1Btn = new QPushButton("Save MOE-A1");
     m_saveMoeA1Btn->setMinimumWidth(150);
+    m_saveMoeA1Btn->setStyleSheet(kGreenStyle);
     m_saveMoeA1Btn->setToolTip(
       "Overwrite the saved 'MOE-A1' named position with the current gantry-main "
       "position. Shows a confirmation dialog with the delta vs. the existing "
@@ -247,6 +270,7 @@ void PoyntOptimizeWidget::setupUI() {
 
     m_saveMoeA2Btn = new QPushButton("Save MOE-A2");
     m_saveMoeA2Btn->setMinimumWidth(150);
+    m_saveMoeA2Btn->setStyleSheet(kGreenStyle);
     m_saveMoeA2Btn->setToolTip(
       "Overwrite the saved 'MOE-A2' named position with the current gantry-main "
       "position. Shows a confirmation dialog with the delta vs. the existing "
