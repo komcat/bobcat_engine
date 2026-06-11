@@ -5,6 +5,7 @@
 #include "ApplicationContext.h"
 #include "LogManager.h"
 #include "SequenceContext.h"
+#include "DataStore.h"
 #include "dut/DeviceUnderTest.h"
 
 #include <cstdint>
@@ -367,6 +368,91 @@ std::optional<bool> DutInsertCommands::TryExecute(
       m_logger->Info("DUT Bulk Insert: '" + entryName + "' with " + std::to_string(fieldCount) + " fields from prefix '" + prefix + "'", "DUT");
     }
     std::cout << "[DUTCommandHandler] Bulk inserted '" << entryName << "' with " << fieldCount << " fields from prefix '" << prefix << "'" << std::endl;
+
+    return true;
+  }
+
+  // ============================================================================
+  // INSERT ALL FROM DATASTORE
+  // Snapshot every channel currently in the DataStore into one grouped DUT
+  // entry (nlohmann::json object). Field name = channel name, value = float.
+  // Soft no-op if no DUT is active — this lets recipes capture DataStore
+  // snapshots without forcing every run to create a DUT first.
+  // ============================================================================
+  if (methodName == "InsertAllFromDataStore") {
+    if (deps.app->currentDUT == nullptr) {
+      if (m_logger) {
+        m_logger->Info("DUT Insert from DataStore skipped: no active DUT", "DUT");
+      }
+      std::cout << "[DUTCommandHandler] InsertAllFromDataStore skipped (no active DUT)" << std::endl;
+      return true;
+    }
+
+    if (!deps.app->dataStore) {
+      errorMessage = "DataStore is not available";
+      if (m_logger) {
+        m_logger->Error(errorMessage, "DUT");
+      }
+      return false;
+    }
+
+    std::string entryName = deps.parent->GetParam(params, "entry_name");
+    std::string prefix = deps.parent->GetParam(params, "prefix");
+
+    if (entryName.empty()) {
+      entryName = "datastore";
+    }
+
+    auto channels = deps.app->dataStore->GetAvailableChannels();
+    nlohmann::json bulkObject = nlohmann::json::object();
+    int fieldCount = 0;
+
+    for (const auto& channel : channels) {
+      if (!prefix.empty()) {
+        if (channel.size() < prefix.size() || channel.substr(0, prefix.size()) != prefix) {
+          continue;
+        }
+      }
+
+      float value = 0.0f;
+      if (!deps.app->dataStore->TryGetValue(channel, value)) {
+        continue;
+      }
+
+      std::string fieldName = channel;
+      if (!prefix.empty()) {
+        fieldName = channel.substr(prefix.size());
+        if (fieldName.empty()) {
+          continue;
+        }
+      }
+
+      bulkObject[fieldName] = static_cast<double>(value);
+      ++fieldCount;
+    }
+
+    if (fieldCount == 0) {
+      errorMessage = prefix.empty()
+        ? "DataStore is empty - no channels to insert"
+        : "No DataStore channels found matching prefix: " + prefix;
+      if (m_logger) {
+        m_logger->Warning(errorMessage, "DUT");
+      }
+      return false;
+    }
+
+    if (!deps.app->currentDUT->insertEntry(entryName, bulkObject)) {
+      errorMessage = "Failed to insert DataStore snapshot entry: " + entryName;
+      if (m_logger) {
+        m_logger->Error(errorMessage, "DUT");
+      }
+      return false;
+    }
+
+    if (m_logger) {
+      m_logger->Info("DUT Insert from DataStore: '" + entryName + "' with " + std::to_string(fieldCount) + " channels", "DUT");
+    }
+    std::cout << "[DUTCommandHandler] Inserted DataStore snapshot '" << entryName << "' with " << fieldCount << " channels" << std::endl;
 
     return true;
   }

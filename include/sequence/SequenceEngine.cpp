@@ -289,6 +289,9 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->powerSupplyManager;
       m_deviceToTypeMap[name] = "psu";
     }
+    // Register generic "psu" device for manager-level commands (e.g., DisableAllOutputs)
+    m_deviceToManagerMap["psu"] = m_context->powerSupplyManager;
+    m_deviceToTypeMap["psu"] = "psu";
     LogDebug("Registered " + std::to_string(devices.size()) + " PSU devices");
   }
 
@@ -299,6 +302,9 @@ void SequenceEngine::BuildDeviceRegistry()
       m_deviceToManagerMap[name] = m_context->smuManager;
       m_deviceToTypeMap[name] = "smu";
     }
+    // Register generic "smu" device for manager-level commands (e.g., OutputOffAll)
+    m_deviceToManagerMap["smu"] = m_context->smuManager;
+    m_deviceToTypeMap["smu"] = "smu";
     LogDebug("Registered " + std::to_string(devices.size()) + " SMU devices");
   }
 
@@ -485,10 +491,18 @@ bool SequenceEngine::IsDeviceConnected(const std::string& deviceName) const
     return device && device->IsConnected();
   }
   if (type == "psu" && m_context->powerSupplyManager) {
+    // Generic "psu" device used for manager-level commands (e.g., DisableAllOutputs)
+    if (deviceName == "psu") {
+      return !m_context->powerSupplyManager->getDeviceNames().empty();
+    }
     auto psu = m_context->powerSupplyManager->getPowerSupply(deviceName);
     return psu && psu->isConnected();
   }
   if (type == "smu" && m_context->smuManager) {
+    // Generic "smu" device used for manager-level commands (e.g., OutputOffAll)
+    if (deviceName == "smu") {
+      return !m_context->smuManager->GetDeviceNames().empty();
+    }
     auto smu = m_context->smuManager->GetDevice(deviceName);
     return smu && smu->IsConnected();
   }

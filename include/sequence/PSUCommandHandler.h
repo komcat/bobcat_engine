@@ -8,6 +8,8 @@
  * Handles:
  * - SetOutputOn - Turn PSU output on
  * - SetOutputOff - Turn PSU output off
+ * - DisableAllOutputs - Turn output off on every channel of every PSU
+ *                       (manager-level, routed via sentinel device name "psu")
  * - SetVoltage - Set PSU voltage (CV mode)
  * - SetCurrent - Set PSU current (CC mode)
  */

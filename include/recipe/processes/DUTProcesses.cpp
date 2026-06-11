@@ -426,6 +426,66 @@ public:
 };
 
 //=============================================================================
+// DUT INSERT ALL FROM DATASTORE PLUGIN
+//=============================================================================
+
+class DUTInsertAllFromDataStorePlugin : public IProcessPlugin
+{
+public:
+  std::string GetName() const override {
+    return "DUT Insert All from DataStore";
+  }
+
+  std::string GetCategory() const override {
+    return "Data";
+  }
+
+  std::string GetDescription() const override {
+    return "Snapshot all available DataStore channels into a single grouped entry in the active DUT. "
+           "Optional prefix filters channels (and is stripped from field names).";
+  }
+
+  std::map<std::string, std::string> GetDefaultParameters() const override {
+    return {
+      {"entry_name", "datastore"},  // Name of the grouped DUT entry
+      {"prefix", ""}                // Empty = all channels
+    };
+  }
+
+  void CreateConfigUI(ProcessConfigWidget* widget, const ProcessInstance* instance) override {
+    const auto& params = instance->parameters;
+
+    auto getParam = [&](const std::string& key, const std::string& fallback) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : fallback;
+    };
+
+    widget->addParameterField("entry_name", "DUT Entry Name", getParam("entry_name", "datastore"));
+    widget->addParameterField("prefix", "Channel Prefix Filter (empty = all)", getParam("prefix", ""));
+  }
+
+  void BuildSequence(SequenceBuilder* sequence, const ProcessInstance* step) override {
+    const auto& params = step->parameters;
+
+    auto getParam = [&](const std::string& key, const std::string& fallback) -> std::string {
+      auto it = params.find(key);
+      return (it != params.end()) ? it->second : fallback;
+    };
+
+    std::string entryName = getParam("entry_name", "datastore");
+    std::string prefix = getParam("prefix", "");
+
+    sequence->AddAction("dut", "InsertAllFromDataStore", {
+      {"entry_name", entryName},
+      {"prefix", prefix}
+    });
+
+    std::cout << "[DUTProcesses] Built DUT Insert All from DataStore: entry='" << entryName
+              << "' prefix='" << prefix << "'" << std::endl;
+  }
+};
+
+//=============================================================================
 // AUTO-REGISTRATION
 //=============================================================================
 
@@ -442,8 +502,9 @@ namespace {
       registry.RegisterPlugin(std::make_unique<DUTInsertIntegerPlugin>());
       registry.RegisterPlugin(std::make_unique<DUTInsertFromContextPlugin>());
       registry.RegisterPlugin(std::make_unique<DUTBulkInsertFromContextPlugin>());
+      registry.RegisterPlugin(std::make_unique<DUTInsertAllFromDataStorePlugin>());
 
-      std::cout << "[DUTProcesses] Registered 8 DUT process plugins" << std::endl;
+      std::cout << "[DUTProcesses] Registered 9 DUT process plugins" << std::endl;
     }
   };
 

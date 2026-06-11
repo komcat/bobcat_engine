@@ -25,6 +25,7 @@
  * - InsertInteger: Insert integer value (params: key, value)
  * - InsertFromContext: Insert value from context (params: entry_key, context_key, data_type)
  * - BulkInsertFromContext: Insert all context vars matching prefix as single object (params: prefix, entry_name, data_type)
+ * - InsertAllFromDataStore: Snapshot all DataStore channels as single object (params: entry_name [default "datastore"], prefix [optional filter])
  * - DeleteEntry: Delete entry by timestamp (params: timestamp)
  * - DeleteEntriesByKey: Delete all entries with key (params: key)
  *
