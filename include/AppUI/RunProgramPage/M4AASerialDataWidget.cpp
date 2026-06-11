@@ -26,6 +26,8 @@
 #include <QFont>
 #include <QStringList>
 #include <QAbstractItemView>
+#include <QMessageBox>
+#include <QDateTime>
 
 #include <nlohmann/json.hpp>
 
@@ -449,9 +451,19 @@ void M4AASerialDataWidget::setupUI() {
 
   rightLayout->addLayout(chartRow, 1);
 
-  // Footer row with the "See details..." button — opens the non-modal popup.
+  // Footer row: "Save final measurement" on the left, "See details..." on the
+  // right (opens the non-modal popup).
   auto* footerRow = new QHBoxLayout();
   footerRow->setContentsMargins(0, 4, 0, 0);
+
+  m_saveFinalButton = new QPushButton("Save final measurement");
+  m_saveFinalButton->setToolTip(
+      "Export the latest MOE-A1 + MOE-A2 measurements (the final pass/fail "
+      "state) to data/final_measurement/<serial>_final.json.");
+  connect(m_saveFinalButton, &QPushButton::clicked,
+          this, &M4AASerialDataWidget::onSaveFinalMeasurement);
+  footerRow->addWidget(m_saveFinalButton);
+
   footerRow->addStretch(1);
   m_detailsButton = new QPushButton("See details...");
   m_detailsButton->setToolTip(
@@ -690,6 +702,9 @@ void M4AASerialDataWidget::onTick() {
     m_currentPath.clear();
     m_currentMtime = -1;
     m_entries.clear();
+    m_serialNumber.clear();
+    m_productName.clear();
+    m_createdTimestamp.clear();
     m_tree->clear();
     clearRight();
   }
@@ -785,10 +800,13 @@ void M4AASerialDataWidget::reload(const QString& path, bool jumpToNewest) {
                ? QString::fromStdString(data[k].get<std::string>())
                : QString("?");
   };
+  m_serialNumber     = jsonStr("serial_number");
+  m_productName      = jsonStr("product_name");
+  m_createdTimestamp = jsonStr("creation_timestamp");
   m_header->setText(QString("Serial: %1   |   Product: %2   |   Created: %3   |   File: %4")
-                        .arg(jsonStr("serial_number"),
-                             jsonStr("product_name"),
-                             jsonStr("creation_timestamp"),
+                        .arg(m_serialNumber,
+                             m_productName,
+                             m_createdTimestamp,
                              QString::fromStdString(
                                  fs::path(path.toStdString()).filename().string())));
 
@@ -848,6 +866,92 @@ void M4AASerialDataWidget::onSelectionChanged() {
   QTreeWidgetItem* item = m_tree->currentItem();
   if (!item) { clearRight(); return; }
   updateRight(item->data(0, Qt::UserRole).toInt());
+}
+
+void M4AASerialDataWidget::onSaveFinalMeasurement() {
+  if (m_entries.empty() || m_serialNumber.isEmpty() || m_serialNumber == "?") {
+    QMessageBox::warning(this, "Save final measurement",
+                         "No measurement data loaded yet.");
+    return;
+  }
+
+  // "Final" = the most recent entry for each location across the whole file.
+  const int last = static_cast<int>(m_entries.size()) - 1;
+  const int a1Idx = findLatestByLocation(last, "MOE-A1");
+  const int a2Idx = findLatestByLocation(last, "MOE-A2");
+  if (a1Idx < 0 && a2Idx < 0) {
+    QMessageBox::warning(this, "Save final measurement",
+                         "No MOE-A1 or MOE-A2 entries found to export.");
+    return;
+  }
+
+  // Re-emit a parsed poynt section as JSON, omitting fields that were absent.
+  auto sectionJson = [](const m4aa::PoyntSection& s) {
+    json o = json::object();
+    if (s.hasX)     o["poynt_x_deg"] = s.x;
+    if (s.hasY)     o["poynt_y_deg"] = s.y;
+    if (s.hasLoc)   { o["loc_x_um"] = s.locX; o["loc_y_um"] = s.locY; }
+    if (s.hasZ0)    o["z0_um"] = s.z0;
+    if (s.hasWaist) { o["waist_x_um"] = s.waistX; o["waist_y_um"] = s.waistY; }
+    if (s.hasM2)    { o["m2_x"] = s.m2X; o["m2_y"] = s.m2Y; }
+    return o;
+  };
+  auto entryJson = [&](int idx) {
+    const m4aa::SerialEntry& e = m_entries[static_cast<size_t>(idx)];
+    json o = json::object();
+    o["timestamp"] = e.timestamp.toStdString();
+    o["key"]       = e.key.toStdString();
+    o["location"]  = e.location.toStdString();
+    o["b0"]        = sectionJson(e.b0);
+    o["b1"]        = sectionJson(e.b1);
+    if (e.txRx.has) {
+      o["tx_rx"] = {{"dx_um", e.txRx.dx}, {"dy_um", e.txRx.dy},
+                    {"dz_um", e.txRx.dz}, {"mag_um", e.txRx.mag}};
+    }
+    return o;
+  };
+
+  json out;
+  out["serial_number"]      = m_serialNumber.toStdString();
+  out["product_name"]       = m_productName.toStdString();
+  out["creation_timestamp"] = m_createdTimestamp.toStdString();
+  out["source_file"] =
+      fs::path(m_currentPath.toStdString()).filename().string();
+  out["exported_at"] = QDateTime::currentDateTimeUtc()
+                           .toString(Qt::ISODateWithMs)
+                           .toStdString();
+  json fm = json::object();
+  if (a1Idx >= 0) fm["a1"] = entryJson(a1Idx);
+  if (a2Idx >= 0) fm["a2"] = entryJson(a2Idx);
+  out["final_measurement"] = fm;
+
+  // Write to <applicationDir>/data/final_measurement/<serial>_final.json.
+  std::error_code ec;
+  fs::path dir = fs::path(QCoreApplication::applicationDirPath().toStdString()) /
+                 "data" / "final_measurement";
+  fs::create_directories(dir, ec);
+  if (ec) {
+    QMessageBox::critical(this, "Save final measurement",
+                          QString("Could not create folder:\n%1\n\n%2")
+                              .arg(QString::fromStdString(dir.string()),
+                                   QString::fromStdString(ec.message())));
+    return;
+  }
+  const fs::path file = dir / (m_serialNumber.toStdString() + "_final.json");
+  std::ofstream o(file, std::ios::binary | std::ios::trunc);
+  if (!o.is_open()) {
+    QMessageBox::critical(this, "Save final measurement",
+                          QString("Could not open file for writing:\n%1")
+                              .arg(QString::fromStdString(file.string())));
+    return;
+  }
+  o << out.dump(2);
+  o.close();
+
+  const QString savedPath = QString::fromStdString(file.string());
+  m_status->setText(QString("● saved final measurement -> %1").arg(savedPath));
+  QMessageBox::information(this, "Save final measurement",
+                           QString("Saved final measurement to:\n%1").arg(savedPath));
 }
 
 void M4AASerialDataWidget::clearRight() {

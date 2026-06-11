@@ -100,6 +100,7 @@ public:
 private slots:
   void onTick();              // routine worker: poll the watch folder
   void onSelectionChanged();  // left-list selection -> refresh right panel
+  void onSaveFinalMeasurement();  // export latest A1+A2 pair to <serial>_final.json
 
 private:
   void    setupUI();
@@ -130,6 +131,10 @@ private:
   QPushButton* m_detailsButton = nullptr;
   QDialog*     m_detailsDialog = nullptr;
 
+  // Exports the latest MOE-A1 + MOE-A2 entries (the final pass/fail state) to
+  // data/final_measurement/<serial>_final.json.
+  QPushButton* m_saveFinalButton = nullptr;
+
   // Labels inside the details dialog. One section per location (MOE-A1, MOE-A2);
   // each shows poynt X/Y for both beams + tx_rx delta + loc/waist/M².
   struct BeamDetailLabels {
@@ -159,4 +164,9 @@ private:
   QString m_currentPath;
   QString m_lastWatchDir;     // detects product switches between ticks
   long long m_currentMtime = -1;
+
+  // Top-level metadata of the loaded file (for the final-measurement export).
+  QString m_serialNumber;
+  QString m_productName;
+  QString m_createdTimestamp;
 };
