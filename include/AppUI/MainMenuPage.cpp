@@ -101,7 +101,9 @@ void MainMenuPage::setupUI()
   QHBoxLayout* versionRow = new QHBoxLayout();
   versionRow->setSpacing(8);
   versionRow->setContentsMargins(2, 0, 0, 0);
-  QString versionText = QString("Bobcat Engine v%1").arg(BobcatVersion::VERSION_STRING);
+  QString versionText = QString("Bobcat Engine v%1  [%2]")
+                          .arg(BobcatVersion::VERSION_STRING)
+                          .arg(BobcatVersion::BRANCH);
   QLabel* versionLabel = new QLabel(versionText);
   versionLabel->setStyleSheet(
     "QLabel {"

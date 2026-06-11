@@ -8,6 +8,7 @@
 
 #define BOBCAT_VERSION_STRING "@BOBCAT_VERSION_MAJOR@.@BOBCAT_VERSION_MINOR@.@BOBCAT_VERSION_MICRO@"
 #define BOBCAT_VERSION_SHA "@BOBCAT_VERSION_SHA@"
+#define BOBCAT_VERSION_BRANCH "@BOBCAT_VERSION_BRANCH@"
 
 namespace BobcatVersion {
     constexpr int MAJOR = BOBCAT_VERSION_MAJOR;
@@ -15,4 +16,5 @@ namespace BobcatVersion {
     constexpr int MICRO = BOBCAT_VERSION_MICRO;
     constexpr const char* VERSION_STRING = BOBCAT_VERSION_STRING;
     constexpr const char* SHA = BOBCAT_VERSION_SHA;
+    constexpr const char* BRANCH = BOBCAT_VERSION_BRANCH;
 }

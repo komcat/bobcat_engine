@@ -41,11 +41,19 @@ endif()
 
 # Short SHA for diagnostics (not part of the numeric version)
 set(BOBCAT_VERSION_SHA "unknown")
+set(BOBCAT_VERSION_BRANCH "unknown")
 if(Git_FOUND)
     execute_process(
         COMMAND ${GIT_EXECUTABLE} rev-parse --short HEAD
         WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         OUTPUT_VARIABLE BOBCAT_VERSION_SHA
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        ERROR_QUIET
+    )
+    execute_process(
+        COMMAND ${GIT_EXECUTABLE} rev-parse --abbrev-ref HEAD
+        WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        OUTPUT_VARIABLE BOBCAT_VERSION_BRANCH
         OUTPUT_STRIP_TRAILING_WHITESPACE
         ERROR_QUIET
     )
@@ -60,7 +68,7 @@ endif()
 project("bobcat_engine" VERSION ${BOBCAT_VERSION_MAJOR}.${BOBCAT_VERSION_MINOR}.${BOBCAT_VERSION_MICRO})
 
 message(STATUS "========================================")
-message(STATUS "  Bobcat Engine Version: ${PROJECT_VERSION} (${BOBCAT_VERSION_SHA})")
+message(STATUS "  Bobcat Engine Version: ${PROJECT_VERSION} (${BOBCAT_VERSION_SHA} @ ${BOBCAT_VERSION_BRANCH})")
 message(STATUS "  Major: ${BOBCAT_VERSION_MAJOR}")
 message(STATUS "  Minor: ${BOBCAT_VERSION_MINOR}")
 message(STATUS "  Micro: ${BOBCAT_VERSION_MICRO} (commits since last MINOR bump)")
