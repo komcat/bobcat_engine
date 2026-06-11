@@ -74,7 +74,6 @@ std::vector<BeamDetectionResult> RunPoyntDetection(
     struct BeamCandidate {
         D4SigmaResult d4;
         Roi roi;
-        double intensity = 0.0;   // sum of E^2 in ROI, for ranking
         double encircledEnergy = 0.0;
         double circleEnergy = 0.0;
         double totalEnergy = 0.0;
@@ -121,47 +120,38 @@ std::vector<BeamDetectionResult> RunPoyntDetection(
         d4sigma_fast(E, r.x0, r.y0, config.d4sigmaThreshold, d4.cx, d4.cy, d4.dx, d4.dy);
         d4.roi = r;
 
-        // Reject only a fully-empty ROI (no signal) — otherwise keep it.
-        if (d4.dx < 1e-6 && d4.dy < 1e-6) continue;
-
-        double intensity = 0.0;
-        for (int rr = 0; rr < roiH; ++rr) {
-            const float* rowPtr = roiMat.ptr<float>(rr);
-            for (int cc = 0; cc < roiW; ++cc) intensity += static_cast<double>(rowPtr[cc]);
-        }
-
-        candidates.push_back({d4, r, intensity, 0.0, 0.0, 0.0});
+        // NO rejection filters at all — server_v2 keeps every ROI find_roi
+        // produced. (d4sigma_fast already returns 0s, not NaN, for an empty ROI,
+        // so an unlikely degenerate ROI can't poison the sort.)
+        candidates.push_back({d4, r, 0.0, 0.0, 0.0});
     }
 
     if (candidates.empty()) return {};
 
-    // Encircled energy for each candidate (bobcat-specific overlay/chart input).
+    // Slot assignment mirrors poynt server_v2_ui.py exactly: sort every
+    // detection by centroid Y, then take the TOPMOST as B0/RX (sorted_b[0]) and
+    // the BOTTOMMOST as B1/TX (sorted_b[-1]). No intensity ranking, no
+    // nearest-neighbour tracking — pure per-frame position. This drops any
+    // spurious middle detection without an explicit reject filter, exactly like
+    // the server. Verified on hardware: smaller detector cy = top of display.
+    std::sort(candidates.begin(), candidates.end(),
+              [](const BeamCandidate& a, const BeamCandidate& b) {
+                  return a.d4.cy < b.d4.cy;
+              });
+    std::vector<BeamCandidate> picked;
+    picked.push_back(candidates.front());            // top    -> B0 / RX
+    if (candidates.size() > 1)
+        picked.push_back(candidates.back());         // bottom -> B1 / TX
+    candidates.swap(picked);
+    const int numBeams = static_cast<int>(candidates.size());
+
+    // Encircled energy for the selected beams (bobcat overlay/chart input).
     for (auto& cand : candidates) {
         double eeRadius = std::max(cand.d4.dx, cand.d4.dy) / 2.0;
         cand.encircledEnergy = ComputeEncircledEnergy(floatMat, cand.d4.cx, cand.d4.cy,
                                                       eeRadius, cand.d4.roi,
                                                       &cand.circleEnergy, &cand.totalEnergy);
     }
-
-    // Rank by intensity, keep top maxBeams (B0/B1 slot pipeline constraint).
-    std::sort(candidates.begin(), candidates.end(),
-              [](const BeamCandidate& a, const BeamCandidate& b) {
-                  return a.intensity > b.intensity;
-              });
-    int numBeams = std::min(config.maxBeams, static_cast<int>(candidates.size()));
-    candidates.resize(numBeams);
-
-    // Deterministic slot assignment matching poynt server_v2_ui.py: pure
-    // per-frame sort by centroid Y, no nearest-neighbour tracking — that
-    // determinism is what makes RX/TX stable as long as the two beams stay
-    // vertically separated.
-    //   Verified on hardware: smaller detector cy = TOP of the display.
-    // We want B0 = RX = top beam and B1 = TX = bottom beam, so sort ascending
-    // (B0 = smallest cy).
-    std::sort(candidates.begin(), candidates.end(),
-              [](const BeamCandidate& a, const BeamCandidate& b) {
-                  return a.d4.cy < b.d4.cy;
-              });
 
     const double halfX = static_cast<double>(width) / 2.0;
     const double halfY = static_cast<double>(height) / 2.0;

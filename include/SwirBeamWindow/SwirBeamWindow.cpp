@@ -511,12 +511,20 @@ void SwirBeamWindow::OnNewFrame(const CameraFrameData& frameData)
         now - m_lastInvalidateTime).count();
     if (timeSinceLastInvalidate >= 30) {
         m_lastInvalidateTime = now;
-        // Only invalidate image area — skip repainting the control panel
+        // Invalidate the image area plus the beam-crop strip — skip the control
+        // panel. Including the strip makes the crops refresh at the frame rate
+        // instead of only on full-window invalidations.
         if (m_lastRenderW > 0 && m_lastRenderH > 0) {
-            RECT imageInvalidRect = { m_lastRenderX, 0,
-                                      m_lastRenderX + m_lastRenderW + 1,
-                                      m_lastRenderY + m_lastRenderH + 1 };
-            InvalidateRect(m_hwnd, &imageInvalidRect, FALSE);
+            RECT invalid = { m_lastRenderX, 0,
+                             m_lastRenderX + m_lastRenderW + 1,
+                             m_lastRenderY + m_lastRenderH + 1 };
+            const RECT strip = m_lastStripRect;
+            if (strip.right > strip.left && strip.bottom > strip.top) {
+                if (strip.left   < invalid.left)   invalid.left   = strip.left;
+                if (strip.right  > invalid.right)  invalid.right  = strip.right;
+                if (strip.bottom > invalid.bottom) invalid.bottom = strip.bottom;
+            }
+            InvalidateRect(m_hwnd, &invalid, FALSE);
         } else {
             InvalidateRect(m_hwnd, nullptr, FALSE);
         }
@@ -2811,27 +2819,11 @@ void SwirBeamWindow::StartDetectionThread()
             const double detectMs = std::chrono::duration<double, std::milli>(
                 std::chrono::steady_clock::now() - detectStart).count();
 
-            // Histogram: keep last DETECT_TIMING_SIZE timings, log mean+p95 every 100.
+            // Keep the rolling timing histogram for diagnostics, but don't spam
+            // the console with the per-100-frame mean/p95 summary.
             m_detectTimings[m_detectTimingIdx] = detectMs;
             m_detectTimingIdx = (m_detectTimingIdx + 1) % DETECT_TIMING_SIZE;
             if (m_detectTimingCount < DETECT_TIMING_SIZE) ++m_detectTimingCount;
-            if (++m_detectStatsCount >= 100 && m_detectTimingCount > 0) {
-                m_detectStatsCount = 0;
-                std::vector<double> sorted(m_detectTimings.begin(),
-                                           m_detectTimings.begin() + m_detectTimingCount);
-                std::sort(sorted.begin(), sorted.end());
-                double sum = 0.0;
-                for (double v : sorted) sum += v;
-                double mean = sum / sorted.size();
-                size_t p95idx = static_cast<size_t>(sorted.size() * 0.95);
-                if (p95idx >= sorted.size()) p95idx = sorted.size() - 1;
-                std::cout << "[BeamDetect] detect-time mean=" << std::fixed
-                          << std::setprecision(1) << mean
-                          << "ms  p95=" << sorted[p95idx]
-                          << "ms  max=" << sorted.back()
-                          << "ms  (n=" << sorted.size() << ")"
-                          << std::endl;
-            }
 
             // Miss tracking (counter retained for stats; per-frame "miss x1"
             // and "recovered after N" lines are intentionally not logged
@@ -2943,12 +2935,13 @@ void SwirBeamWindow::StartDetectionThread()
                     m_beamDisplayResults = results;
                 }
 
-                // Push peak intensity into history ring buffers.
+                // Push saturated-pixel count into the history ring buffers
+                // (the top-right charts track count of 255-valued pixels).
                 // No outlier rejection — every detected sample goes in as-is.
                 for (size_t bi = 0; bi < m_beamResults.size() && bi < 2; ++bi) {
                     int idx = static_cast<int>(bi);
                     int wi = m_ceHistoryIndex[idx];
-                    m_ceHistory[idx][wi] = static_cast<double>(m_beamResults[bi].peakIntensity);
+                    m_ceHistory[idx][wi] = static_cast<double>(m_beamResults[bi].saturatedPixelCount);
                     m_eeHistory[idx][wi] = m_beamResults[bi].encircledEnergy * 100.0;
                     m_ceHistoryIndex[idx] = (wi + 1) % CE_HISTORY_SIZE;
                     if (m_ceHistoryCount[idx] < CE_HISTORY_SIZE) ++m_ceHistoryCount[idx];
@@ -3181,6 +3174,11 @@ void SwirBeamWindow::OnPaint()
         RenderFrame(m_memDC, imageRect);
         DrawOverlays(m_memDC);
 
+        // Remember the strip rect so OnNewFrame's per-frame invalidate can
+        // include it (otherwise BeginPaint clips the present to the image area
+        // and the crops only refresh on full-window invalidations).
+        m_lastStripRect = drawStrip ? stripRect : RECT{0, 0, 0, 0};
+
         // Bottom-strip beam crop tiles
         if (drawStrip) {
             Gdiplus::Graphics gfx(m_memDC);
@@ -3286,11 +3284,17 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
     case WM_ERASEBKGND:
         return 1;
     case WM_USER + 1:
-        // Beam detection thread requests repaint (image area only)
+        // Beam detection thread requests repaint (image area + crop strip)
         if (m_lastRenderW > 0 && m_lastRenderH > 0) {
             RECT imgRect = { m_lastRenderX, 0,
                              m_lastRenderX + m_lastRenderW + 1,
                              m_lastRenderY + m_lastRenderH + 1 };
+            const RECT strip = m_lastStripRect;
+            if (strip.right > strip.left && strip.bottom > strip.top) {
+                if (strip.left   < imgRect.left)   imgRect.left   = strip.left;
+                if (strip.right  > imgRect.right)  imgRect.right  = strip.right;
+                if (strip.bottom > imgRect.bottom) imgRect.bottom = strip.bottom;
+            }
             InvalidateRect(hwnd, &imgRect, FALSE);
         } else {
             InvalidateRect(hwnd, nullptr, FALSE);

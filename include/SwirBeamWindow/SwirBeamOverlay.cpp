@@ -330,12 +330,12 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
     static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
     static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
 
-    // PK line colors: B0 = cyan, B1 = green
+    // SAT line colors: B0 = cyan, B1 = green
     static const Gdiplus::Color ceColors[2] = {
         Gdiplus::Color(255, 0, 255, 255),
         Gdiplus::Color(255, 0, 255, 100)
     };
-    (void)blobMode;  // PK chart is identical for both detection modes
+    (void)blobMode;  // SAT chart is identical for both detection modes
     (void)eeHistory; // no longer drawn — kept in signature for ABI stability
 
     int chartX = renderX + renderW - CHART_W - MARGIN;
@@ -376,7 +376,7 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
         int n = std::min(count, historySize);
         int startIdx = (ceIndex[bi] - n + historySize) % historySize;
 
-        // --- PK axis ---
+        // --- SAT axis (auto-scaled) ---
         double ceMin = 1e30, ceMax = -1e30;
         for (int i = 0; i < n; ++i) {
             double v = ceHistory[bi][(startIdx + i) % historySize];
@@ -393,7 +393,7 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
         if (n >= 2) {
             float nMinus1 = static_cast<float>(n - 1);
 
-            // Draw PK polyline
+            // Draw SAT polyline
             std::vector<Gdiplus::PointF> pts(n);
             for (int i = 0; i < n; ++i) {
                 double v = ceHistory[bi][(startIdx + i) % historySize];
@@ -408,7 +408,7 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
         // Rebuild cached label strings at ~4 Hz to stop flicker.
         if (rebuildCeCache) {
             int lastIdx = (ceIndex[bi] - 1 + historySize) % historySize;
-            swprintf_s(s_ceLabelBuf[bi], L"B%d PK: %.0f", bi, ceHistory[bi][lastIdx]);
+            swprintf_s(s_ceLabelBuf[bi], L"B%d SAT: %.0f", bi, ceHistory[bi][lastIdx]);
             swprintf_s(s_ceMaxBuf[bi], L"%.0f", ceMax);
             swprintf_s(s_ceMinBuf[bi], L"%.0f", ceMin);
             s_ceLabelValid[bi] = true;
