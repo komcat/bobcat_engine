@@ -93,6 +93,7 @@ SwirBeamWindow::SwirBeamWindow()
     };
     saveDeps.getMicronsPerPixel = [this]() {
         return m_useHalconDetection ? m_halconConfig.micronsPerPixel
+             : m_usePoyntDetection  ? m_poyntConfig.micronsPerPixel
                                      : m_beamConfig.micronsPerPixel;
     };
     saveDeps.getUseBlobMode = [this]() { return m_useBlobDetection; };
@@ -884,6 +885,7 @@ std::vector<SwirBeamSnapshot> SwirBeamWindow::GetBeamSnapshots() const
 #ifdef HAS_HALCON
         m_useHalconDetection ? m_halconConfig.micronsPerPixel :
 #endif
+        m_usePoyntDetection  ? m_poyntConfig.micronsPerPixel :
         m_useBlobDetection   ? m_beamConfig.micronsPerPixel
                              : m_beamConfig.micronsPerPixel;
 
@@ -1321,6 +1323,24 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
         autoSatBtn.toggled = asRunning;
         autoSatBtn.onClick = [this]() { OnAutoSatToggle(); };
         m_buttons.push_back(autoSatBtn);
+    }
+    y += btnHeight + btnSpacing;
+
+    // Row 6: Z JOG (gantry-main Z, fixed 10 um step): Z- | Z+
+    {
+        SwirButton zMinusBtn;
+        zMinusBtn.rect = {btnLeft, y, btnLeft + halfBtnWidth, y + btnHeight};
+        zMinusBtn.label = L"Z- 10um";
+        zMinusBtn.tag = TAG_Z_JOG_MINUS;
+        zMinusBtn.onClick = [this]() { JogGantryZ(-SWIR_Z_JOG_STEP_MM); };
+        m_buttons.push_back(zMinusBtn);
+
+        SwirButton zPlusBtn;
+        zPlusBtn.rect = {btnLeft + halfBtnWidth + btnSpacing, y, btnLeft + btnWidth, y + btnHeight};
+        zPlusBtn.label = L"Z+ 10um";
+        zPlusBtn.tag = TAG_Z_JOG_PLUS;
+        zPlusBtn.onClick = [this]() { JogGantryZ(+SWIR_Z_JOG_STEP_MM); };
+        m_buttons.push_back(zPlusBtn);
     }
     y += btnHeight + btnSpacing;
 
@@ -2605,18 +2625,35 @@ void SwirBeamWindow::OnSwirHeadToggle()
 
 void SwirBeamWindow::LoadBeamConfig()
 {
-    SwirBeamConfigStore::Load(m_beamConfig, m_blobConfig, m_halconConfig,
-                              m_useBlobDetection, m_useHalconDetection,
+    SwirBeamConfigStore::Load(m_beamConfig, m_blobConfig, m_halconConfig, m_poyntConfig,
+                              m_useBlobDetection, m_useHalconDetection, m_usePoyntDetection,
                               m_trackingEnabled, m_trackingMaxJumpPx,
                               m_trackingStaleMax);
 }
 
 void SwirBeamWindow::SaveBeamConfig()
 {
-    SwirBeamConfigStore::Save(m_beamConfig, m_blobConfig, m_halconConfig,
-                              m_useBlobDetection, m_useHalconDetection,
+    SwirBeamConfigStore::Save(m_beamConfig, m_blobConfig, m_halconConfig, m_poyntConfig,
+                              m_useBlobDetection, m_useHalconDetection, m_usePoyntDetection,
                               m_trackingEnabled, m_trackingMaxJumpPx,
                               m_trackingStaleMax);
+}
+
+// Minimal relative Z jog for gantry-main (fixed 10 um step from the panel
+// buttons). Non-blocking so the UI thread stays responsive; interlocks are
+// enforced inside UnifiedMotionManager::MoveToAbs.
+void SwirBeamWindow::JogGantryZ(double dzMm)
+{
+    if (!m_motionManager) {
+        std::cout << "[SwirBeamWindow] Z jog ignored: no motion manager" << std::endl;
+        return;
+    }
+    PositionStruct pos = m_motionManager->GetCurrentPosition("gantry-main");
+    const double newZ = pos.z + dzMm;
+    const bool ok = m_motionManager->MoveToAbs("gantry-main", pos.x, pos.y, newZ, 10.0, false);
+    std::cout << "[SwirBeamWindow] Z jog " << (dzMm >= 0 ? "+" : "")
+              << (dzMm * 1000.0) << "um -> z=" << std::fixed << std::setprecision(4)
+              << newZ << "mm " << (ok ? "ok" : "FAILED") << std::endl;
 }
 
 void SwirBeamWindow::OnEditBeamConfig()
@@ -2764,7 +2801,9 @@ void SwirBeamWindow::StartDetectionThread()
                 results = RunHalconBeamDetection(workData, localW, localH, m_halconConfig);
             } else
 #endif
-            if (m_useBlobDetection) {
+            if (m_usePoyntDetection) {
+                results = RunPoyntDetection(workData, localW, localH, m_poyntConfig);
+            } else if (m_useBlobDetection) {
                 results = RunBlobDetection(workData, localW, localH, m_blobConfig);
             } else {
                 results = RunBeamDetection(workData, localW, localH, m_beamConfig);
@@ -2799,6 +2838,7 @@ void SwirBeamWindow::StartDetectionThread()
             // — they were too chatty in normal operation).
             {
                 int expected = m_useHalconDetection ? m_halconConfig.maxBeams
+                             : m_usePoyntDetection  ? m_poyntConfig.maxBeams
                              : m_useBlobDetection   ? m_blobConfig.maxBeams
                                                     : m_beamConfig.maxBeams;
                 int actual = static_cast<int>(results.size());
@@ -2817,7 +2857,11 @@ void SwirBeamWindow::StartDetectionThread()
                 return dx * dx + dy * dy;
             };
 
-            if (m_trackingEnabled && results.size() >= 2 &&
+            // Poynt mode uses the detector's deterministic per-frame cy-sort
+            // (B0=RX top / B1=TX bottom), matching server_v2_ui.py exactly. The
+            // nearest-neighbour reorder below is for the other modes and would
+            // re-introduce the slot flips poynt is meant to avoid, so skip it.
+            if (m_trackingEnabled && !m_usePoyntDetection && results.size() >= 2 &&
                 m_prevBeams[0].valid && m_prevBeams[1].valid) {
                 const double d00 = sqDist(results[0].d4.cx, results[0].d4.cy,
                                           m_prevBeams[0].cx, m_prevBeams[0].cy);

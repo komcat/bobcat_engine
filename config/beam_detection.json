@@ -38,6 +38,28 @@
         "saturationValue": 255,
         "micronsPerPixel": 0.17
     },
+    "usePoyntDetection": false,
+    "poynt": {
+        "xpeaks": {
+            "height": 1200,
+            "width": 7.5,
+            "distance": -1
+        },
+        "ypeaks": {
+            "height": 600,
+            "width": 7.5,
+            "distance": -1
+        },
+        "combineXThresh": 100.0,
+        "combineYThresh": 50.0,
+        "d4sigmaThreshold": 0.1,
+        "roiWidthFactor": 2.5,
+        "bgCornerBox": 50,
+        "maxBeams": 2,
+        "saturationValue": 255,
+        "excludeSaturated": false,
+        "micronsPerPixel": 0.17
+    },
     "gaQuadrantLabels": {
         "q1": "GA2",
         "q2": "GA2",

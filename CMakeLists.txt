@@ -847,6 +847,7 @@ set(SOURCES
     include/SwirBeamWindow/SwirBeamWindowManager.cpp
     include/SwirBeamWindow/SwirPeakFinder.cpp
     include/SwirBeamWindow/SwirBeamDetector.cpp
+    include/SwirBeamWindow/PoyntBeamDetector.cpp
     include/SwirBeamWindow/SwirBeamOverlay.cpp
     include/SwirBeamWindow/SwirBeamConfigStore.cpp
     include/SwirBeamWindow/SwirWorldMarkerStore.cpp

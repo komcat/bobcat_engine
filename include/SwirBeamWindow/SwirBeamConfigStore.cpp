@@ -10,8 +10,10 @@ namespace SwirBeamConfigStore {
 std::string Load(BeamDetectionConfig& d4,
                  BlobDetectionConfig& blob,
                  HalconBeamDetectionConfig& halcon,
+                 PoyntDetectionConfig& poynt,
                  bool& useBlob,
                  bool& useHalcon,
+                 bool& usePoynt,
                  bool& trackingEnabled,
                  double& trackingMaxJumpPx,
                  int& trackingStaleMax)
@@ -151,7 +153,48 @@ std::string Load(BeamDetectionConfig& d4,
     // Halcon shares the GA quadrant labels with the d4sigma path.
     halcon.gaLabels = d4.gaLabels;
 
-    const char* modeStr = useHalcon ? "halcon" : (useBlob ? "blob" : "d4sigma");
+    // Poynt detection config (faithful port of server_v2.py). Stored under a
+    // nested "poynt" object + a top-level "usePoyntDetection" flag.
+    if (j.contains("usePoyntDetection") && j["usePoyntDetection"].is_boolean()) {
+        usePoynt = j["usePoyntDetection"].get<bool>();
+    }
+    if (j.contains("poynt") && j["poynt"].is_object()) {
+        auto& pj = j["poynt"];
+        auto getPD = [&](const char* key, double& out) {
+            if (pj.contains(key) && pj[key].is_number()) out = pj[key].get<double>();
+        };
+        auto getPI = [&](const char* key, int& out) {
+            if (pj.contains(key) && pj[key].is_number_integer()) out = pj[key].get<int>();
+        };
+        auto getPPeak = [&](const char* key, PeakFindParams& p) {
+            if (!pj.contains(key) || !pj[key].is_object()) return;
+            auto& sub = pj[key];
+            if (sub.contains("height") && sub["height"].is_number()) p.height = sub["height"].get<double>();
+            if (sub.contains("width") && sub["width"].is_number()) p.width = sub["width"].get<double>();
+            if (sub.contains("distance") && sub["distance"].is_number()) p.distance = sub["distance"].get<double>();
+        };
+        getPPeak("xpeaks", poynt.xpeaks);
+        getPPeak("ypeaks", poynt.ypeaks);
+        getPD("combineXThresh", poynt.combineXThresh);
+        getPD("combineYThresh", poynt.combineYThresh);
+        getPD("d4sigmaThreshold", poynt.d4sigmaThreshold);
+        getPD("roiWidthFactor", poynt.roiWidthFactor);
+        getPI("bgCornerBox", poynt.bgCornerBox);
+        getPI("maxBeams", poynt.maxBeams);
+        if (pj.contains("saturationValue") && pj["saturationValue"].is_number_integer()) {
+            poynt.saturationValue = static_cast<uint8_t>(pj["saturationValue"].get<int>());
+        }
+        if (pj.contains("excludeSaturated") && pj["excludeSaturated"].is_boolean()) {
+            poynt.excludeSaturated = pj["excludeSaturated"].get<bool>();
+        }
+        getPD("micronsPerPixel", poynt.micronsPerPixel);
+    }
+    // Poynt shares the GA quadrant labels with the d4sigma path.
+    poynt.gaLabels = d4.gaLabels;
+
+    const char* modeStr = useHalcon ? "halcon"
+                        : (usePoynt ? "poynt"
+                        : (useBlob ? "blob" : "d4sigma"));
     std::cout << "[SwirBeamWindow] Beam config loaded from " << path
               << " (mode: " << modeStr << ")" << std::endl;
     return path;
@@ -160,8 +203,10 @@ std::string Load(BeamDetectionConfig& d4,
 bool Save(const BeamDetectionConfig& d4,
           const BlobDetectionConfig& blob,
           const HalconBeamDetectionConfig& halcon,
+          const PoyntDetectionConfig& poynt,
           bool useBlob,
           bool useHalcon,
+          bool usePoynt,
           bool trackingEnabled,
           double trackingMaxJumpPx,
           int trackingStaleMax)
@@ -224,6 +269,26 @@ bool Save(const BeamDetectionConfig& d4,
         {"saturationValue",     static_cast<int>(halcon.saturationValue)},
         {"micronsPerPixel",     halcon.micronsPerPixel},
         {"detectionDownsample", halcon.detectionDownsample}
+    };
+
+    // Poynt detection config (faithful port of server_v2.py).
+    j["usePoyntDetection"] = usePoynt;
+    j["poynt"] = {
+        {"xpeaks", {{"height", poynt.xpeaks.height},
+                    {"width",  poynt.xpeaks.width},
+                    {"distance", poynt.xpeaks.distance}}},
+        {"ypeaks", {{"height", poynt.ypeaks.height},
+                    {"width",  poynt.ypeaks.width},
+                    {"distance", poynt.ypeaks.distance}}},
+        {"combineXThresh",   poynt.combineXThresh},
+        {"combineYThresh",   poynt.combineYThresh},
+        {"d4sigmaThreshold", poynt.d4sigmaThreshold},
+        {"roiWidthFactor",   poynt.roiWidthFactor},
+        {"bgCornerBox",      poynt.bgCornerBox},
+        {"maxBeams",         poynt.maxBeams},
+        {"saturationValue",  static_cast<int>(poynt.saturationValue)},
+        {"excludeSaturated", poynt.excludeSaturated},
+        {"micronsPerPixel",  poynt.micronsPerPixel}
     };
 
     std::ofstream ofs("config/beam_detection.local.json");

@@ -20,6 +20,7 @@
 #include <chrono>
 #include "camera/CameraFrameData.h"
 #include "SwirBeamDetector.h"
+#include "PoyntBeamDetector.h"
 #include "BeamOptimizer/BeamHillClimb.h"
 #include "BeamOptimizer/BeamScoreProvider.h"
 #include "sequence/SystemCommandHandler.h"  // for SwirBeamSnapshot
@@ -244,6 +245,10 @@ private:
     void OnTECPreset(double temperature);
     void PollTECReadings();
 
+    // Minimal Z jog for gantry-main (fixed 10 um step).
+    static constexpr double SWIR_Z_JOG_STEP_MM = 0.010;  // 10 um
+    void JogGantryZ(double dzMm);
+
     // PSU device discovery
     void DiscoverPSUDevices();
 
@@ -358,6 +363,8 @@ private:
     static constexpr int TAG_AUTO_SAT = 990;
     static constexpr int TAG_TEC_25C = 1000;
     static constexpr int TAG_TEC_30C = 1010;
+    static constexpr int TAG_Z_JOG_MINUS = 1020;
+    static constexpr int TAG_Z_JOG_PLUS = 1030;
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};
@@ -401,8 +408,10 @@ private:
     BeamDetectionConfig m_beamConfig;
     BlobDetectionConfig m_blobConfig;
     HalconBeamDetectionConfig m_halconConfig;
+    PoyntDetectionConfig m_poyntConfig;
     bool m_useBlobDetection = false;     // false=d4sigma, true=blob
     bool m_useHalconDetection = false;   // takes precedence over blob/d4sigma when true
+    bool m_usePoyntDetection = false;    // poynt-faithful mode; precedence below Halcon, above blob/d4sigma
 
     // Beam focus optimization. Worker future + cancel flag live in
     // SwirBeamFocusController; the score provider and config remain here
