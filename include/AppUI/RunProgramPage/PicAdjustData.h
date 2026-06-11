@@ -56,6 +56,8 @@ struct PicAdjustSettings {
     bool overwriteOnComplete = true;    // when true, auto-correction overwrites the saved
                                         // points file with each confirmed re-capture;
                                         // when false the taught file is left untouched
+    bool autoFocusSwir = true;          // when true, auto-correction runs SWIR autofocus
+                                        // after each nav-to-point, before waiting for confirm
 };
 
 struct PicDistanceInfo {

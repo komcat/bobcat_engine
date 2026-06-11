@@ -132,6 +132,9 @@ private:
     QCheckBox*      m_invertDistance       = nullptr;
     QPushButton*    m_applyDistanceBtn     = nullptr;
 
+    // Hex quick-step button (manual)
+    QPushButton*    m_hexDownBtn           = nullptr;
+
     // Manual jog (gantry-main) widgets — right column
     QRadioButton*   m_jogStep2  = nullptr;
     QRadioButton*   m_jogStep5  = nullptr;
@@ -148,6 +151,7 @@ private:
     QLabel*      m_autoStatusLabel     = nullptr;
     QLabel*      m_autoPointNameLabel  = nullptr;
     QCheckBox*   m_overwriteOnComplete = nullptr;  // gate file overwrite of confirmed points
+    QCheckBox*   m_autoFocusSwirCheck  = nullptr;  // run SWIR autofocus after each nav-to-point
     std::array<QLabel*, kPicPointCount> m_autoDots{};
     QPushButton*    m_jogXmBtn  = nullptr;
     QPushButton*    m_jogXpBtn  = nullptr;

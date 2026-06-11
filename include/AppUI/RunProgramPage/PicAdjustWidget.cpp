@@ -2,6 +2,8 @@
 #include "PicAdjustStore.h"
 #include "ApplicationContext.h"
 #include "motions/unified_motion_manager.h"
+#include "VisionCommandHandler.h"
+#include "SequenceContext.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -20,6 +22,8 @@
 #include <QVBoxLayout>
 
 #include <iostream>
+#include <map>
+#include <string>
 
 namespace {
 constexpr const char* kAxes[] = { "X", "Y", "Z" };
@@ -50,6 +54,8 @@ PicAdjustWidget::PicAdjustWidget(ApplicationContext* context, QWidget* parent)
         if (idx >= 0) m_targetDeviceCombo->setCurrentIndex(idx);
     }
     if (m_lockSigns) m_lockSigns->setChecked(m_settings.lockSigns);
+    if (m_overwriteOnComplete) m_overwriteOnComplete->setChecked(m_settings.overwriteOnComplete);
+    if (m_autoFocusSwirCheck)  m_autoFocusSwirCheck->setChecked(m_settings.autoFocusSwir);
     const bool editable = !m_settings.lockSigns;
     if (m_invertU)        m_invertU->setEnabled(editable);
     if (m_invertV)        m_invertV->setEnabled(editable);
@@ -57,7 +63,7 @@ PicAdjustWidget::PicAdjustWidget(ApplicationContext* context, QWidget* parent)
     if (m_invertDistance) m_invertDistance->setEnabled(editable);
     m_loadingSettings = false;
     refreshDistanceLabel();
-    refreshAutoUI();
+    setRowEnabled(true);  // applies lock state to manual buttons (also refreshes auto UI)
 }
 
 PicAdjustWidget::~PicAdjustWidget() {
@@ -83,14 +89,18 @@ void PicAdjustWidget::buildUI() {
             .arg(QString::fromStdString(m_deviceName))
             .arg(m_safeVelocity, 0, 'f', 1));
     headerRow->addWidget(header, /*stretch=*/1);
-    m_lockSigns = new QCheckBox("Lock invert signs");
-    m_lockSigns->setToolTip("When checked, the Invert sign checkboxes below are read-only.");
+    m_lockSigns = new QCheckBox("Lock");
+    m_lockSigns->setToolTip(
+        "When checked, the Invert sign checkboxes and every manual button "
+        "(Capture, Move To, Apply U/V/W, Distance, hex-quick, jog) are disabled "
+        "(grayed). Only the Automated Correction panel stays usable.");
     connect(m_lockSigns, &QCheckBox::toggled, this, [this](bool checked) {
         if (m_invertU)        m_invertU->setEnabled(!checked);
         if (m_invertV)        m_invertV->setEnabled(!checked);
         if (m_invertW)        m_invertW->setEnabled(!checked);
         if (m_invertDistance) m_invertDistance->setEnabled(!checked);
-        onSettingsChanged();
+        onSettingsChanged();              // persists m_settings.lockSigns
+        setRowEnabled(!m_moveInFlight);   // gray/un-gray manual buttons now
     });
     headerRow->addWidget(m_lockSigns);
     root->addLayout(headerRow);
@@ -318,9 +328,9 @@ void PicAdjustWidget::buildUI() {
     // Quick action: drop hex-right by a fixed 150 µm in Z (e.g. clearance before retest)
     auto* hexQuickBox = new QGroupBox("Hex quick step");
     auto* hexQuickLayout = new QVBoxLayout(hexQuickBox);
-    auto* hexDownBtn = new QPushButton("Move hex-right down 150 µm (X−)");
-    connect(hexDownBtn, &QPushButton::clicked, this, &PicAdjustWidget::onMoveHexDownClicked);
-    hexQuickLayout->addWidget(hexDownBtn);
+    m_hexDownBtn = new QPushButton("Move hex-right down 150 µm (X−)");
+    connect(m_hexDownBtn, &QPushButton::clicked, this, &PicAdjustWidget::onMoveHexDownClicked);
+    hexQuickLayout->addWidget(m_hexDownBtn);
     rightCol->addWidget(hexQuickBox);
 
     // Automated correction: navigate to each saved point in order, pause for
@@ -349,9 +359,22 @@ void PicAdjustWidget::buildUI() {
     connect(m_overwriteOnComplete, &QCheckBox::toggled, this, &PicAdjustWidget::onSettingsChanged);
     autoLayout->addWidget(m_overwriteOnComplete);
 
+    m_autoFocusSwirCheck = new QCheckBox("Auto-focus SWIR after move (before confirm)");
+    m_autoFocusSwirCheck->setChecked(m_settings.autoFocusSwir);
+    m_autoFocusSwirCheck->setToolTip(
+        "When checked, the sequence runs SWIR autofocus after navigating to each point "
+        "and before waiting for your confirmation.");
+    connect(m_autoFocusSwirCheck, &QCheckBox::toggled, this, &PicAdjustWidget::onSettingsChanged);
+    autoLayout->addWidget(m_autoFocusSwirCheck);
+
     auto* confirmRow = new QHBoxLayout();
     m_captureContinueBtn = new QPushButton("Capture && Continue");
     m_captureContinueBtn->setEnabled(false);
+    m_captureContinueBtn->setMinimumHeight(44);
+    m_captureContinueBtn->setStyleSheet(
+        "QPushButton { background-color: #ff8c00; color: black; font-weight: bold; font-size: 16px; padding: 8px; }"
+        "QPushButton:hover { background-color: #ffa733; }"
+        "QPushButton:disabled { background-color: #555; color: #888; }");
     connect(m_captureContinueBtn, &QPushButton::clicked, this, &PicAdjustWidget::onCaptureContinueClicked);
     confirmRow->addWidget(m_captureContinueBtn);
     m_autoPointNameLabel = new QLabel("---");
@@ -387,6 +410,11 @@ void PicAdjustWidget::buildUI() {
 
     m_abortAutoBtn = new QPushButton("Abort");
     m_abortAutoBtn->setEnabled(false);
+    m_abortAutoBtn->setMinimumHeight(44);
+    m_abortAutoBtn->setStyleSheet(
+        "QPushButton { background-color: #d9302c; color: white; font-weight: bold; font-size: 16px; padding: 8px; }"
+        "QPushButton:hover { background-color: #e85650; }"
+        "QPushButton:disabled { background-color: #555; color: #888; }");
     connect(m_abortAutoBtn, &QPushButton::clicked, this, &PicAdjustWidget::onAbortAutoClicked);
     autoLayout->addWidget(m_abortAutoBtn);
 
@@ -498,26 +526,36 @@ void PicAdjustWidget::startMoveToAsync(int slot) {
 }
 
 void PicAdjustWidget::setRowEnabled(bool enabled) {
+    // When "Lock" is checked, every manual teach / move / apply button is
+    // disabled (grayed) so that only the Automated Correction panel can drive
+    // the system. Jog is the one exception: it stays usable while the auto
+    // sequence is running so the operator can fine-tune the crosshair at each
+    // WaitConfirm step.
+    const bool locked = m_settings.lockSigns;
+    const bool manualMove = enabled && !locked;
     for (int i = 0; i < kPicPointCount; ++i) {
-        if (m_captureBtns[i]) m_captureBtns[i]->setEnabled(enabled);
-        if (m_moveBtns[i])    m_moveBtns[i]->setEnabled(enabled);
+        if (m_captureBtns[i]) m_captureBtns[i]->setEnabled(manualMove);
+        if (m_moveBtns[i])    m_moveBtns[i]->setEnabled(manualMove);
     }
     // Manual action buttons stay disabled during automation, even when no
     // motion is in flight (between auto steps), to prevent the user from
-    // hijacking the sequence.
-    const bool manualOk = enabled && !m_autoMode;
+    // hijacking the sequence — and whenever Lock is checked.
+    const bool manualOk = enabled && !m_autoMode && !locked;
     if (m_applyUBtn)        m_applyUBtn->setEnabled(manualOk);
     if (m_applyVBtn)        m_applyVBtn->setEnabled(manualOk);
     if (m_applyWBtn)        m_applyWBtn->setEnabled(manualOk);
     if (m_applyDistanceBtn) m_applyDistanceBtn->setEnabled(manualOk);
-    // Jog must remain usable in WaitConfirm states for crosshair fine-tune,
-    // so it's only gated on motion-in-flight, not auto mode.
-    if (m_jogXmBtn) m_jogXmBtn->setEnabled(enabled);
-    if (m_jogXpBtn) m_jogXpBtn->setEnabled(enabled);
-    if (m_jogYmBtn) m_jogYmBtn->setEnabled(enabled);
-    if (m_jogYpBtn) m_jogYpBtn->setEnabled(enabled);
-    if (m_jogZmBtn) m_jogZmBtn->setEnabled(enabled);
-    if (m_jogZpBtn) m_jogZpBtn->setEnabled(enabled);
+    if (m_hexDownBtn)       m_hexDownBtn->setEnabled(manualOk);
+    // Jog must remain usable in WaitConfirm states for crosshair fine-tune, so
+    // it's gated on motion-in-flight and on Lock — but Lock is bypassed while
+    // the auto sequence is running.
+    const bool jogOk = enabled && (!locked || m_autoMode);
+    if (m_jogXmBtn) m_jogXmBtn->setEnabled(jogOk);
+    if (m_jogXpBtn) m_jogXpBtn->setEnabled(jogOk);
+    if (m_jogYmBtn) m_jogYmBtn->setEnabled(jogOk);
+    if (m_jogYpBtn) m_jogYpBtn->setEnabled(jogOk);
+    if (m_jogZmBtn) m_jogZmBtn->setEnabled(jogOk);
+    if (m_jogZpBtn) m_jogZpBtn->setEnabled(jogOk);
     // Auto-panel button state is managed centrally by refreshAutoUI().
     refreshAutoUI();
 }
@@ -796,16 +834,18 @@ void PicAdjustWidget::autoNavigateAsync(PicPointId target) {
     m_moveInFlight = true;
 
     auto* mm = m_context->motionManager;
+    ApplicationContext* ctx = m_context;
     const std::string dev = m_deviceName;
     const double safe = m_gantryAutoVelocity;
     const PicPoint pt = p;
     const QString name = QString::fromUtf8(PicPointName(target));
+    const bool doAutoFocus = m_settings.autoFocusSwir;
 
     appendLog(QString("Auto-nav to %1: X=%2 Y=%3 Z=%4 at %5 mm/s")
         .arg(name).arg(pt.x, 0, 'f', 4).arg(pt.y, 0, 'f', 4).arg(pt.z, 0, 'f', 4)
         .arg(safe, 0, 'f', 1));
 
-    m_moveFuture = std::async(std::launch::async, [this, mm, dev, pt, name, safe]() {
+    m_moveFuture = std::async(std::launch::async, [this, mm, ctx, dev, pt, name, safe, doAutoFocus]() {
         const char* axes[3] = { "X", "Y", "Z" };
         double v0[3] = { 0.0, 0.0, 0.0 };
         bool have[3] = { false, false, false };
@@ -820,9 +860,36 @@ void PicAdjustWidget::autoNavigateAsync(PicPointId target) {
         const QString line = ok
             ? QString("Auto-nav to %1 complete").arg(name)
             : QString("Auto-nav to %1 FAILED").arg(name);
+        QMetaObject::invokeMethod(this, [this, line]() { appendLog(line); }, Qt::QueuedConnection);
 
-        QMetaObject::invokeMethod(this, [this, line, ok]() {
-            appendLog(line);
+        // After arriving, run SWIR autofocus (blocking, on this worker thread) before
+        // handing control back to the operator to confirm crosshair placement.
+        if (ok && doAutoFocus && ctx) {
+            QMetaObject::invokeMethod(this,
+                [this, name]() { appendLog(QString("Auto-focus SWIR for %1...").arg(name)); },
+                Qt::QueuedConnection);
+            VisionCommandHandler vh(ctx);
+            SequenceContext seqCtx;
+            std::string afErr;
+            std::map<std::string, std::string> afParams = {
+                {"motion_device", "gantry-main"},
+                {"camera",         "swir_camera"},
+                {"z_range_mm",     "0.1"},
+                {"z_step_mm",      "0.01"},
+                {"settle_time_ms", "100"},
+                {"use_center_roi", "true"},
+                {"roi_width",      "300"},
+                {"roi_height",     "300"},
+                {"context_prefix", "autofocus"}
+            };
+            const bool afOk = vh.ExecuteCommand(nullptr, "vision", "auto_focus", afParams, afErr, &seqCtx);
+            const QString afLine = afOk
+                ? QString("Auto-focus SWIR complete for %1").arg(name)
+                : QString("Auto-focus SWIR FAILED for %1: %2").arg(name, QString::fromStdString(afErr));
+            QMetaObject::invokeMethod(this, [this, afLine]() { appendLog(afLine); }, Qt::QueuedConnection);
+        }
+
+        QMetaObject::invokeMethod(this, [this, ok]() {
             m_moveInFlight = false;
             if (!ok) {
                 m_autoAbortRequested = true;
@@ -1183,6 +1250,7 @@ void PicAdjustWidget::onLoadClicked() {
     }
     if (m_lockSigns) m_lockSigns->setChecked(m_settings.lockSigns);
     if (m_overwriteOnComplete) m_overwriteOnComplete->setChecked(m_settings.overwriteOnComplete);
+    if (m_autoFocusSwirCheck)  m_autoFocusSwirCheck->setChecked(m_settings.autoFocusSwir);
     {
         const bool editable = !m_settings.lockSigns;
         if (m_invertU)        m_invertU->setEnabled(editable);
@@ -1192,7 +1260,7 @@ void PicAdjustWidget::onLoadClicked() {
     }
     m_loadingSettings = false;
     refreshDistanceLabel();
-    refreshAutoUI();
+    setRowEnabled(!m_moveInFlight);  // applies loaded lock state to manual buttons
     appendLog(QString("Loaded from %1").arg(QString::fromStdString(m_filePath)));
 }
 
@@ -1206,6 +1274,7 @@ void PicAdjustWidget::onSettingsChanged() {
     if (m_targetDeviceCombo)  m_settings.targetDevice    = m_targetDeviceCombo->currentText().toStdString();
     if (m_lockSigns)          m_settings.lockSigns       = m_lockSigns->isChecked();
     if (m_overwriteOnComplete) m_settings.overwriteOnComplete = m_overwriteOnComplete->isChecked();
+    if (m_autoFocusSwirCheck)  m_settings.autoFocusSwir       = m_autoFocusSwirCheck->isChecked();
     persistAll();
 }
 
