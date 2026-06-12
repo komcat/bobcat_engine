@@ -28,6 +28,9 @@
 #include <QAbstractItemView>
 #include <QMessageBox>
 #include <QDateTime>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QDir>
 
 #include <nlohmann/json.hpp>
 
@@ -464,6 +467,14 @@ void M4AASerialDataWidget::setupUI() {
           this, &M4AASerialDataWidget::onSaveFinalMeasurement);
   footerRow->addWidget(m_saveFinalButton);
 
+  m_openFolderButton = new QPushButton("Open data folder");
+  m_openFolderButton->setToolTip(
+      "Open the monitored data folder (applicationDir/data/<product>) in "
+      "Windows Explorer.");
+  connect(m_openFolderButton, &QPushButton::clicked,
+          this, &M4AASerialDataWidget::onOpenDataFolder);
+  footerRow->addWidget(m_openFolderButton);
+
   footerRow->addStretch(1);
   m_detailsButton = new QPushButton("See details...");
   m_detailsButton->setToolTip(
@@ -866,6 +877,17 @@ void M4AASerialDataWidget::onSelectionChanged() {
   QTreeWidgetItem* item = m_tree->currentItem();
   if (!item) { clearRight(); return; }
   updateRight(item->data(0, Qt::UserRole).toInt());
+}
+
+void M4AASerialDataWidget::onOpenDataFolder() {
+  const QString dir = watchDir();
+  if (dir.isEmpty()) {
+    QMessageBox::warning(this, "Open data folder",
+                         "No product loaded - data folder is unknown.");
+    return;
+  }
+  QDir().mkpath(dir);  // ensure it exists so Explorer has something to open
+  QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
 }
 
 void M4AASerialDataWidget::onSaveFinalMeasurement() {

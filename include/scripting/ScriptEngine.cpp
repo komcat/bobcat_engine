@@ -153,6 +153,14 @@ void ScriptEngine::ClearStopFlag()
     m_stopRequested.store(false);
 }
 
+void ScriptEngine::SetScriptGlobalString(const std::string& name,
+                                         const std::string& value)
+{
+    if (!m_L) return;
+    lua_pushlstring(m_L, value.c_str(), value.size());
+    lua_setglobal(m_L, name.c_str());
+}
+
 // ============================================================================
 // Debugger
 // ============================================================================

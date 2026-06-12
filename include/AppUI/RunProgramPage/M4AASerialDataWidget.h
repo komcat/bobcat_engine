@@ -101,6 +101,7 @@ private slots:
   void onTick();              // routine worker: poll the watch folder
   void onSelectionChanged();  // left-list selection -> refresh right panel
   void onSaveFinalMeasurement();  // export latest A1+A2 pair to <serial>_final.json
+  void onOpenDataFolder();        // open the watch folder in Explorer
 
 private:
   void    setupUI();
@@ -134,6 +135,9 @@ private:
   // Exports the latest MOE-A1 + MOE-A2 entries (the final pass/fail state) to
   // data/final_measurement/<serial>_final.json.
   QPushButton* m_saveFinalButton = nullptr;
+
+  // Opens the monitored data folder (applicationDir/data/<product>) in Explorer.
+  QPushButton* m_openFolderButton = nullptr;
 
   // Labels inside the details dialog. One section per location (MOE-A1, MOE-A2);
   // each shows poynt X/Y for both beams + tx_rx delta + loc/waist/M².

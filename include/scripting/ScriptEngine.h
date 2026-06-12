@@ -36,6 +36,13 @@ public:
     [[nodiscard]] bool IsStopRequested() const { return m_stopRequested.load(); }
     [[nodiscard]] bool IsRunning() const { return m_running.load(); }
 
+    // Set a Lua global string on the persistent Lua state. Unlike the per-run
+    // SequenceContext (recreated by ExecuteFile), globals survive across runs,
+    // so this is the channel for passing a flag/dir from the UI into a script
+    // before launch. MUST be called only when no script is running (no Lua
+    // re-entrancy). Pass an empty value to clear the flag.
+    void SetScriptGlobalString(const std::string& name, const std::string& value);
+
     SequenceContext* GetContext() const { return m_context.get(); }
     SequenceEngine* GetSequenceEngine() const { return m_seqEngine; }
     ApplicationContext* GetAppContext() const { return m_appContext; }

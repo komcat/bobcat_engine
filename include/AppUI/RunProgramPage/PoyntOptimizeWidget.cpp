@@ -10,6 +10,11 @@
 #include "SequenceEngine.h"
 #include "SequencePromptDialog.h"
 #include "M4AASerialDataWidget.h"
+#include "CameraManager.h"
+#include "PowerSupplyManager.h"
+#include "IPowerSupply.h"
+#include "SwirBeamWindow/SwirBeamWindowManager.h"
+#include "dut/DeviceUnderTest.h"
 
 #include <QMessageBox>
 
@@ -19,9 +24,13 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QCheckBox>
 #include <QPlainTextEdit>
 #include <QFont>
 #include <QFileInfo>
+#include <QDir>
+#include <QDateTime>
+#include <QCoreApplication>
 #include <QMetaObject>
 #include <QInputDialog>
 #include <QApplication>
@@ -29,6 +38,9 @@
 #include <QThread>
 #include <Qt>
 
+#include <nlohmann/json.hpp>
+
+#include <fstream>
 #include <future>
 
 namespace {
@@ -119,6 +131,15 @@ void PoyntOptimizeWidget::setupUI() {
   topRow->addSpacing(20);
   topRow->addWidget(m_stopBtn);
   topRow->addStretch(1);
+
+  m_captureImagesCheck = new QCheckBox("Capture images");
+  m_captureImagesCheck->setToolTip(
+    "When checked, a successful Single measurement also saves the SWIR "
+    "raw / overlay / B0(Rx) / B1(Tx) crop PNGs plus a metadata.json "
+    "(camera + exposure, PSU V/I, beam snapshots) into "
+    "data/{product}/{serial}/{timestamp}/.");
+  topRow->addWidget(m_captureImagesCheck);
+
   root->addLayout(topRow);
 
   connect(m_dutInitBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onDutInit);
@@ -383,7 +404,8 @@ QString PoyntOptimizeWidget::resolveScriptPath(const QString& scriptFile) const 
   return QStringLiteral("scripts/") + scriptFile;
 }
 
-bool PoyntOptimizeWidget::launchScript(const QString& scriptFile, const QString& busyLabel) {
+bool PoyntOptimizeWidget::launchScript(const QString& scriptFile, const QString& busyLabel,
+                                      const QString& captureDir) {
   if (!m_context || !m_context->scriptEngine) {
     appendLog(QStringLiteral("[error] script engine unavailable"), "#ef5350");
     setBusy(false);
@@ -403,6 +425,13 @@ bool PoyntOptimizeWidget::launchScript(const QString& scriptFile, const QString&
 
   // Clear the engine's stop flag from any prior Stop click.
   m_context->scriptEngine->ClearStopFlag();
+
+  // Expose the capture directory to the script (empty = no capture). Always
+  // set it so a stale value from a previous capture run can't leak into a
+  // later non-capture run. The script reads POYNT_CAPTURE_DIR and, when
+  // non-empty, saves the SWIR image package under it per measurement location.
+  m_context->scriptEngine->SetScriptGlobalString(
+      "POYNT_CAPTURE_DIR", captureDir.toStdString());
 
   // Wire dialog callbacks so scripts that call bobcat.askConfirm /
   // bobcat.askInput pop a modal here (the script runs on a worker
@@ -477,7 +506,24 @@ void PoyntOptimizeWidget::onAutomate() {
   launchScript(QString::fromUtf8(kAutomateScript), QStringLiteral("Automate correction"));
 }
 void PoyntOptimizeWidget::onSingleMeasurement() {
-  launchScript(QString::fromUtf8(kBaselineScript), QStringLiteral("Single measurement"));
+  // Arm image capture if the operator opted in. The script saves the SWIR
+  // image package per location (MOE-A1, MOE-A2) under m_captureRunDir; we then
+  // write metadata.json there in onScriptCompleted.
+  m_captureRunDir.clear();
+  m_captureOnComplete = false;
+  if (m_captureImagesCheck && m_captureImagesCheck->isChecked()) {
+    m_captureRunDir = buildCaptureDir();
+    if (m_captureRunDir.isEmpty()) {
+      appendLog("[capture] no product/DUT loaded - capture disabled", "#fb8c00");
+    } else {
+      m_captureOnComplete = true;
+    }
+  }
+  if (!launchScript(QString::fromUtf8(kBaselineScript),
+                    QStringLiteral("Single measurement"), m_captureRunDir)) {
+    m_captureOnComplete = false;
+    m_captureRunDir.clear();
+  }
 }
 
 void PoyntOptimizeWidget::onStop() {
@@ -710,6 +756,15 @@ void PoyntOptimizeWidget::onScriptCompleted(bool success, QString errorMessage) 
   } else {
     appendLog(QStringLiteral("[script] FAILED: %1").arg(errorMessage), "#ef5350");
   }
+  // Write the run's metadata.json when the single measurement was armed for
+  // capture (the script already saved the per-location SWIR image packages).
+  const bool doCapture = m_captureOnComplete;
+  const QString runDir = m_captureRunDir;
+  m_captureOnComplete = false;
+  m_captureRunDir.clear();
+  if (success && doCapture && !runDir.isEmpty()) {
+    writeCaptureMetadata(runDir);
+  }
   if (m_scriptWorker) {
     m_scriptWorker->deleteLater();
     m_scriptWorker = nullptr;
@@ -726,6 +781,150 @@ void PoyntOptimizeWidget::onScriptCompleted(bool success, QString errorMessage) 
 
 void PoyntOptimizeWidget::onScriptOutput(QString message) {
   appendLog(message);
+}
+
+QString PoyntOptimizeWidget::buildCaptureDir() const {
+  if (!m_context) return QString();
+
+  QString product;
+  if (m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    product = QString::fromStdString(
+        m_context->productPositionManager->GetCurrentProductName());
+  }
+  if (product.isEmpty()) return QString();
+
+  QString serial;
+  if (m_context->currentDUT) {
+    serial = QString::fromStdString(m_context->currentDUT->getSerialNumber());
+  }
+  if (serial.isEmpty()) return QString();
+
+  // Sanitize for use as a path segment (strip path-illegal chars).
+  auto sanitize = [](QString s) -> QString {
+    static const QString illegal = QStringLiteral("<>:\"/\\|?*");
+    s = s.trimmed();
+    for (QChar& c : s) {
+      if (c.unicode() < 0x20 || illegal.contains(c)) c = QChar('_');
+    }
+    return s.isEmpty() ? QStringLiteral("unknown") : s;
+  };
+
+  // Filesystem-safe UTC stamp (no colons). Relative path so it resolves the
+  // same way the script's SaveSwirPackage / DUT-JSON writes do (CWD = exe dir).
+  const QString fsStamp =
+      QDateTime::currentDateTimeUtc().toString("yyyyMMdd'T'HHmmsszzz'Z'");
+  return QStringLiteral("data/") + sanitize(product) + "/" + sanitize(serial) +
+         "/" + fsStamp;
+}
+
+void PoyntOptimizeWidget::writeCaptureMetadata(const QString& runDir) {
+  using nlohmann::json;
+  if (!m_context || runDir.isEmpty()) return;
+
+  QDir().mkpath(runDir);  // run dir should exist (script wrote subfolders)
+
+  json meta;
+  if (m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    meta["product"] = m_context->productPositionManager->GetCurrentProductName();
+  }
+  if (m_context->currentDUT) {
+    meta["serial_number"] = m_context->currentDUT->getSerialNumber();
+  }
+  meta["timestamp"] = QDateTime::currentDateTimeUtc()
+                          .toString("yyyy-MM-dd'T'HH:mm:ss.zzz'Z'")
+                          .toStdString();
+
+  // Cameras: name + exposure at capture time.
+  json cameras = json::array();
+  if (m_context->cameraManager) {
+    for (const auto& id : m_context->cameraManager->GetCameraIds()) {
+      const auto st = m_context->cameraManager->GetCameraStatus(id);
+      cameras.push_back({
+          {"id", st.id},
+          {"model", st.modelName},
+          {"serial", st.serialNumber},
+          {"connected", st.connected},
+          {"exposure_time_us", st.currentExposure.exposure_time},
+          {"gain", st.currentExposure.gain},
+          {"frame_rate_fps", st.currentExposure.frame_rate},
+      });
+    }
+  }
+  meta["cameras"] = cameras;
+
+  // Power supplies: name + live voltage/current readback.
+  json psus = json::array();
+  if (m_context->powerSupplyManager) {
+    for (const auto& name : m_context->powerSupplyManager->getDeviceNames()) {
+      auto psu = m_context->powerSupplyManager->getPowerSupply(name);
+      if (!psu) continue;
+      const bool connected = psu->isConnected();
+      json e;
+      e["name"]      = name;
+      e["connected"] = connected;
+      if (connected) {
+        e["voltage_v"] = psu->readVoltage(1);
+        e["current_a"] = psu->readCurrent(1);
+      }
+      psus.push_back(e);
+    }
+  }
+  meta["power_supplies"] = psus;
+
+  // Beam snapshots (B0/B1) — end-of-run state (the last location measured).
+  json beams = json::array();
+  if (m_context->swirBeamWindowManager) {
+    for (const auto& b : m_context->swirBeamWindowManager->getBeamSnapshots()) {
+      beams.push_back({
+          {"label", b.label},
+          {"ga_label", b.gaLabel},
+          {"cx_px", b.cx_px},
+          {"cy_px", b.cy_px},
+          {"dx_px", b.dx_px},
+          {"dy_px", b.dy_px},
+          {"peak_intensity", b.peakIntensity},
+          {"encircled_energy", b.encircledEnergy},
+          {"saturated", b.saturated},
+          {"saturated_pixel_count", b.saturatedPixelCount},
+          {"microns_per_pixel", b.micronsPerPixel},
+      });
+    }
+  }
+  meta["beams"] = beams;
+
+  // Per-location image folders the script produced (e.g. MOE-A1, MOE-A2).
+  json locations = json::object();
+  QDir dir(runDir);
+  const QStringList subDirs =
+      dir.entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+  for (const QString& loc : subDirs) {
+    QDir locDir(dir.filePath(loc));
+    json files = json::array();
+    for (const QString& f :
+         locDir.entryList(QStringList{"*.png"}, QDir::Files, QDir::Name)) {
+      files.push_back(f.toStdString());
+    }
+    locations[loc.toStdString()] = files;
+  }
+  meta["locations"] = locations;
+
+  const QString metaPath = runDir + "/metadata.json";
+  std::ofstream out(metaPath.toStdString());
+  if (!out.is_open()) {
+    appendLog(QStringLiteral("[capture] failed to write %1").arg(metaPath),
+              "#ef5350");
+    return;
+  }
+  out << meta.dump(2);
+  out.close();
+
+  appendLog(
+      QStringLiteral("[capture] saved %1 location image set(s) + metadata to %2")
+          .arg(subDirs.size())
+          .arg(runDir),
+      "#4caf50");
 }
 
 void PoyntOptimizeWidget::appendLog(const QString& line, const QString& color) {

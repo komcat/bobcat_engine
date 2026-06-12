@@ -30,6 +30,7 @@
 
 class QLabel;
 class QPushButton;
+class QCheckBox;
 class QGroupBox;
 class QPlainTextEdit;
 class ScriptWorker;
@@ -86,7 +87,11 @@ private:
   QString resolveScriptPath(const QString& scriptFile) const;
   // Start a ScriptWorker for the resolved script. Returns false if the
   // engine is unavailable or another job is already running.
-  bool launchScript(const QString& scriptFile, const QString& busyLabel);
+  // captureDir (relative, e.g. "data/{product}/{serial}/{stamp}") is exposed
+  // to the script as the Lua global POYNT_CAPTURE_DIR so it can save the SWIR
+  // image package per measurement location; empty disables capture.
+  bool launchScript(const QString& scriptFile, const QString& busyLabel,
+                    const QString& captureDir = QString());
   // Background-jog helper: relative move on hex-right, then chain into
   // CLAUDE_step1_baseline.lua via launchScript() on success.
   void jogThenBaseline(const QString& axis, double signedDistance,
@@ -94,6 +99,15 @@ private:
   // Background absolute move on gantry-main to a saved named position.
   // No baseline chain. Used by Move to MOE-A1 / MOE-A2.
   void moveToNamedGantryPosition(const char* name);
+  // Compute the per-run capture directory ("data/{product}/{serial}/{stamp}",
+  // relative to the exe working dir) for a single measurement, or an empty
+  // string if no product/DUT is available. Stamp is filesystem-safe UTC.
+  QString buildCaptureDir() const;
+  // When "Capture images" is checked, called after a successful single
+  // measurement: the script has already saved the per-location SWIR image
+  // packages under runDir/{location}/; this writes runDir/metadata.json with
+  // the camera names + exposure, PSU V/I, and beam snapshots. UI thread.
+  void writeCaptureMetadata(const QString& runDir);
   // Save current gantry-main position as the given named position. Always
   // shows a modal dialog with the delta vs. the existing saved value (or
   // "(no previous value)" when the name is unknown) and only writes on
@@ -113,6 +127,7 @@ private:
   QPushButton* m_automateBtn  = nullptr;
   QPushButton* m_singleBtn    = nullptr;
   QPushButton* m_stopBtn      = nullptr;
+  QCheckBox*   m_captureImagesCheck = nullptr;  // capture+save images on single measure
   QLabel*      m_busyLabel    = nullptr;
 
   // Translation group.
@@ -153,6 +168,13 @@ private:
   double m_translationStepUm     = 0.5;
   // Rotation step is kept in millideg for display; converted to deg for motion.
   double m_rotationStepMilliDeg  = 10.0;
+
+  // Set when a single measurement is launched with "Capture images" checked;
+  // consumed in onScriptCompleted to write the run's metadata.json.
+  bool             m_captureOnComplete = false;
+  // Capture directory for the in-flight single measurement (relative path);
+  // shared with the script via POYNT_CAPTURE_DIR and reused for metadata.
+  QString          m_captureRunDir;
 
   // Async-state: at most one script OR one move is in flight at any time.
   bool             m_busy = false;
