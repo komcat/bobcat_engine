@@ -29,6 +29,7 @@
 #include <QSet>
 #include <QStandardPaths>
 #include <QDesktopServices>
+#include <QFileDialog>
 #include <QUrl>
 
 #include <filesystem>
@@ -122,6 +123,11 @@ DataBackupPage::DataBackupPage(ApplicationContext* context, QWidget* parent)
     , m_autoBackupCheck(nullptr)
     , m_autoIntervalSpin(nullptr)
     , m_autoStatusLabel(nullptr)
+    , m_destLocalCheck(nullptr)
+    , m_destAppDataCheck(nullptr)
+    , m_destCustomCheck(nullptr)
+    , m_customPathEdit(nullptr)
+    , m_browseCustomBtn(nullptr)
     , m_backupList(nullptr)
     , m_backupCountLabel(nullptr)
     , m_detailTimestamp(nullptr)
@@ -138,6 +144,7 @@ DataBackupPage::DataBackupPage(ApplicationContext* context, QWidget* parent)
 {
     setupUI();
     loadAutoBackupSettings();
+    loadDestinationSettings();
     refreshBackupList();
 }
 
@@ -297,6 +304,89 @@ void DataBackupPage::setupUI()
 
     createLayout->addStretch();
     mainLayout->addWidget(createWidget);
+
+    // -----------------------------------------------------------------------
+    // BACKUP DESTINATIONS  (which folders each backup is copied to)
+    // -----------------------------------------------------------------------
+    QWidget* destWidget = new QWidget();
+    destWidget->setStyleSheet(
+        "QWidget { background-color: #19233a; border-bottom: 1px solid #2d3e5f; }");
+    destWidget->setFixedHeight(46);
+    QHBoxLayout* destLayout = new QHBoxLayout(destWidget);
+    destLayout->setContentsMargins(12, 8, 12, 8);
+    destLayout->setSpacing(10);
+
+    QLabel* destLabel = new QLabel("Backup to:");
+    destLabel->setStyleSheet("color: #aaaaaa; font-size: 12px; font-weight: bold;");
+    destLayout->addWidget(destLabel);
+
+    const char* destChkStyle =
+        "QCheckBox { color: #cccccc; font-size: 12px; spacing: 5px; }"
+        "QCheckBox::indicator { width: 15px; height: 15px; }";
+
+    m_destLocalCheck = new QCheckBox("Local (product)");
+    m_destLocalCheck->setStyleSheet(destChkStyle);
+    m_destLocalCheck->setToolTip("config/<product>/backups/");
+    connect(m_destLocalCheck, &QCheckBox::toggled, this, [this]() {
+        saveDestinationSettings();
+        refreshBackupList();
+    });
+    destLayout->addWidget(m_destLocalCheck);
+
+    m_destAppDataCheck = new QCheckBox("AppData");
+    m_destAppDataCheck->setStyleSheet(destChkStyle);
+    m_destAppDataCheck->setToolTip("%APPDATA%/BobcatEngine/backups/<product>/");
+    connect(m_destAppDataCheck, &QCheckBox::toggled, this, [this]() {
+        saveDestinationSettings();
+        refreshBackupList();
+    });
+    destLayout->addWidget(m_destAppDataCheck);
+
+    m_destCustomCheck = new QCheckBox("Custom folder");
+    m_destCustomCheck->setStyleSheet(destChkStyle);
+    m_destCustomCheck->setToolTip("A user-chosen folder; <product> is appended automatically.");
+    connect(m_destCustomCheck, &QCheckBox::toggled, this, [this]() {
+        updateCustomPathEnabled();
+        saveDestinationSettings();
+        refreshBackupList();
+    });
+    destLayout->addWidget(m_destCustomCheck);
+
+    m_customPathEdit = new QLineEdit();
+    m_customPathEdit->setPlaceholderText(DEFAULT_CUSTOM_PATH);
+    m_customPathEdit->setMinimumWidth(230);
+    m_customPathEdit->setStyleSheet(
+        "QLineEdit { background-color: #2d3748; color: #ffffff; border: 1px solid #3d5a8c; "
+        "border-radius: 4px; padding: 4px 8px; font-size: 12px; }"
+        "QLineEdit:focus { border-color: #5a8fc4; }"
+        "QLineEdit:disabled { background-color: #232a36; color: #666666; border-color: #2d3a4a; }");
+    connect(m_customPathEdit, &QLineEdit::editingFinished, this, [this]() {
+        saveDestinationSettings();
+    });
+    destLayout->addWidget(m_customPathEdit, 1);
+
+    m_browseCustomBtn = new QPushButton("Browse...");
+    m_browseCustomBtn->setFixedHeight(30);
+    m_browseCustomBtn->setStyleSheet(
+        "QPushButton { background-color: #2d3e5f; color: #aaccff; font-size: 12px; "
+        "padding: 4px 14px; border: 1px solid #3d5a8c; border-radius: 4px; }"
+        "QPushButton:hover { background-color: #3d5a8c; color: #ffffff; }"
+        "QPushButton:disabled { background-color: #232a36; color: #666666; border-color: #2d3a4a; }");
+    connect(m_browseCustomBtn, &QPushButton::clicked, this, [this]() {
+        QString start = m_customPathEdit->text().trimmed();
+        if (start.isEmpty()) {
+            start = QStringLiteral("D:/");
+        }
+        QString dir = QFileDialog::getExistingDirectory(
+            this, "Select Custom Backup Folder", start);
+        if (!dir.isEmpty()) {
+            m_customPathEdit->setText(QDir::toNativeSeparators(dir));
+            saveDestinationSettings();
+        }
+    });
+    destLayout->addWidget(m_browseCustomBtn);
+
+    mainLayout->addWidget(destWidget);
 
     // -----------------------------------------------------------------------
     // MAIN BODY: splitter (list | detail)
@@ -753,9 +843,15 @@ void DataBackupPage::startBackupAsync(const QString& type, const QString& name,
         return;
     }
 
+    std::vector<Destination> dests = buildEnabledDestinations();
+    if (dests.empty()) {
+        m_statusLabel->setText("No backup destinations enabled — tick at least one under 'Backup to:'.");
+        m_statusLabel->setStyleSheet("color: #ef4444; font-size: 11px;");
+        return;
+    }
+
     fs::path productDir = getProductDirPath();
-    fs::path localBase  = getBackupBasePath();
-    fs::path remoteBase = getAppDataBackupPath();
+    fs::path dataDir    = getDataDirPath();
 
     // Generate folder name on UI thread (uses QDateTime)
     QString timestamp  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
@@ -773,9 +869,9 @@ void DataBackupPage::startBackupAsync(const QString& type, const QString& name,
     m_statusLabel->setStyleSheet("color: #eab308; font-size: 11px;");
 
     m_backupFuture = std::async(std::launch::async,
-        [this, type, name, description, productDir, localBase, remoteBase, folderName]() {
+        [this, type, name, description, productDir, dataDir, dests, folderName]() {
             return performBackupWork(type, name, description,
-                                     productDir, localBase, remoteBase, folderName);
+                                     productDir, dataDir, dests, folderName);
         });
 
     // Poll for completion using a repeating QTimer (non-blocking)
@@ -799,48 +895,58 @@ void DataBackupPage::startBackupAsync(const QString& type, const QString& name,
 
 DataBackupPage::BackupResult DataBackupPage::performBackupWork(
     const QString& type, const QString& name, const QString& description,
-    const fs::path& productDir, const fs::path& localBase,
-    const fs::path& remoteBase, const QString& folderName)
+    const fs::path& productDir, const fs::path& dataDir,
+    const std::vector<Destination>& dests, const QString& folderName)
 {
     BackupResult result;
-    std::error_code ec;
 
-    // --- Local backup (config/{product}/backups/) ---
-    fs::create_directories(localBase, ec);
-    if (!ec) {
-        fs::path localDir = localBase / folderName.toStdString();
-        fs::create_directories(localDir, ec);
-        if (!ec && copyDirectoryRecursive(productDir, localDir)) {
-            QJsonObject hashes = computeDirectoryHashes(localDir, localDir);
-            if (writeManifest(localDir, type, name, description, hashes)) {
-                result.localOk   = true;
-                result.localPath = QString::fromStdString(localDir.string());
+    for (const Destination& dest : dests) {
+        DestResult dr;
+        dr.label = dest.label;
+
+        std::error_code ec;
+        fs::create_directories(dest.base, ec);
+        if (ec) {
+            dr.error = QString::fromStdString(ec.message());
+            result.dests.push_back(dr);
+            continue;
+        }
+
+        fs::path backupDir = dest.base / folderName.toStdString();
+        fs::create_directories(backupDir, ec);
+        if (ec) {
+            dr.error = QString::fromStdString(ec.message());
+            result.dests.push_back(dr);
+            continue;
+        }
+
+        // Product config goes under config/, serial data under data/.
+        bool copyOk = copyDirectoryRecursive(productDir, backupDir / "config");
+        if (copyOk) {
+            std::error_code dec;
+            if (!dataDir.empty() && fs::exists(dataDir, dec) && !dec) {
+                if (!copyDirectoryRecursive(dataDir, backupDir / "data")) {
+                    copyOk = false;
+                }
+            }
+        }
+
+        if (copyOk) {
+            // Hash everything just copied (keys come out prefixed with config/ and data/).
+            QJsonObject hashes = computeDirectoryHashes(backupDir, backupDir);
+            if (writeManifest(backupDir, type, name, description, hashes)) {
+                dr.ok   = true;
+                dr.path = QString::fromStdString(backupDir.string());
             } else {
-                fs::remove_all(localDir, ec);
+                dr.error = QStringLiteral("manifest write failed");
+                fs::remove_all(backupDir, ec);
             }
         } else {
-            fs::remove_all(localDir, ec);
+            dr.error = QStringLiteral("file copy failed");
+            fs::remove_all(backupDir, ec);
         }
-    }
 
-    // --- AppData redundant backup (%APPDATA%/BobcatEngine/backups/{product}/) ---
-    if (!remoteBase.empty()) {
-        fs::create_directories(remoteBase, ec);
-        if (!ec) {
-            fs::path remoteDir = remoteBase / folderName.toStdString();
-            fs::create_directories(remoteDir, ec);
-            if (!ec && copyDirectoryRecursive(productDir, remoteDir)) {
-                QJsonObject hashes = computeDirectoryHashes(remoteDir, remoteDir);
-                if (writeManifest(remoteDir, type, name, description, hashes)) {
-                    result.remoteOk   = true;
-                    result.remotePath = QString::fromStdString(remoteDir.string());
-                } else {
-                    fs::remove_all(remoteDir, ec);
-                }
-            } else {
-                fs::remove_all(remoteDir, ec);
-            }
-        }
+        result.dests.push_back(dr);
     }
 
     return result;
@@ -853,9 +959,13 @@ void DataBackupPage::startAutoBackupAsync()
         return;
     }
 
+    std::vector<Destination> dests = buildEnabledDestinations();
+    if (dests.empty()) {
+        return;
+    }
+
     fs::path productDir = getProductDirPath();
-    fs::path localBase  = getBackupBasePath();
-    fs::path remoteBase = getAppDataBackupPath();
+    fs::path dataDir    = getDataDirPath();
 
     QString timestamp  = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString folderName = timestamp + "_auto";
@@ -873,8 +983,8 @@ void DataBackupPage::startAutoBackupAsync()
     m_autoStatusLabel->setStyleSheet("color: #888888; font-size: 11px; padding: 0 5px;");
 
     m_backupFuture = std::async(std::launch::async,
-        [this, productDir, localBase, remoteBase, folderName, latestManifest]() {
-            return performAutoBackupWork(productDir, localBase, remoteBase,
+        [this, productDir, dataDir, dests, folderName, latestManifest]() {
+            return performAutoBackupWork(productDir, dataDir, dests,
                                          folderName, latestManifest);
         });
 
@@ -898,8 +1008,8 @@ void DataBackupPage::startAutoBackupAsync()
 }
 
 DataBackupPage::BackupResult DataBackupPage::performAutoBackupWork(
-    const fs::path& productDir, const fs::path& localBase,
-    const fs::path& remoteBase, const QString& folderName,
+    const fs::path& productDir, const fs::path& dataDir,
+    const std::vector<Destination>& dests, const QString& folderName,
     const fs::path& latestManifestPath)
 {
     BackupResult result;
@@ -915,15 +1025,7 @@ DataBackupPage::BackupResult DataBackupPage::performAutoBackupWork(
 
                 if (!doc.isNull() && doc.isObject()) {
                     QJsonObject backupFiles = doc.object().value("files").toObject();
-                    QJsonObject currentFiles = computeDirectoryHashes(productDir, productDir);
-
-                    // Strip out any backups/ entries from the current scan
-                    const QStringList curKeys = currentFiles.keys();
-                    for (const QString& key : curKeys) {
-                        if (key.startsWith("backups/")) {
-                            currentFiles.remove(key);
-                        }
-                    }
+                    QJsonObject currentFiles = computeCurrentProductHashes(productDir, dataDir);
 
                     bool unchanged = (currentFiles.size() == backupFiles.size());
                     if (unchanged) {
@@ -955,7 +1057,7 @@ DataBackupPage::BackupResult DataBackupPage::performAutoBackupWork(
 
     // Changes detected (or no prior backup) — perform the actual backup
     return performBackupWork(QStringLiteral("auto"), QString(), QString(),
-                              productDir, localBase, remoteBase, folderName);
+                              productDir, dataDir, dests, folderName);
 }
 
 void DataBackupPage::onBackupComplete(const BackupResult& result, const QString& type)
@@ -973,24 +1075,36 @@ void DataBackupPage::onBackupComplete(const BackupResult& result, const QString&
         return;
     }
 
-    if (result.localOk && result.remoteOk) {
-        m_statusLabel->setText("Backup saved (local + AppData).");
+    QStringList okLabels;
+    QStringList failLabels;
+    for (const DestResult& d : result.dests) {
+        if (d.ok) {
+            okLabels << d.label;
+        } else {
+            failLabels << d.label;
+        }
+    }
+
+    if (result.dests.empty()) {
+        m_statusLabel->setText("No backup destinations enabled.");
+        m_statusLabel->setStyleSheet("color: #ef4444; font-size: 11px;");
+    } else if (failLabels.isEmpty()) {
+        m_statusLabel->setText("Backup saved (" + okLabels.join(", ") + ").");
         m_statusLabel->setStyleSheet("color: #22c55e; font-size: 11px;");
-    } else if (result.localOk) {
-        m_statusLabel->setText("Backup saved locally. AppData copy failed.");
-        m_statusLabel->setStyleSheet("color: #eab308; font-size: 11px;");
-    } else if (result.remoteOk) {
-        m_statusLabel->setText("Local backup failed. AppData copy saved.");
+    } else if (!okLabels.isEmpty()) {
+        m_statusLabel->setText("Backup saved to " + okLabels.join(", ") +
+                               "; FAILED: " + failLabels.join(", ") + ".");
         m_statusLabel->setStyleSheet("color: #eab308; font-size: 11px;");
     } else {
-        m_statusLabel->setText("Backup failed on both destinations.");
+        m_statusLabel->setText("Backup FAILED (" + failLabels.join(", ") + ").");
         m_statusLabel->setStyleSheet("color: #ef4444; font-size: 11px;");
     }
 
     if (m_context && m_context->logManager) {
-        std::string msg = "Backup complete — local:" +
-            std::string(result.localOk ? "OK" : "FAIL") +
-            " appdata:" + std::string(result.remoteOk ? "OK" : "FAIL");
+        std::string msg = "Backup complete —";
+        for (const DestResult& d : result.dests) {
+            msg += " " + d.label.toStdString() + ":" + (d.ok ? "OK" : "FAIL");
+        }
         m_context->logManager->Info(msg, "DataBackupPage");
     }
 
@@ -1015,16 +1129,20 @@ bool DataBackupPage::restoreFromBackup(const QString& backupPath)
 {
     // Synchronous pre-revert backup before restore
     fs::path productDir = getProductDirPath();
-    fs::path localBase  = getBackupBasePath();
-    fs::path remoteBase = getAppDataBackupPath();
+    fs::path dataDir    = getDataDirPath();
+    std::vector<Destination> dests = buildEnabledDestinations();
     QString timestamp   = QDateTime::currentDateTime().toString("yyyyMMdd_HHmmss");
     QString folderName  = timestamp + "_pre_revert";
 
     BackupResult preRevert = performBackupWork(
         QStringLiteral("pre_revert"), QString(), QString(),
-        productDir, localBase, remoteBase, folderName);
+        productDir, dataDir, dests, folderName);
 
-    if (!preRevert.localOk && !preRevert.remoteOk) {
+    bool preRevertOk = false;
+    for (const DestResult& d : preRevert.dests) {
+        if (d.ok) { preRevertOk = true; break; }
+    }
+    if (!preRevertOk) {
         if (m_context && m_context->logManager) {
             m_context->logManager->Warning(
                 "Pre-revert backup failed — aborting restore.", "DataBackupPage");
@@ -1053,8 +1171,9 @@ bool DataBackupPage::restoreFromBackup(const QString& backupPath)
             break;
         }
 
+        // Directories (config/, data/, recipes/, ...) are walked into, not copied —
+        // not a failure, so don't count them toward `skipped`.
         if (!entry.is_regular_file(ec) || ec) {
-            ++skipped;
             continue;
         }
 
@@ -1069,7 +1188,24 @@ bool DataBackupPage::restoreFromBackup(const QString& backupPath)
             continue;
         }
 
-        fs::path destFile = productDir / rel;
+        // Route by the backup's top-level subfolder:
+        //   config/...  -> product config dir
+        //   data/...    -> serial data dir (<exe>/data/<product>)
+        //   anything else (legacy backups) -> product config dir
+        fs::path destFile;
+        fs::path firstComp = rel.empty() ? fs::path() : *rel.begin();
+        if (firstComp == fs::path("config")) {
+            destFile = productDir / rel.lexically_relative("config");
+        } else if (firstComp == fs::path("data")) {
+            if (dataDir.empty()) {
+                ++skipped;
+                continue;
+            }
+            destFile = dataDir / rel.lexically_relative("data");
+        } else {
+            destFile = productDir / rel;  // legacy layout (config at root)
+        }
+
         fs::create_directories(longPath(destFile.parent_path()), ec);
         if (ec) {
             ++skipped;
@@ -1290,10 +1426,10 @@ void DataBackupPage::refreshBackupList()
     m_backupList->clear();
     clearDetailPanel();
 
-    fs::path backupBase = getBackupBasePath();
+    fs::path backupBase = getListBasePath();
     std::error_code ec;
 
-    if (!fs::exists(backupBase, ec) || ec) {
+    if (backupBase.empty() || !fs::exists(backupBase, ec) || ec) {
         m_backupCountLabel->setText("0 backups");
         return;
     }
@@ -1421,10 +1557,10 @@ void DataBackupPage::clearDetailPanel()
 
 void DataBackupPage::pruneAutoBackups()
 {
-    fs::path backupBase = getBackupBasePath();
+    fs::path backupBase = getListBasePath();
     std::error_code ec;
 
-    if (!fs::exists(backupBase, ec) || ec) {
+    if (backupBase.empty() || !fs::exists(backupBase, ec) || ec) {
         return;
     }
 
@@ -1509,6 +1645,19 @@ fs::path DataBackupPage::getProductDirPath() const
     return fs::path(base.toStdString());
 }
 
+fs::path DataBackupPage::getDataDirPath() const
+{
+    // DUT serial results are written relative to the executable working dir:
+    //   data/<product>/<serial>.json  and  data/<product>/<serial>/images/
+    QString productName = getCurrentProductName();
+    if (productName.isEmpty()) {
+        return fs::path();
+    }
+    QString base = QCoreApplication::applicationDirPath() +
+                   "/data/" + productName;
+    return fs::path(base.toStdString());
+}
+
 fs::path DataBackupPage::getBackupBasePath() const
 {
     fs::path productDir = getProductDirPath();
@@ -1529,6 +1678,89 @@ fs::path DataBackupPage::getAppDataBackupPath() const
         return fs::path();
     }
     return fs::path(appData.toStdString()) / "backups" / productName.toStdString();
+}
+
+fs::path DataBackupPage::getListBasePath() const
+{
+    // The visible backup list / pruning operate on the first enabled destination,
+    // so disabling "Local" still surfaces backups stored elsewhere.
+    if (m_destLocalCheck && m_destLocalCheck->isChecked()) {
+        fs::path p = getBackupBasePath();
+        if (!p.empty()) { return p; }
+    }
+    if (m_destAppDataCheck && m_destAppDataCheck->isChecked()) {
+        fs::path p = getAppDataBackupPath();
+        if (!p.empty()) { return p; }
+    }
+    if (m_destCustomCheck && m_destCustomCheck->isChecked() && m_customPathEdit) {
+        QString cp      = m_customPathEdit->text().trimmed();
+        QString product = getCurrentProductName();
+        if (!cp.isEmpty() && !product.isEmpty()) {
+            return fs::path(cp.toStdString()) / product.toStdString();
+        }
+    }
+    // Fallback: local product backups even if no box is ticked.
+    return getBackupBasePath();
+}
+
+std::vector<DataBackupPage::Destination> DataBackupPage::buildEnabledDestinations() const
+{
+    std::vector<Destination> dests;
+    QString product = getCurrentProductName();
+    if (product.isEmpty()) {
+        return dests;
+    }
+
+    if (m_destLocalCheck && m_destLocalCheck->isChecked()) {
+        fs::path p = getBackupBasePath();
+        if (!p.empty()) {
+            dests.push_back({ QStringLiteral("Local"), p });
+        }
+    }
+    if (m_destAppDataCheck && m_destAppDataCheck->isChecked()) {
+        fs::path p = getAppDataBackupPath();
+        if (!p.empty()) {
+            dests.push_back({ QStringLiteral("AppData"), p });
+        }
+    }
+    if (m_destCustomCheck && m_destCustomCheck->isChecked() && m_customPathEdit) {
+        QString cp = m_customPathEdit->text().trimmed();
+        if (!cp.isEmpty()) {
+            fs::path base = fs::path(cp.toStdString()) / product.toStdString();
+            dests.push_back({ QStringLiteral("Custom"), base });
+        }
+    }
+    return dests;
+}
+
+QJsonObject DataBackupPage::computeCurrentProductHashes(const fs::path& productDir,
+                                                        const fs::path& dataDir)
+{
+    QJsonObject result;
+
+    // Product config -> keys prefixed with "config/" (skip the backups/ subtree).
+    if (!productDir.empty()) {
+        QJsonObject cfg = computeDirectoryHashes(productDir, productDir);
+        const QStringList keys = cfg.keys();
+        for (const QString& key : keys) {
+            if (key.startsWith("backups/")) {
+                continue;
+            }
+            result[QStringLiteral("config/") + key] = cfg.value(key);
+        }
+    }
+
+    // Serial data -> keys prefixed with "data/".
+    std::error_code ec;
+    if (!dataDir.empty() && fs::exists(dataDir, ec) && !ec) {
+        QJsonObject dat = computeDirectoryHashes(dataDir, dataDir);
+        const QStringList keys = dat.keys();
+        for (const QString& key : keys) {
+            result[QStringLiteral("data/") + key] = dat.value(key);
+        }
+    }
+
+    return result;
 }
 
 QString DataBackupPage::getCurrentProductName() const
@@ -1556,17 +1788,9 @@ DataBackupPage::FileChangeSet DataBackupPage::computeChangesVsBackup(int backupI
         return result;
     }
 
-    // Compute current file hashes (skip backups/ directory)
+    // Compute current file hashes: config/ (skips backups/) + data/ serial results.
     QJsonObject currentFiles = const_cast<DataBackupPage*>(this)->
-        computeDirectoryHashes(productDir, productDir);
-
-    // Remove any entries under "backups/" from current scan
-    QStringList currentKeys = currentFiles.keys();
-    for (const QString& key : currentKeys) {
-        if (key.startsWith("backups/")) {
-            currentFiles.remove(key);
-        }
-    }
+        computeCurrentProductHashes(productDir, getDataDirPath());
 
     // If no backup to compare against, everything is "added"
     if (backupIndex < 0 || backupIndex >= static_cast<int>(m_backups.size())) {
@@ -1756,4 +1980,57 @@ void DataBackupPage::loadAutoBackupSettings()
 
     // Apply the loaded state
     onAutoBackupToggled(autoEnabled);
+}
+
+void DataBackupPage::saveDestinationSettings()
+{
+    if (!m_destLocalCheck) {
+        return;
+    }
+    QSettings settings("Fabrinet", "BobcatEngine");
+    settings.setValue("Backup/DestLocal",   m_destLocalCheck->isChecked());
+    settings.setValue("Backup/DestAppData", m_destAppDataCheck->isChecked());
+    settings.setValue("Backup/DestCustom",  m_destCustomCheck->isChecked());
+    settings.setValue("Backup/CustomPath",  m_customPathEdit->text().trimmed());
+}
+
+void DataBackupPage::loadDestinationSettings()
+{
+    if (!m_destLocalCheck) {
+        return;
+    }
+    QSettings settings("Fabrinet", "BobcatEngine");
+    bool local      = settings.value("Backup/DestLocal",   true).toBool();
+    bool appData    = settings.value("Backup/DestAppData", true).toBool();
+    bool custom     = settings.value("Backup/DestCustom",  true).toBool();
+    QString customP = settings.value("Backup/CustomPath",
+                                     QString::fromUtf8(DEFAULT_CUSTOM_PATH)).toString();
+    if (customP.trimmed().isEmpty()) {
+        customP = QString::fromUtf8(DEFAULT_CUSTOM_PATH);
+    }
+
+    m_destLocalCheck->blockSignals(true);
+    m_destLocalCheck->setChecked(local);
+    m_destLocalCheck->blockSignals(false);
+
+    m_destAppDataCheck->blockSignals(true);
+    m_destAppDataCheck->setChecked(appData);
+    m_destAppDataCheck->blockSignals(false);
+
+    m_destCustomCheck->blockSignals(true);
+    m_destCustomCheck->setChecked(custom);
+    m_destCustomCheck->blockSignals(false);
+
+    m_customPathEdit->blockSignals(true);
+    m_customPathEdit->setText(customP);
+    m_customPathEdit->blockSignals(false);
+
+    updateCustomPathEnabled();
+}
+
+void DataBackupPage::updateCustomPathEnabled()
+{
+    bool en = (m_destCustomCheck && m_destCustomCheck->isChecked());
+    if (m_customPathEdit)  { m_customPathEdit->setEnabled(en); }
+    if (m_browseCustomBtn) { m_browseCustomBtn->setEnabled(en); }
 }
