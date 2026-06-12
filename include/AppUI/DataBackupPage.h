@@ -32,13 +32,19 @@ signals:
   void backToMainMenu();
 
 private:
-  struct BackupResult {
-    bool localOk  = false;
-    bool remoteOk = false;
-    bool skipped  = false;
-    QString localPath;
-    QString remotePath;
+  struct DestResult {
+    QString label;        // "Local", "AppData", "Custom"
+    bool    ok = false;
+    QString path;
     QString error;
+  };
+  struct BackupResult {
+    bool skipped = false;
+    std::vector<DestResult> dests;
+  };
+  struct Destination {
+    QString               label;  // "Local", "AppData", "Custom"
+    std::filesystem::path base;   // product-scoped backup root for this destination
   };
 
 private slots:
@@ -58,15 +64,20 @@ private:
   [[nodiscard]] BackupResult performBackupWork(const QString& type, const QString& name,
                                                 const QString& description,
                                                 const std::filesystem::path& productDir,
-                                                const std::filesystem::path& localBase,
-                                                const std::filesystem::path& remoteBase,
+                                                const std::filesystem::path& dataDir,
+                                                const std::vector<Destination>& dests,
                                                 const QString& folderName);
   [[nodiscard]] BackupResult performAutoBackupWork(
       const std::filesystem::path& productDir,
-      const std::filesystem::path& localBase,
-      const std::filesystem::path& remoteBase,
+      const std::filesystem::path& dataDir,
+      const std::vector<Destination>& dests,
       const QString& folderName,
       const std::filesystem::path& latestManifestPath);
+  // Build the list of enabled backup destinations from the checkbox state (UI thread).
+  [[nodiscard]] std::vector<Destination> buildEnabledDestinations() const;
+  // Hash current product config (keys under "config/") + serial data (keys under "data/").
+  QJsonObject computeCurrentProductHashes(const std::filesystem::path& productDir,
+                                          const std::filesystem::path& dataDir);
   void startBackupAsync(const QString& type, const QString& name, const QString& description);
   void startAutoBackupAsync();
   [[nodiscard]] bool restoreFromBackup(const QString& backupPath);
@@ -93,11 +104,17 @@ private:
   void clearDetailPanel();
 
   std::filesystem::path getProductDirPath() const;
+  std::filesystem::path getDataDirPath() const;
   std::filesystem::path getBackupBasePath() const;
   std::filesystem::path getAppDataBackupPath() const;
+  // Base path used for the visible backup list / pruning (first enabled destination).
+  std::filesystem::path getListBasePath() const;
   QString getCurrentProductName() const;
   void saveAutoBackupSettings();
   void loadAutoBackupSettings();
+  void saveDestinationSettings();
+  void loadDestinationSettings();
+  void updateCustomPathEnabled();
 
   ApplicationContext* m_context;
 
@@ -110,6 +127,13 @@ private:
   QCheckBox*   m_autoBackupCheck;
   QSpinBox*    m_autoIntervalSpin;
   QLabel*      m_autoStatusLabel;
+
+  // Destination selection
+  QCheckBox*   m_destLocalCheck;
+  QCheckBox*   m_destAppDataCheck;
+  QCheckBox*   m_destCustomCheck;
+  QLineEdit*   m_customPathEdit;
+  QPushButton* m_browseCustomBtn;
 
   // Backup list (left)
   QListWidget* m_backupList;
@@ -148,4 +172,5 @@ private:
   static constexpr int MAX_AUTO_BACKUPS        = 10;
   static constexpr int MAX_PRE_REVERT_BACKUPS  = 3;
   static constexpr int DEFAULT_AUTO_INTERVAL_MIN = 30;
+  static constexpr const char* DEFAULT_CUSTOM_PATH = "D:\\data_config_backup";
 };
