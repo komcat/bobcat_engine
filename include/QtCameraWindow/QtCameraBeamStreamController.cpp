@@ -28,6 +28,11 @@ const char* kComboStyle =
     "            color: #cccccc; padding: 2px 4px; }"
     "QComboBox QAbstractItemView { background-color: #3e3e42; color: #cccccc; }";
 
+// Delay between reconnect attempts when the beam server is unreachable or drops
+// the connection. The worker waits interruptibly so a stop request wakes it
+// immediately rather than sitting out the full delay.
+constexpr int kBeamReconnectDelayMs = 2000;
+
 }  // namespace
 
 QtCameraBeamStreamController::QtCameraBeamStreamController(
@@ -204,20 +209,64 @@ void QtCameraBeamStreamController::startStreaming()
 {
   if (m_threadRunning.load()) return;
 
+  // Reap a previous worker that has already exited on its own (defensive;
+  // normally stopStreaming() joins it). A still-joinable std::thread would
+  // std::terminate when reassigned below.
+  if (m_thread.joinable()) m_thread.join();
+
   loadConfig();
 
+  // Spawn the worker immediately and let it connect on its own thread. The
+  // (potentially slow or failing) Connect()/STREAM_START therefore never blocks
+  // the UI thread, and the worker keeps reconnecting if the server drops.
+  m_streamEnabled.store(true);
+  m_threadRunning.store(true);
+  m_thread = std::thread(&QtCameraBeamStreamController::threadLoop, this);
+  std::cout << "[BeamStream] streaming thread started; target "
+            << m_config.host << ":" << m_config.port << std::endl;
+}
+
+void QtCameraBeamStreamController::stopStreaming()
+{
+  if (!m_threadRunning.load()) {
+    // Reap a self-exited worker even when the running flag is already clear.
+    if (m_thread.joinable()) m_thread.join();
+    return;
+  }
+  m_streamEnabled.store(false);
+  m_threadRunning.store(false);
+  m_frameQueueCV.notify_all();
+  if (m_thread.joinable()) {
+    m_thread.join();
+  }
+
+  // The worker tears down its own client on exit; clear defensively.
+  m_streamClient.reset();
+
+  // Clear queue
+  {
+    std::lock_guard<std::mutex> lock(m_frameQueueMutex);
+    while (!m_frameQueue.empty()) m_frameQueue.pop();
+  }
+  m_fps.store(0.0);
+
+  std::cout << "[BeamStream] streaming stopped" << std::endl;
+}
+
+bool QtCameraBeamStreamController::establishConnection()
+{
   m_streamClient = std::make_unique<BeamServerClient>();
   if (!m_streamClient->Connect(m_config.host, m_config.port)) {
-    std::cerr << "[BeamStream] failed to connect to "
-              << m_config.host << ":" << m_config.port << std::endl;
+    std::cerr << "[BeamStream] connect to " << m_config.host << ":"
+              << m_config.port << " failed; retry in "
+              << kBeamReconnectDelayMs << "ms" << std::endl;
     m_streamClient.reset();
-    return;
+    return false;
   }
 
   const uint32_t frameW = m_currentPrimaryWidth.load();
   const uint32_t frameH = m_currentPrimaryHeight.load();
 
-  // Send STREAM_START
   const nlohmann::json startResp = m_streamClient->SendStreamStart(
       static_cast<int>(frameW), static_cast<int>(frameH),
       "mono8",
@@ -227,52 +276,44 @@ void QtCameraBeamStreamController::startStreaming()
       m_config.intervalMs);
 
   if (startResp.empty()) {
-    std::cerr << "[BeamStream] STREAM_START failed" << std::endl;
+    std::cerr << "[BeamStream] STREAM_START failed; retry in "
+              << kBeamReconnectDelayMs << "ms" << std::endl;
     m_streamClient->Disconnect();
     m_streamClient.reset();
-    return;
+    return false;
   }
 
-  m_streamEnabled.store(true);
-  m_threadRunning.store(true);
-  m_thread = std::thread(&QtCameraBeamStreamController::threadLoop, this);
-  std::cout << "[BeamStream] streaming started ("
-            << m_config.host << ":" << m_config.port << ")" << std::endl;
-}
-
-void QtCameraBeamStreamController::stopStreaming()
-{
-  if (!m_threadRunning.load()) return;
-  m_streamEnabled.store(false);
-  m_threadRunning.store(false);
-  m_frameQueueCV.notify_all();
-  if (m_thread.joinable()) {
-    m_thread.join();
-  }
-
-  // Send STREAM_STOP if still connected
-  if (m_streamClient && m_streamClient->IsConnected()) {
-    m_streamClient->SendStreamStop();
-    m_streamClient->Disconnect();
-  }
-  m_streamClient.reset();
-
-  // Clear queue
-  {
-    std::lock_guard<std::mutex> lock(m_frameQueueMutex);
-    while (!m_frameQueue.empty()) m_frameQueue.pop();
-  }
-
-  std::cout << "[BeamStream] streaming stopped" << std::endl;
+  std::cout << "[BeamStream] connected (" << m_config.host << ":"
+            << m_config.port << ")" << std::endl;
+  return true;
 }
 
 void QtCameraBeamStreamController::threadLoop()
 {
-  uint32_t seqNum = 0;
-  auto fpsStart   = std::chrono::steady_clock::now();
+  uint32_t seqNum   = 0;
+  auto fpsStart     = std::chrono::steady_clock::now();
   uint32_t fpsCount = 0;
 
-  for (int iter = 0; iter < 10000000 && m_threadRunning.load(); ++iter) {
+  // Outer loop keeps the connection alive, reconnecting whenever the server is
+  // not yet reachable or drops mid-stream. The iteration cap is a loop-safety
+  // backstop (per the codebase convention); m_threadRunning is the real exit.
+  for (int iter = 0; iter < 1000000000 && m_threadRunning.load(); ++iter) {
+    // (Re)establish the connection on this worker thread if it is not live.
+    if (!m_streamClient || !m_streamClient->IsConnected()) {
+      if (!establishConnection()) {
+        // Interruptible backoff: a stop request wakes us immediately.
+        std::unique_lock<std::mutex> lock(m_frameQueueMutex);
+        m_frameQueueCV.wait_for(lock,
+            std::chrono::milliseconds(kBeamReconnectDelayMs),
+            [this] { return !m_threadRunning.load(); });
+        continue;
+      }
+      // Fresh connection: restart the frame sequence + FPS window.
+      seqNum   = 0;
+      fpsCount = 0;
+      fpsStart = std::chrono::steady_clock::now();
+    }
+
     std::vector<uint8_t> frameData;
     uint32_t width  = 0;
     uint32_t height = 0;
@@ -295,7 +336,6 @@ void QtCameraBeamStreamController::threadLoop()
     }
 
     if (width == 0 || height == 0 || frameData.empty()) continue;
-    if (!m_streamClient || !m_streamClient->IsConnected()) break;
 
     // Convert RGB to mono8 grayscale: simple average of R,G,B channels
     const size_t pixelCount = static_cast<size_t>(width) * height;
@@ -309,17 +349,22 @@ void QtCameraBeamStreamController::threadLoop()
 
     const nlohmann::json resp = m_streamClient->SendStreamFrame(grayData, seqNum++);
 
-    if (!resp.empty()) {
-      {
-        std::lock_guard<std::mutex> lock(m_resultMutex);
-        m_lastResult = resp;
-      }
-      m_resultSequence.fetch_add(1, std::memory_order_relaxed);
+    if (resp.empty()) {
+      // Send/recv failed: BeamServerClient has already flagged itself
+      // disconnected. Loop back to the top to reconnect.
+      std::cerr << "[BeamStream] frame send failed; reconnecting" << std::endl;
+      continue;
+    }
 
-      // Trigger viewport repaint
-      if (m_viewport) {
-        QMetaObject::invokeMethod(m_viewport, "update", Qt::QueuedConnection);
-      }
+    {
+      std::lock_guard<std::mutex> lock(m_resultMutex);
+      m_lastResult = resp;
+    }
+    m_resultSequence.fetch_add(1, std::memory_order_relaxed);
+
+    // Trigger viewport repaint
+    if (m_viewport) {
+      QMetaObject::invokeMethod(m_viewport, "update", Qt::QueuedConnection);
     }
 
     // Update FPS counter
@@ -334,6 +379,14 @@ void QtCameraBeamStreamController::threadLoop()
       fpsStart = now;
     }
   }
+
+  // Teardown: politely stop the server stream and close the socket.
+  if (m_streamClient && m_streamClient->IsConnected()) {
+    m_streamClient->SendStreamStop();
+    m_streamClient->Disconnect();
+  }
+  m_streamClient.reset();
+  m_fps.store(0.0);
 }
 
 void QtCameraBeamStreamController::onEnableToggled(bool checked)

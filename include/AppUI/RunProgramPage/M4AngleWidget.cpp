@@ -71,6 +71,14 @@ M4AngleWidget::M4AngleWidget(ApplicationContext* context, QWidget* parent)
   // immediately usable when the program starts (after a product is loaded).
   loadFromSavedPositions();
   recompute();
+
+  // Keepalive timer for the auto-connected SWIR beam stream. Created stopped;
+  // armed on the first M4-tab activation (showEvent). Each tick is cheap and
+  // runs on the UI thread, but only ever flips a checkbox / reads a flag — the
+  // blocking socket work lives on the beam controller's worker thread.
+  m_beamAutoTimer = new QTimer(this);
+  m_beamAutoTimer->setInterval(3000);
+  connect(m_beamAutoTimer, &QTimer::timeout, this, &M4AngleWidget::onBeamAutoTick);
 }
 
 void M4AngleWidget::showEvent(QShowEvent* event) {
@@ -90,6 +98,14 @@ void M4AngleWidget::showEvent(QShowEvent* event) {
   } else {
     updateBeamStreamButton(false);
   }
+  // Activating the M4 tab arms auto-connect to the beam server: enable the
+  // swir_camera stream now (non-blocking — the controller's worker thread does
+  // the connect) and keep a keepalive timer running so it reconnects if the
+  // server restarts or a SWIR monitor is opened later. A manual "Beam stream:
+  // OFF" clears m_beamAutoDesired and stops this from re-enabling.
+  if (!m_beamAutoDesired) m_beamAutoDesired = true;
+  onBeamAutoTick();
+  if (m_beamAutoTimer && !m_beamAutoTimer->isActive()) m_beamAutoTimer->start();
   // PSU devices may register after this widget is constructed; (re)try discovery
   // each time the tab is shown, then refresh the live readouts immediately.
   discoverPsuDevices();
@@ -886,25 +902,40 @@ void M4AngleWidget::onToggleBeamStream() {
 
   const bool enable = !win->isBeamStreamActive();
   win->setBeamStreamEnabled(enable, kSwirCamera);
+  // A manual toggle is also the user's intent for auto-reconnect: turning it ON
+  // resumes the keepalive, turning it OFF stops it from re-enabling.
+  m_beamAutoDesired = enable;
   const bool nowActive = win->isBeamStreamActive();
   updateBeamStreamButton(nowActive);
 
   if (m_moveStatusLabel) {
-    QString msg;
-    bool ok = true;
-    if (enable && !nowActive) {
-      msg = QStringLiteral(
-        "[beam] failed to start swir_camera stream (could not reach beam "
-        "server?). See console for details.");
-      ok = false;
-    } else {
-      msg = nowActive
-        ? QStringLiteral("[beam] swir_camera beam streaming enabled.")
-        : QStringLiteral("[beam] swir_camera beam streaming disabled.");
-    }
+    // The connect now happens asynchronously on the controller's worker thread,
+    // so "active" here just means the stream was armed (it auto-reconnects until
+    // turned off); we can't report reachability synchronously.
+    const QString msg = enable
+      ? QStringLiteral("[beam] swir_camera beam streaming enabled "
+                       "(connecting + auto-reconnect).")
+      : QStringLiteral("[beam] swir_camera beam streaming disabled.");
     m_moveStatusLabel->setText(msg);
-    m_moveStatusLabel->setStyleSheet(ok ? "color: #4caf50;" : "color: #ef5350;");
+    m_moveStatusLabel->setStyleSheet("color: #4caf50;");
   }
+}
+
+void M4AngleWidget::onBeamAutoTick() {
+  if (!m_beamAutoDesired) return;
+  QtCameraWindow* win = findSwirBeamWindow();
+  if (!win) {
+    // No Qt camera monitor is showing swir_camera yet — nothing to stream from.
+    // Leave the button OFF and try again on the next tick.
+    updateBeamStreamButton(false);
+    return;
+  }
+  if (!win->isBeamStreamActive()) {
+    // Non-blocking: the controller's worker thread performs the connect and
+    // keeps reconnecting if the beam server is down.
+    win->setBeamStreamEnabled(true, kSwirCamera);
+  }
+  updateBeamStreamButton(win->isBeamStreamActive());
 }
 
 // ---------------------------------------------------------------------------

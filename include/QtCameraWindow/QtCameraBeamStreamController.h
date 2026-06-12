@@ -101,6 +101,10 @@ private:
   void startStreaming();
   void stopStreaming();
   void threadLoop();
+  // Open a fresh BeamServerClient and send STREAM_START. Runs on the worker
+  // thread only (so the UI thread is never blocked by a slow/failing server).
+  // Returns true once connected + streaming; false on failure (caller retries).
+  bool establishConnection();
 
   QtCameraViewport* m_viewport;
 

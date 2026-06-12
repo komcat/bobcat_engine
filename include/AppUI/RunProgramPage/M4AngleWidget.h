@@ -68,6 +68,10 @@ private slots:
   void onSwirSet300us();         // swir_camera: exposure=300us, autoexposure=off
   void onSwirSetAutoExposure();  // swir_camera: autoexposure=on
   void onToggleBeamStream();     // enable/disable beam streaming on swir_camera
+  // Keepalive tick: while auto-connect is desired, ensure the swir_camera beam
+  // stream is enabled (the controller's worker thread does the actual connect +
+  // reconnect, so this never blocks the UI). Also keeps the button label synced.
+  void onBeamAutoTick();
   void onClearAll();
 
   // --- SWIR-source power-supply controls (mirrors the SWIR monitor window) ---
@@ -233,6 +237,14 @@ private:
   QPushButton* m_saveMoeA1Btn = nullptr;
   QPushButton* m_saveMoeA2Btn = nullptr;
   QPushButton* m_beamStreamBtn = nullptr;
+
+  // Auto-connect the SWIR beam stream when the M4 tab is activated, and retain
+  // it (reconnect) if the beam server restarts. m_beamAutoDesired is set true on
+  // the first M4-tab activation and cleared only by a manual "Beam stream: OFF";
+  // m_beamAutoTimer re-checks periodically so a SWIR monitor opened later still
+  // gets streamed. The connect itself runs on the controller's worker thread.
+  QTimer* m_beamAutoTimer   = nullptr;
+  bool    m_beamAutoDesired = false;
 
   // SWIR-source PSU controls (channel 1) — minimal mirror of the SWIR monitor.
   // The device selector is rendered as a row of tab buttons (cyan = active)
