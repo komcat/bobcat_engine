@@ -178,6 +178,17 @@ private:
     void LoadMarkersFromFile();
     double GetDisplayPxPerMm() const;
 
+    // Overlay element sizing (overlay text / running chart / beam-crop tiles).
+    // delta is an additive step per click (e.g. +0.10 = +10%, -0.10 = -10%).
+    void AdjustOverlayTextScale(double delta);
+    void AdjustChartScale(double delta);
+    void AdjustCropScale(double delta);
+    void SaveOverlayScales();
+    void LoadOverlayScales();
+    // Effective bottom-strip geometry given the current crop scale.
+    int EffectiveCropTileSize() const;
+    int EffectiveStripHeight() const;
+
     // Magnification + camera orientation (the SET MAG dialog edits both)
     void OnSetMagnification();
     void SaveMagnification();
@@ -395,6 +406,13 @@ private:
     static constexpr int TAG_Z_JOG_PLUS = 1030;
     static constexpr int TAG_BEAM_FIT = 1040;     // strip button (next to crops)
     static constexpr int TAG_BEAM_CENTER = 1050;  // strip button (center XY on beams)
+    // Overlay-size controls (OVERLAY SIZE group, 3 rows of -/+ )
+    static constexpr int TAG_TEXT_DEC = 1100;
+    static constexpr int TAG_TEXT_INC = 1110;
+    static constexpr int TAG_CHART_DEC = 1120;
+    static constexpr int TAG_CHART_INC = 1130;
+    static constexpr int TAG_CROP_DEC = 1140;
+    static constexpr int TAG_CROP_INC = 1150;
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};
@@ -404,6 +422,16 @@ private:
     static constexpr double CURRENT_STEP_MA = 50.0;      // 50mA step
     static constexpr double CURRENT_STEP_SMALL_MA = 10.0; // 10mA step
     static constexpr double EXPOSURE_STEP_US = 50.0;      // 50us step
+
+    // User-adjustable overlay element sizing. 1.0 = 100%; each click is ±10%,
+    // clamped to [MIN, MAX]. Persisted in QSettings. Purely visual.
+    double m_overlayTextScale = 1.0;  // beam label block + cal/mag/fps info text
+    double m_chartScale       = 1.0;  // CE running charts (top-right)
+    double m_cropScale        = 1.0;  // bottom beam-crop tiles
+    static constexpr double OVERLAY_SCALE_MIN = 0.5;
+    static constexpr double OVERLAY_SCALE_MAX = 3.0;
+    static constexpr double OVERLAY_SCALE_STEP = 0.10;  // ±10% (additive) per click
+    static constexpr int CROP_TILE_BASE = 200;          // tile px at 100%
 
     // Magnification (optical objective)
     double m_magnification = 100.0;  // hardcoded for this branch (100x objective)

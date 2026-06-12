@@ -164,6 +164,7 @@ bool SwirBeamWindow::Create(const std::string& title, int x, int y, int width, i
     m_markerStore->LoadFromFile();
     LoadMagnification();
     LoadCameraOrientation();
+    LoadOverlayScales();
     LoadBeamSlotLabels();
     std::cout << "[SwirBeamWindow] Window created" << std::endl;
     return true;
@@ -1518,14 +1519,52 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
 
     y += groupPad;
 
+    // === OVERLAY SIZE Group (3 rows: Text / Chart / Crop, each [ - label + ]) ===
+    y += sectionGap;
+    y += titleH + groupPad;
+    {
+        struct SizeRow { int decTag; int incTag; std::function<void()> dec; std::function<void()> inc; };
+        const double up = OVERLAY_SCALE_STEP;     // +10%
+        const double down = -OVERLAY_SCALE_STEP;  // -10%
+        SizeRow rows[3] = {
+            { TAG_TEXT_DEC,  TAG_TEXT_INC,
+              [this, down]() { AdjustOverlayTextScale(down); },
+              [this, up]()   { AdjustOverlayTextScale(up); } },
+            { TAG_CHART_DEC, TAG_CHART_INC,
+              [this, down]() { AdjustChartScale(down); },
+              [this, up]()   { AdjustChartScale(up); } },
+            { TAG_CROP_DEC,  TAG_CROP_INC,
+              [this, down]() { AdjustCropScale(down); },
+              [this, up]()   { AdjustCropScale(up); } },
+        };
+        for (const auto& row : rows) {
+            SwirButton minusBtn;
+            minusBtn.rect = {col1, y, col1 + thirdBtnWidth, y + btnHeight};
+            minusBtn.label = L"-10%";
+            minusBtn.tag = row.decTag;
+            minusBtn.onClick = row.dec;
+            m_buttons.push_back(minusBtn);
+
+            SwirButton plusBtn;
+            plusBtn.rect = {col3, y, col3 + thirdBtnWidth, y + btnHeight};
+            plusBtn.label = L"+10%";
+            plusBtn.tag = row.incTag;
+            plusBtn.onClick = row.inc;
+            m_buttons.push_back(plusBtn);
+
+            y += btnHeight + btnSpacing;
+        }
+    }
+    y += groupPad;
+
     // === BEAM FIT button (lives in the bottom beam-crop strip, to the right
     // of the B0/B1 tiles — not in the control panel). Only present when the
     // strip is actually drawn (beam detection on + enough vertical room).
-    // Geometry mirrors DrawBeamCropStrip: two 200px tiles, 10px margins. ===
+    // Geometry mirrors DrawBeamCropStrip: two scaled tiles, 10px margins. ===
     {
-        constexpr int STRIP_HEIGHT     = 220;  // matches OnPaint carve-out
+        const int STRIP_HEIGHT     = EffectiveStripHeight();  // matches OnPaint carve-out
         constexpr int MIN_IMAGE_HEIGHT = 250;  // matches OnPaint carve-out
-        constexpr int TILE_SIZE        = 200;  // matches DrawBeamCropStrip
+        const int TILE_SIZE        = EffectiveCropTileSize();  // matches DrawBeamCropStrip
         constexpr int TILE_MARGIN      = 10;   // matches DrawBeamCropStrip
         const int stripTop = panelRect.bottom - STRIP_HEIGHT;
         const bool drawStrip = m_beamDetectionEnabled && stripTop >= MIN_IMAGE_HEIGHT;
@@ -1993,6 +2032,45 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
         }
     }
 
+    // --- Overlay Size Group Box (mirror RebuildButtons layout) ---
+    y += sectionGap;
+    int ovGroupTop = y;
+    y += titleH + groupPad;
+    float textRowY  = static_cast<float>(y); y += btnHeight + btnSpacing;
+    float chartRowY = static_cast<float>(y); y += btnHeight + btnSpacing;
+    float cropRowY  = static_cast<float>(y); y += btnHeight + btnSpacing;
+    y += groupPad;
+
+    RECT ovGroupRect = { panelRect.left + margin, ovGroupTop,
+                         panelRect.right - margin, y };
+    DrawGroupBox(gfx, ovGroupRect, L"OVERLAY SIZE");
+
+    // Centered "Name NNN%" labels in the middle column (between - and + buttons).
+    {
+        const int btnLeft2 = panelRect.left + margin + groupInner;
+        const int btnWidth2 = pw - 2 * (margin + groupInner);
+        const int thirdW = (btnWidth2 - 2 * btnSpacing) / 3;
+        const int col2 = btnLeft2 + thirdW + btnSpacing;
+
+        Gdiplus::StringFormat centerFmt;
+        centerFmt.SetAlignment(Gdiplus::StringAlignmentCenter);
+        centerFmt.SetLineAlignment(Gdiplus::StringAlignmentCenter);
+
+        auto drawRow = [&](float rowY, const wchar_t* name, double scale) {
+            wchar_t buf[32];
+            swprintf_s(buf, L"%ls %d%%", name,
+                       static_cast<int>(std::lround(scale * 100.0)));
+            gfx.DrawString(buf, -1, &valueFont,
+                           Gdiplus::RectF(static_cast<float>(col2), rowY,
+                                          static_cast<float>(thirdW),
+                                          static_cast<float>(btnHeight)),
+                           &centerFmt, &valueBrush);
+        };
+        drawRow(textRowY,  L"Text",  m_overlayTextScale);
+        drawRow(chartRowY, L"Chart", m_chartScale);
+        drawRow(cropRowY,  L"Crop",  m_cropScale);
+    }
+
     // Draw all buttons
     for (const auto& btn : m_buttons) {
         DrawButton(gfx, btn);
@@ -2116,7 +2194,7 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
             DrawBeamOverlays(gfx, m_beamDisplayResults,
                              m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
                              m_frameWidth, m_frameHeight, m_useBlobDetection,
-                             m_beamConfig.micronsPerPixel);
+                             m_beamConfig.micronsPerPixel, m_overlayTextScale);
         }
 
         // CE/EE charts (drawn even when no current detection — shows previous data)
@@ -2125,15 +2203,16 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
                          m_ceHistoryIndex, m_ceHistoryCount,
                          CE_HISTORY_SIZE,
                          m_lastRenderX, m_lastRenderY, m_lastRenderW, m_lastRenderH,
-                         m_useBlobDetection);
+                         m_useBlobDetection, m_chartScale);
         }
     }
 
     // Info overlay - lower left corner of viewport (cal, mag, FPS stacked)
     {
-        static Gdiplus::Font infoFont(L"Consolas", 9.0f, Gdiplus::FontStyleBold);
+        const float infoScale = static_cast<float>(m_overlayTextScale);
+        Gdiplus::Font infoFont(L"Consolas", 9.0f * infoScale, Gdiplus::FontStyleBold);
         float infoX = static_cast<float>(m_lastRenderX + 6);
-        float lineH = 18.0f;
+        float lineH = 18.0f * infoScale;
 
         // Build cal string
         double effPxToMm = m_pixelToMmFactorX;
@@ -2151,7 +2230,7 @@ void SwirBeamWindow::DrawOverlays(HDC hdc)
 
         // 3 lines stacked from bottom
         float baseY = static_cast<float>(m_lastRenderY + m_lastRenderH) - 3.0f * lineH - 4.0f;
-        float bgW = 160.0f;
+        float bgW = 160.0f * infoScale;
 
         Gdiplus::SolidBrush bgBrush(Gdiplus::Color(160, 0, 0, 0));
         gfx.FillRectangle(&bgBrush, infoX - 3.0f, baseY - 1.0f, bgW, 3.0f * lineH + 4.0f);
@@ -2809,6 +2888,75 @@ void SwirBeamWindow::LoadCameraOrientation()
     m_cameraRotationDeg = (deg == 0) ? 0 : 90;
     std::cout << "[SwirBeamWindow] Camera orientation: " << m_cameraRotationDeg
               << "deg" << std::endl;
+}
+
+// ============================================================================
+// Overlay element sizing (text / chart / crop tiles)
+// ============================================================================
+
+void SwirBeamWindow::AdjustOverlayTextScale(double delta)
+{
+    m_overlayTextScale = std::clamp(m_overlayTextScale + delta,
+                                    OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+    SaveOverlayScales();
+    InvalidatePanel();  // refresh the % readout in the panel
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+void SwirBeamWindow::AdjustChartScale(double delta)
+{
+    m_chartScale = std::clamp(m_chartScale + delta,
+                              OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+    SaveOverlayScales();
+    InvalidatePanel();
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+void SwirBeamWindow::AdjustCropScale(double delta)
+{
+    m_cropScale = std::clamp(m_cropScale + delta,
+                             OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+    SaveOverlayScales();
+    // The bottom-strip height + BEAM FIT/CENTER button geometry depend on the
+    // tile size, so force a full button relayout (RebuildButtons early-returns
+    // when the panel width is unchanged).
+    m_panelWidth = -1;
+    InvalidatePanel();
+    if (m_hwnd) InvalidateRect(m_hwnd, nullptr, FALSE);
+}
+
+void SwirBeamWindow::SaveOverlayScales()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    settings.setValue("SwirBeamWindow/overlayTextScale", m_overlayTextScale);
+    settings.setValue("SwirBeamWindow/chartScale", m_chartScale);
+    settings.setValue("SwirBeamWindow/cropScale", m_cropScale);
+}
+
+void SwirBeamWindow::LoadOverlayScales()
+{
+    QSettings settings("Fabrinet", "BobcatEngine");
+    m_overlayTextScale = std::clamp(
+        settings.value("SwirBeamWindow/overlayTextScale", 1.0).toDouble(),
+        OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+    m_chartScale = std::clamp(
+        settings.value("SwirBeamWindow/chartScale", 1.0).toDouble(),
+        OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+    m_cropScale = std::clamp(
+        settings.value("SwirBeamWindow/cropScale", 1.0).toDouble(),
+        OVERLAY_SCALE_MIN, OVERLAY_SCALE_MAX);
+}
+
+int SwirBeamWindow::EffectiveCropTileSize() const
+{
+    int sz = static_cast<int>(std::lround(CROP_TILE_BASE * m_cropScale));
+    return (sz < 40) ? 40 : sz;
+}
+
+int SwirBeamWindow::EffectiveStripHeight() const
+{
+    // Tile + 20px of vertical breathing room (matches the original 200 -> 220).
+    return EffectiveCropTileSize() + 20;
 }
 
 // ============================================================================
@@ -3548,8 +3696,9 @@ void SwirBeamWindow::OnPaint()
         if (panelW < 180) panelW = 180;
 
         // Bottom strip carve-out: only when beam detection is on AND there's
-        // enough vertical room to leave a usable image area above it.
-        constexpr int STRIP_HEIGHT = 220;
+        // enough vertical room to leave a usable image area above it. Strip
+        // height tracks the (scalable) beam-crop tile size.
+        const int STRIP_HEIGHT = EffectiveStripHeight();
         constexpr int MIN_IMAGE_HEIGHT = 250;
         const bool drawStrip = m_beamDetectionEnabled &&
                                (totalHeight - STRIP_HEIGHT) >= MIN_IMAGE_HEIGHT;
@@ -3604,7 +3753,7 @@ void SwirBeamWindow::OnPaint()
                 DrawBeamCropStrip(gfx, resultsCopy,
                                   m_frameBuffer.data(),
                                   m_frameWidth, m_frameHeight,
-                                  stripRect);
+                                  stripRect, EffectiveCropTileSize());
             }
         }
 

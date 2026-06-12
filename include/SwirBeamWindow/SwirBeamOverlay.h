@@ -24,12 +24,14 @@
 /// @param frameW    Camera frame width (image pixels)
 /// @param frameH    Camera frame height (image pixels)
 /// @param micronsPerPixel Pixel-to-micron calibration for dx/dy/area labels
+/// @param textScale       Overlay text size multiplier (1.0 = 100%)
 void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       const std::vector<BeamDetectionResult>& results,
                       int renderX, int renderY, int renderW, int renderH,
                       uint32_t frameW, uint32_t frameH,
                       bool blobMode = false,
-                      double micronsPerPixel = 1.0);
+                      double micronsPerPixel = 1.0,
+                      double textScale = 1.0);
 
 /// Draw real-time CE (circle energy) charts for B0 and B1.
 /// Charts are placed at the top-right of the viewport, stacked vertically.
@@ -50,7 +52,8 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                   const std::array<int, 2>& ceCount,
                   int historySize,
                   int renderX, int renderY, int renderW, int renderH,
-                  bool blobMode = false);
+                  bool blobMode = false,
+                  double chartScale = 1.0);
 
 /// Draw magnified beam thumbnails at fixed positions in the viewport.
 /// B0 thumbnail at top-right, B1 thumbnail below it.
@@ -82,11 +85,13 @@ void DrawBeamMagnifiers(Gdiplus::Graphics& gfx,
 /// @param frameH     Camera frame height (image pixels)
 /// @param stripRect  Bottom-strip rect in client coords; tiles are anchored
 ///                   to the left edge with a 10px margin
+/// @param tileSize   Square tile side length in display px (default 200)
 void DrawBeamCropStrip(Gdiplus::Graphics& gfx,
                        const std::vector<BeamDetectionResult>& results,
                        const uint8_t* frameData,
                        uint32_t frameW, uint32_t frameH,
-                       const RECT& stripRect);
+                       const RECT& stripRect,
+                       int tileSize = 200);
 
 /// Render one beam tile (heatmap-coloured close-up) at (dstX, dstY) with size
 /// `tileSize`. Used both by the live bottom strip and by the still-image save

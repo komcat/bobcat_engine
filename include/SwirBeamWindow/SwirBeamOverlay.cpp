@@ -161,10 +161,16 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
                       int renderX, int renderY, int renderW, int renderH,
                       uint32_t frameW, uint32_t frameH,
                       bool /*blobMode*/,
-                      double /*micronsPerPixel*/) {
+                      double /*micronsPerPixel*/,
+                      double textScale) {
     if (results.empty() || frameW == 0 || frameH == 0 || renderW <= 0 || renderH <= 0) return;
 
-    static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+    if (textScale < 0.1) textScale = 1.0;
+    // Font + row metrics scale with the user-selected overlay text size. The
+    // string-content cache below is independent of font size, so changing the
+    // scale only re-measures the label width (cheap, once per scale change).
+    const float fontPt = 8.0f * static_cast<float>(textScale);
+    Gdiplus::Font labelFont(L"Consolas", fontPt, Gdiplus::FontStyleBold);
 
     // Label text is throttled: rebuild strings at ~4 Hz to stop per-frame flicker.
     // Crosshair and EE ellipse update live on each frame using the raw centroid.
@@ -251,15 +257,18 @@ void DrawBeamOverlays(Gdiplus::Graphics& gfx,
             const int numRows = s_cachedNumRows[cacheIdx];
             if (numRows == 0) continue;
 
-            static constexpr float rowH = 14.0f;
+            const float rowH = 14.0f * static_cast<float>(textScale);
             float totalH = rowH * numRows + 4.0f;
 
-            // Cache the max width once (fixed-width font, content is always ~same width)
+            // Cache the max width per text scale (fixed-width font, content is
+            // always ~same width). Re-measure when the scale changes.
             static float cachedMaxW = 0.0f;
-            if (cachedMaxW < 1.0f) {
+            static double cachedScale = -1.0;
+            if (cachedMaxW < 1.0f || cachedScale != textScale) {
                 Gdiplus::RectF m;
                 gfx.MeasureString(L"SAT: 99999", -1, &labelFont, Gdiplus::PointF(0, 0), &m);
                 cachedMaxW = m.Width;
+                cachedScale = textScale;
             }
             const float maxW = cachedMaxW;
 
@@ -326,14 +335,19 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
                   const std::array<int, 2>& ceCount,
                   int historySize,
                   int renderX, int renderY, int renderW, int renderH,
-                  bool blobMode) {
+                  bool blobMode,
+                  double chartScale) {
 
-    static constexpr int CHART_W = 220;
-    static constexpr int CHART_H = 80;
+    if (chartScale < 0.1) chartScale = 1.0;
+    const int CHART_W = static_cast<int>(220 * chartScale);
+    const int CHART_H = static_cast<int>(80 * chartScale);
     static constexpr int MARGIN = 8;
     static constexpr int GAP = 6;
+    const float labelInset = 50.0f * static_cast<float>(chartScale);
+    const float rowH = 14.0f * static_cast<float>(chartScale);
 
-    static Gdiplus::Font labelFont(L"Consolas", 8.0f, Gdiplus::FontStyleBold);
+    Gdiplus::Font labelFont(L"Consolas", 8.0f * static_cast<float>(chartScale),
+                            Gdiplus::FontStyleBold);
     static Gdiplus::SolidBrush labelBrush(Gdiplus::Color(255, 220, 220, 220));
 
     // SAT line colors: B0 = cyan, B1 = green
@@ -364,7 +378,7 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
         int count = ceCount[bi];
         if (count == 0) continue;
 
-        int chartY = renderY + MARGIN + bi * (CHART_H + GAP + 16);
+        int chartY = renderY + MARGIN + bi * (CHART_H + GAP + static_cast<int>(16 * chartScale));
         float fChartX = static_cast<float>(chartX);
         float fChartY = static_cast<float>(chartY);
         float fChartW = static_cast<float>(CHART_W);
@@ -429,10 +443,10 @@ void DrawCECharts(Gdiplus::Graphics& gfx,
 
         // Min/max on right side
         gfx.DrawString(s_ceMaxBuf[bi], -1, &labelFont,
-                        Gdiplus::PointF(fChartX + fChartW - 50.0f, fChartY + 2.0f),
+                        Gdiplus::PointF(fChartX + fChartW - labelInset, fChartY + 2.0f),
                         &labelBrush);
         gfx.DrawString(s_ceMinBuf[bi], -1, &labelFont,
-                        Gdiplus::PointF(fChartX + fChartW - 50.0f, fChartY + fChartH - 14.0f),
+                        Gdiplus::PointF(fChartX + fChartW - labelInset, fChartY + fChartH - rowH),
                         &labelBrush);
     }
 }
@@ -718,8 +732,9 @@ void DrawBeamCropStrip(Gdiplus::Graphics& gfx,
                        const std::vector<BeamDetectionResult>& results,
                        const uint8_t* frameData,
                        uint32_t frameW, uint32_t frameH,
-                       const RECT& stripRect) {
-    static constexpr int TILE_SIZE = 200;
+                       const RECT& stripRect,
+                       int tileSize) {
+    const int TILE_SIZE = (tileSize >= 8) ? tileSize : 200;
     static constexpr int MARGIN = 10;
     static constexpr int MAX_TILES = 2;
 
