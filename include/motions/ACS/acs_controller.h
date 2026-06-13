@@ -130,6 +130,12 @@ private:
   // Thread-related members
   std::thread m_communicationThread;
   std::mutex m_mutex;
+  // Serializes ALL acsc_* SDK calls on m_controllerId. The ACS C library does not
+  // support unsynchronized concurrent synchronous calls on a single handle, so the
+  // background communication thread and any move/jog thread must never have two
+  // SDK calls in flight at once. Held only for the duration of a single SDK call
+  // (or a tightly-coupled ToPointM+GoM pair) — never across a sleep or blocking wait.
+  std::mutex m_sdkMutex;
   std::condition_variable m_condVar;
   std::atomic<bool> m_threadRunning{ false };
   std::atomic<bool> m_terminateThread{ false };
