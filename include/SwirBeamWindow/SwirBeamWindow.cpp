@@ -664,31 +664,32 @@ void SwirBeamWindow::PollPSUReadings()
     // Skip if a previous poll is still running (VISA reads can be slow)
     if (m_psuPollInFlight.load()) return;
 
-    // Collect device names to poll
-    std::vector<std::string> names;
+    // Collect device names + currently-selected channel to poll
+    struct PollTarget { std::string name; int channel; };
+    std::vector<PollTarget> targets;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
-        for (const auto& dev : m_psuDevices) names.push_back(dev.name);
+        for (const auto& dev : m_psuDevices) targets.push_back({dev.name, dev.selectedChannel});
     }
-    if (names.empty()) return;
+    if (targets.empty()) return;
 
     // Run blocking VISA reads on a background thread
     m_psuPollInFlight.store(true);
     auto* psuMgr = m_psuManager;
     auto* self = this;
-    m_psuPollFuture = std::async(std::launch::async, [self, psuMgr, names]() {
+    m_psuPollFuture = std::async(std::launch::async, [self, psuMgr, targets]() {
         // Read from hardware (may block 50-100ms per call)
         struct Reading { std::string name; double voltage; double current; double setCurrentVal; bool outputOn; };
         std::vector<Reading> readings;
-        for (const auto& name : names) {
-            auto psu = psuMgr->getPowerSupply(name);
+        for (const auto& t : targets) {
+            auto psu = psuMgr->getPowerSupply(t.name);
             if (!psu || !psu->isConnected()) continue;
             Reading r;
-            r.name = name;
-            r.voltage = psu->readVoltage(1);
-            r.current = psu->readCurrent(1);
-            r.setCurrentVal = psu->readSetCurrent(1);
-            r.outputOn = psu->readOutputState(1);
+            r.name = t.name;
+            r.voltage = psu->readVoltage(t.channel);
+            r.current = psu->readCurrent(t.channel);
+            r.setCurrentVal = psu->readSetCurrent(t.channel);
+            r.outputOn = psu->readOutputState(t.channel);
             readings.push_back(r);
         }
 
@@ -798,10 +799,21 @@ void SwirBeamWindow::OnSelectPSU(int index)
     std::lock_guard<std::mutex> lock(m_psuMutex);
     if (index >= 0 && index < static_cast<int>(m_psuDevices.size())) {
         m_selectedPSU = index;
-        m_panelWidth = 0;  // Force button rebuild
+        m_panelWidth = 0;  // Force button rebuild (channel-selector row depends on device)
         InvalidatePanel();
         std::cout << "[SwirBeamWindow] Selected PSU: " << m_psuDevices[index].name << std::endl;
     }
+}
+
+void SwirBeamWindow::OnSelectPSUChannel(int channel)
+{
+    std::lock_guard<std::mutex> lock(m_psuMutex);
+    if (m_selectedPSU < 0 || m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
+    auto& dev = m_psuDevices[m_selectedPSU];
+    if (channel < 1 || channel > dev.channelCount) return;
+    dev.selectedChannel = channel;
+    InvalidatePanel();
+    std::cout << "[SwirBeamWindow] " << dev.name << " selected channel " << channel << std::endl;
 }
 
 void SwirBeamWindow::OnPSUToggle()
@@ -809,11 +821,13 @@ void SwirBeamWindow::OnPSUToggle()
     if (!m_psuManager) return;
     std::string devName;
     bool currentState;
+    int channel;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
         devName = m_psuDevices[m_selectedPSU].name;
         currentState = m_psuDevices[m_selectedPSU].outputOn;
+        channel = m_psuDevices[m_selectedPSU].selectedChannel;
     }
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu) return;
@@ -826,27 +840,27 @@ void SwirBeamWindow::OnPSUToggle()
                 std::cerr << "[SwirBeamWindow] " << devName << " connection failed" << std::endl;
                 return;
             }
-            std::cout << "[SwirBeamWindow] " << devName << " connected, setting 2.0V / 300mA" << std::endl;
-            psu->setVoltage(2.0, 1);
-            psu->setCurrent(0.3, 1);
+            std::cout << "[SwirBeamWindow] " << devName << " connected, setting 2.0V / 300mA on CH" << channel << std::endl;
+            psu->setVoltage(2.0, channel);
+            psu->setCurrent(0.3, channel);
             {
                 std::lock_guard<std::mutex> lock(m_psuMutex);
                 if (m_selectedPSU < static_cast<int>(m_psuDevices.size())) {
                     m_psuDevices[m_selectedPSU].setCurrent = 0.3;
                 }
             }
-            psu->setOutputOn(1);
-            std::cout << "[SwirBeamWindow] " << devName << " output ON" << std::endl;
+            psu->setOutputOn(channel);
+            std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " output ON" << std::endl;
         }
         return;
     }
 
     if (currentState) {
-        psu->setOutputOff(1);
-        std::cout << "[SwirBeamWindow] " << devName << " output OFF" << std::endl;
+        psu->setOutputOff(channel);
+        std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " output OFF" << std::endl;
     } else {
-        psu->setOutputOn(1);
-        std::cout << "[SwirBeamWindow] " << devName << " output ON" << std::endl;
+        psu->setOutputOn(channel);
+        std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " output ON" << std::endl;
     }
     InvalidatePanel();
 }
@@ -857,6 +871,7 @@ void SwirBeamWindow::OnCurrentIncrease()
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
+    int channel;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
@@ -864,12 +879,13 @@ void SwirBeamWindow::OnCurrentIncrease()
         dev.setCurrent += CURRENT_STEP_MA / 1000.0;
         devName = dev.name;
         newCurrent = dev.setCurrent;
+        channel = dev.selectedChannel;
     }
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
-    psu->setCurrent(newCurrent, 1);
+    psu->setCurrent(newCurrent, channel);
     InvalidatePanel();
-    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+    std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
 void SwirBeamWindow::OnCurrentDecrease()
@@ -878,6 +894,7 @@ void SwirBeamWindow::OnCurrentDecrease()
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
+    int channel;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
@@ -886,12 +903,13 @@ void SwirBeamWindow::OnCurrentDecrease()
         if (dev.setCurrent < 0.0) dev.setCurrent = 0.0;
         devName = dev.name;
         newCurrent = dev.setCurrent;
+        channel = dev.selectedChannel;
     }
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
-    psu->setCurrent(newCurrent, 1);
+    psu->setCurrent(newCurrent, channel);
     InvalidatePanel();
-    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+    std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
 void SwirBeamWindow::OnCurrentIncreaseSmall()
@@ -900,6 +918,7 @@ void SwirBeamWindow::OnCurrentIncreaseSmall()
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
+    int channel;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
@@ -907,12 +926,13 @@ void SwirBeamWindow::OnCurrentIncreaseSmall()
         dev.setCurrent += CURRENT_STEP_SMALL_MA / 1000.0;
         devName = dev.name;
         newCurrent = dev.setCurrent;
+        channel = dev.selectedChannel;
     }
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
-    psu->setCurrent(newCurrent, 1);
+    psu->setCurrent(newCurrent, channel);
     InvalidatePanel();
-    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+    std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
 void SwirBeamWindow::OnCurrentDecreaseSmall()
@@ -921,6 +941,7 @@ void SwirBeamWindow::OnCurrentDecreaseSmall()
     if (!m_psuManager) return;
     std::string devName;
     double newCurrent;
+    int channel;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU >= static_cast<int>(m_psuDevices.size())) return;
@@ -929,12 +950,13 @@ void SwirBeamWindow::OnCurrentDecreaseSmall()
         if (dev.setCurrent < 0.0) dev.setCurrent = 0.0;
         devName = dev.name;
         newCurrent = dev.setCurrent;
+        channel = dev.selectedChannel;
     }
     auto psu = m_psuManager->getPowerSupply(devName);
     if (!psu || !psu->isConnected()) return;
-    psu->setCurrent(newCurrent, 1);
+    psu->setCurrent(newCurrent, channel);
     InvalidatePanel();
-    std::cout << "[SwirBeamWindow] " << devName << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
+    std::cout << "[SwirBeamWindow] " << devName << " CH" << channel << " current set to " << (newCurrent * 1000.0) << " mA" << std::endl;
 }
 
 // ============================================================================
@@ -1235,6 +1257,28 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
                 m_buttons.push_back(psuBtn);
             }
             y += btnHeight + btnSpacing;
+        }
+
+        // Channel selector row — only for the selected multi-channel device
+        if (m_selectedPSU >= 0 && m_selectedPSU < numPSU) {
+            int numCh = m_psuDevices[m_selectedPSU].channelCount;
+            int curCh = m_psuDevices[m_selectedPSU].selectedChannel;
+            if (numCh > 1) {
+                int chBtnWidth = (btnWidth - (numCh - 1) * btnSpacing) / numCh;
+                for (int c = 0; c < numCh; ++c) {
+                    SwirButton chBtn;
+                    int bx = btnLeft + c * (chBtnWidth + btnSpacing);
+                    chBtn.rect = {bx, y, bx + chBtnWidth, y + btnHeight};
+                    chBtn.label = L"CH" + std::to_wstring(c + 1);
+                    chBtn.tag = TAG_PSU_CHANNEL_BASE + c;
+                    chBtn.isToggle = true;
+                    chBtn.toggled = ((c + 1) == curCh);
+                    int ch = c + 1;
+                    chBtn.onClick = [this, ch]() { OnSelectPSUChannel(ch); };
+                    m_buttons.push_back(chBtn);
+                }
+                y += btnHeight + btnSpacing;
+            }
         }
     }
 
@@ -1564,8 +1608,9 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
 {
     Gdiplus::Color bgColor;
 
-    // PSU selector buttons
-    if (btn.tag >= TAG_PSU_SELECT_BASE && btn.tag < TAG_PSU_SELECT_BASE + 50) {
+    // PSU selector + channel selector buttons (same blue selected styling)
+    if ((btn.tag >= TAG_PSU_SELECT_BASE && btn.tag < TAG_PSU_SELECT_BASE + 50) ||
+        (btn.tag >= TAG_PSU_CHANNEL_BASE && btn.tag < TAG_PSU_CHANNEL_BASE + 50)) {
         if (btn.toggled) {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 70, 170, 235) : CLR_PSU_SELECTED);
         } else {
@@ -1809,11 +1854,15 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += titleH + groupPad;  // title + pad
 
     int numPSU;
+    bool hasChannelRow = false;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         numPSU = static_cast<int>(m_psuDevices.size());
+        if (m_selectedPSU >= 0 && m_selectedPSU < numPSU)
+            hasChannelRow = (m_psuDevices[m_selectedPSU].channelCount > 1);
     }
-    if (numPSU > 0) y += btnHeight + btnSpacing;
+    if (numPSU > 0) y += btnHeight + btnSpacing;       // device selector row
+    if (hasChannelRow) y += btnHeight + btnSpacing;    // channel selector row
     y += btnHeight + btnSpacing;  // ON/OFF
     y += btnHeight + btnSpacing;  // +50/-50
     y += btnHeight + btnSpacing;  // +10/-10
@@ -1832,6 +1881,8 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     double voltage = 0.0, current = 0.0;
     bool outputOn = false;
     double setCurrent = 0.0;
+    int displayChannel = 1;
+    bool multiChannel = false;
     {
         std::lock_guard<std::mutex> lock(m_psuMutex);
         if (m_selectedPSU < static_cast<int>(m_psuDevices.size())) {
@@ -1840,10 +1891,16 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
             current = dev.current;
             outputOn = dev.outputOn;
             setCurrent = dev.setCurrent;
+            displayChannel = dev.selectedChannel;
+            multiChannel = (dev.channelCount > 1);
         }
+        int selChannel = (m_selectedPSU >= 0 && m_selectedPSU < static_cast<int>(m_psuDevices.size()))
+                             ? m_psuDevices[m_selectedPSU].selectedChannel : 1;
         for (auto& btn : m_buttons) {
             if (btn.tag >= TAG_PSU_SELECT_BASE && btn.tag < TAG_PSU_SELECT_BASE + 50)
                 btn.toggled = ((btn.tag - TAG_PSU_SELECT_BASE) == m_selectedPSU);
+            else if (btn.tag >= TAG_PSU_CHANNEL_BASE && btn.tag < TAG_PSU_CHANNEL_BASE + 50)
+                btn.toggled = ((btn.tag - TAG_PSU_CHANNEL_BASE + 1) == selChannel);
         }
     }
     // Update SWIR head state
@@ -1878,6 +1935,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     // Draw PSU readings
     std::wostringstream setStr;
     setStr << L"Set: " << std::fixed << std::setprecision(1) << (setCurrent * 1000.0) << L" mA";
+    if (multiChannel) setStr << L"  (CH" << displayChannel << L")";
     gfx.DrawString(setStr.str().c_str(), -1, &smallFont,
                    Gdiplus::RectF(innerX, readY, innerW, static_cast<float>(labelHeight)),
                    &leftFormat, &dimBrush);

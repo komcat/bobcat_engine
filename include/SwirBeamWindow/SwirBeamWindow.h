@@ -63,6 +63,7 @@ struct SwirButton {
 struct PSUDeviceState {
     std::string name;
     int channelCount = 1;
+    int selectedChannel = 1;   // 1-based; which channel the controls act on
     double voltage = 0.0;
     double current = 0.0;
     bool outputOn = false;
@@ -151,6 +152,7 @@ private:
 
     // PSU actions
     void OnSelectPSU(int index);
+    void OnSelectPSUChannel(int channel);  // 1-based; multi-channel devices only
     void OnPSUToggle();
     void OnCurrentIncrease();
     void OnCurrentDecrease();
@@ -374,6 +376,7 @@ private:
 
     // Button tag constants for identification
     static constexpr int TAG_PSU_SELECT_BASE = 100;  // PSU selector buttons: 100, 101, ...
+    static constexpr int TAG_PSU_CHANNEL_BASE = 150; // PSU channel buttons: 150, 151, ... (multi-channel devices)
     static constexpr int TAG_PSU_TOGGLE = 200;
     static constexpr int TAG_AUTO_EXP = 300;
     static constexpr int TAG_CLICK_TO_MOVE = 400;
