@@ -29,6 +29,7 @@ import argparse
 import base64
 import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -201,16 +202,43 @@ def table(headers, rows, cls="data"):
     return "".join(out)
 
 
+def beam_label(b):
+    """Clean display label for a beam: 'A1.RX' -> 'RX', 'ch.2' -> 'ch.2'."""
+    raw = (b.get("label") or "").strip()
+    if "." in raw:
+        head, tail = raw.rsplit(".", 1)
+        if tail.upper() in ("RX", "TX"):
+            return tail.upper()
+    return raw
+
+
+def beam_order_key(b):
+    """Sort key so RX precedes TX, and channels go ascending (ch.1, ch.2...)."""
+    raw = (b.get("label") or "").strip().lower()
+    if raw.endswith("rx"):
+        return (0, 0)
+    if raw.endswith("tx"):
+        return (0, 1)
+    m = re.search(r"(\d+)\s*$", raw)
+    if m:
+        return (1, int(m.group(1)))
+    return (2, raw)
+
+
+def sorted_beams(e):
+    """b0/b1 of an entry, ordered RX->TX / channel-ascending."""
+    beams = [b for bk in ("b0", "b1") if isinstance((b := e.get(bk)), dict)]
+    beams.sort(key=beam_order_key)
+    return beams
+
+
 def meas_rows(entries):
     rows = []
     for e in entries:
         st = station_of(e)
-        for bk in ("b0", "b1"):
-            b = e.get(bk)
-            if not isinstance(b, dict):
-                continue
+        for b in sorted_beams(e):
             rows.append([
-                esc(st), f"{bk.upper()} ({esc(b.get('label', ''))})",
+                esc(st), esc(beam_label(b)),
                 cell("poynt_x_deg", b.get("poynt_x_deg")),
                 cell("poynt_y_deg", b.get("poynt_y_deg")),
                 fmt(b.get("loc_x_um"), 2), fmt(b.get("loc_y_um"), 2),
@@ -260,11 +288,9 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
     for i, e in enumerate(entries):
         st = station_of(e)
         color = PALETTE[i % len(PALETTE)]
-        for bk in ("b0", "b1"):
-            b = e.get(bk)
-            if isinstance(b, dict):
-                pts.append((b.get("poynt_x_deg"), b.get("poynt_y_deg"),
-                            f"{st} {bk.upper()}", color))
+        for b in sorted_beams(e):
+            pts.append((b.get("poynt_x_deg"), b.get("poynt_y_deg"),
+                        f"{st} {beam_label(b)}", color))
     svg = poynt_svg(pts)
 
     s.append('<div class="cols">')
@@ -389,6 +415,11 @@ def main():
     if not entries:
         print(f"error: no beam_capture entries for run_tag '{run_tag}' in {serial_json}", file=sys.stderr)
         return 1
+
+    # Location order: MOE stations first, then SA stations by number (names are
+    # zero-padded so lexicographic == numeric).
+    entries.sort(key=lambda e: (0 if station_of(e).upper().startswith("MOE") else 1,
+                                station_of(e)))
 
     out = Path(args.output) if args.output else (run / "report.html")
     title = f"Beam Report — {serial} / {run_tag}"
