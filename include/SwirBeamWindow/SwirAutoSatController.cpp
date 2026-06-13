@@ -90,7 +90,8 @@ void SwirAutoSatController::Stop()
 bool SwirAutoSatController::IncreaseCurrent(int stepMa)
 {
     if (!m_deps.psu || !m_deps.psuMutex || !m_deps.psuDevices) return false;
-    std::vector<std::string> names;
+    struct Target { std::string name; int channel; };
+    std::vector<Target> targets;
     int curMa = 0, newMa = 0;
     {
         std::lock_guard<std::mutex> lock(*m_deps.psuMutex);
@@ -101,14 +102,14 @@ bool SwirAutoSatController::IncreaseCurrent(int stepMa)
         if (newMa > AS_CUR_MAX_MA) return false;
         const double newAmps = newMa / 1000.0;
         for (auto& d : *m_deps.psuDevices) {
-            names.push_back(d.name);
+            targets.push_back({d.name, d.selectedChannel});
             d.setCurrent = newAmps;
         }
     }
     const double newAmps = newMa / 1000.0;
-    for (const auto& name : names) {
-        auto psu = m_deps.psu->getPowerSupply(name);
-        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
+    for (const auto& t : targets) {
+        auto psu = m_deps.psu->getPowerSupply(t.name);
+        if (psu && psu->isConnected()) psu->setCurrent(newAmps, t.channel);
     }
     std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA"
               << std::endl;
@@ -119,7 +120,8 @@ bool SwirAutoSatController::IncreaseCurrent(int stepMa)
 bool SwirAutoSatController::DecreaseCurrent(int stepMa)
 {
     if (!m_deps.psu || !m_deps.psuMutex || !m_deps.psuDevices) return false;
-    std::vector<std::string> names;
+    struct Target { std::string name; int channel; };
+    std::vector<Target> targets;
     int curMa = 0, newMa = 0;
     {
         std::lock_guard<std::mutex> lock(*m_deps.psuMutex);
@@ -130,14 +132,14 @@ bool SwirAutoSatController::DecreaseCurrent(int stepMa)
         if (newMa < AS_CUR_MIN_MA) return false;
         const double newAmps = newMa / 1000.0;
         for (auto& d : *m_deps.psuDevices) {
-            names.push_back(d.name);
+            targets.push_back({d.name, d.selectedChannel});
             d.setCurrent = newAmps;
         }
     }
     const double newAmps = newMa / 1000.0;
-    for (const auto& name : names) {
-        auto psu = m_deps.psu->getPowerSupply(name);
-        if (psu && psu->isConnected()) psu->setCurrent(newAmps, 1);
+    for (const auto& t : targets) {
+        auto psu = m_deps.psu->getPowerSupply(t.name);
+        if (psu && psu->isConnected()) psu->setCurrent(newAmps, t.channel);
     }
     std::cout << "[AutoSat] current " << curMa << " -> " << newMa << " mA"
               << std::endl;
