@@ -171,7 +171,12 @@ void ACSController::UpdateMotorStatus() {
     int axisIndex = GetAxisIndex(axis);
     if (axisIndex >= 0) {
       int state = 0;
-      if (acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL)) {
+      bool gotState;
+      {
+        std::lock_guard<std::mutex> lock(m_sdkMutex);
+        gotState = acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL) != 0;
+      }
+      if (gotState) {
         std::lock_guard<std::mutex> lock(m_mutex);
         m_axisMoving[axis] = (state & ACSC_MST_MOVE) != 0;
         m_axisServoEnabled[axis] = (state & ACSC_MST_ENABLE) != 0;
@@ -212,10 +217,17 @@ bool ACSController::Connect(const std::string& ipAddress, int port) {
   char ipBuffer[64];
   strncpy_s(ipBuffer, sizeof(ipBuffer), m_ipAddress.c_str(), _TRUNCATE);
 
-  m_controllerId = acsc_OpenCommEthernet(ipBuffer, m_port);
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    m_controllerId = acsc_OpenCommEthernet(ipBuffer, m_port);
+  }
 
   if (m_controllerId == ACSC_INVALID) {
-    int errorCode = acsc_GetLastError();
+    int errorCode;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      errorCode = acsc_GetLastError();
+    }
     LOG_ERROR("Failed to connect. Error: " + std::to_string(errorCode));
     return false;
   }
@@ -226,14 +238,25 @@ bool ACSController::Connect(const std::string& ipAddress, int port) {
   // Enable all axes
   for (const auto& axis : m_availableAxes) {
     int axisIndex = GetAxisIndex(axis);
-    if (axisIndex >= 0) {
-      if (acsc_Enable(m_controllerId, axisIndex, NULL)) {
-        LOG_INFO("Enabled axis " + axis);
+    if (axisIndex < 0) {
+      continue;
+    }
+
+    bool enabled = false;
+    int enableError = 0;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      enabled = acsc_Enable(m_controllerId, axisIndex, NULL) != 0;
+      if (!enabled) {
+        enableError = acsc_GetLastError();
       }
-      else {
-        int error = acsc_GetLastError();
-        LOG_ERROR("Failed to enable axis " + axis + ". Error: " + std::to_string(error));
-      }
+    }
+
+    if (enabled) {
+      LOG_INFO("Enabled axis " + axis);
+    }
+    else {
+      LOG_ERROR("Failed to enable axis " + axis + ". Error: " + std::to_string(enableError));
     }
   }
 
@@ -261,11 +284,16 @@ void ACSController::Disconnect() {
 
   LOG_INFO("Disconnecting");
 
-  (void)StopAllAxes();
-  acsc_CloseComm(m_controllerId);
+  (void)StopAllAxes();           // still connected here; locks m_sdkMutex internally
 
+  // Mark disconnected first so the background poll thread stops issuing new SDK
+  // work, then close the handle under the SDK lock so no read is in flight.
   m_isConnected.store(false);
-  m_controllerId = ACSC_INVALID;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    acsc_CloseComm(m_controllerId);
+    m_controllerId = ACSC_INVALID;
+  }
 
   LOG_INFO("Disconnected");
 }
@@ -334,7 +362,12 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
 
   for (int i = 0; i < kMaxIdleIter; ++i) {
     int motorState = 0;
-    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+    bool gotState;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotState = acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL) != 0;
+    }
+    if (gotState) {
       isEnabled = (motorState & ACSC_MST_ENABLE) != 0;
       isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
@@ -345,7 +378,7 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
         break;  // Axis is idle, proceed with move
       }
     } else {
-      // State query failed, proceed anyway and let acsc_ToPointM handle it
+      // State query failed, proceed anyway and let acsc_ToPoint handle it
       LOG_DEBUG("Motor state query failed, proceeding anyway");
       isMoving = false;
       break;
@@ -364,31 +397,28 @@ bool ACSController::MoveToPosition(const std::string& axis, double position, boo
 
   LOG_INFO("Moving " + axis + " to " + std::to_string(position));
 
-  int axes[2] = { axisIndex, -1 };
-  double points[1] = { position };
+  // Single-axis absolute point-to-point with immediate start (flags=0), mirroring
+  // the proven Horizon C# adapter (ToPoint(0, axis, position)). No ACSC_AMF_WAIT /
+  // GoM pairing — acsc_ToPoint with flags 0 starts the motion itself.
+  bool moveStarted = false;
+  int moveError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    moveStarted = acsc_ToPoint(m_controllerId, 0, axisIndex, position, NULL) != 0;
+    if (!moveStarted) {
+      moveError = acsc_GetLastError();
+    }
+  }
 
-  LOG_DEBUG("Calling acsc_ToPointM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
-
-  if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axes, points, NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode) +
+  if (!moveStarted) {
+    m_lastErrorCode = moveError;
+    m_lastErrorMessage = "acsc_ToPoint failed: error=" + std::to_string(moveError) +
                          " (wasMoving=" + (isMoving ? "true" : "false") +
                          " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
-    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
+    LOG_ERROR("acsc_ToPoint failed. Error code: " + std::to_string(moveError));
     return false;
   }
-  LOG_DEBUG("acsc_ToPointM succeeded");
-
-  LOG_DEBUG("Calling StartMotion for axis " + axis);
-  if (!StartMotion(axis)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_GoM (StartMotion) failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + (isMoving ? "true" : "false") +
-                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
-    LOG_ERROR("StartMotion failed for axis " + axis);
-    return false;
-  }
-  LOG_DEBUG("StartMotion succeeded");
+  LOG_DEBUG("acsc_ToPoint succeeded (immediate start)");
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion");
@@ -429,7 +459,12 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
 
   for (int i = 0; i < kMaxIdleIter; ++i) {
     int motorState = 0;
-    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+    bool gotState;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotState = acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL) != 0;
+    }
+    if (gotState) {
       isEnabled = (motorState & ACSC_MST_ENABLE) != 0;
       isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
@@ -440,7 +475,7 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
         break;  // Axis is idle, proceed with move
       }
     } else {
-      // State query failed, proceed anyway and let acsc_ToPointM handle it
+      // State query failed, proceed anyway and let acsc_ToPoint handle it
       LOG_DEBUG("Motor state query failed, proceeding anyway");
       isMoving = false;
       break;
@@ -457,38 +492,36 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
     return false;
   }
 
-  // Capture current position for target calculation (before issuing move)
+  // Capture current feedback position and convert the relative request into an
+  // absolute target, mirroring the proven Horizon C# adapter
+  // (cur = GetFPosition; ToPoint(0, axis, cur + distance)). This avoids the
+  // controller-side ACSC_AMF_RELATIVE mode entirely.
   double currentPos = 0.0;
-  GetPosition(axis, currentPos);
+  GetPosition(axis, currentPos);          // locks m_sdkMutex internally
   double targetAbsPos = currentPos + distance;
 
-  LOG_INFO("Moving " + axis + " relative " + std::to_string(distance));
+  LOG_INFO("Moving " + axis + " relative " + std::to_string(distance) +
+           " (abs target " + std::to_string(targetAbsPos) + ")");
 
-  int axes[2] = { axisIndex, -1 };
-  double distances[1] = { distance };
+  bool moveStarted = false;
+  int moveError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    moveStarted = acsc_ToPoint(m_controllerId, 0, axisIndex, targetAbsPos, NULL) != 0;
+    if (!moveStarted) {
+      moveError = acsc_GetLastError();
+    }
+  }
 
-  LOG_DEBUG("Calling acsc_ToPointM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
-
-  if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT | ACSC_AMF_RELATIVE, axes, distances, NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode) +
+  if (!moveStarted) {
+    m_lastErrorCode = moveError;
+    m_lastErrorMessage = "acsc_ToPoint failed: error=" + std::to_string(moveError) +
                          " (wasMoving=" + (isMoving ? "true" : "false") +
                          " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
-    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
+    LOG_ERROR("acsc_ToPoint failed. Error code: " + std::to_string(moveError));
     return false;
   }
-  LOG_DEBUG("acsc_ToPointM succeeded");
-
-  LOG_DEBUG("Calling StartMotion for axis " + axis);
-  if (!StartMotion(axis)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_GoM (StartMotion) failed: error=" + std::to_string(m_lastErrorCode) +
-                         " (wasMoving=" + (isMoving ? "true" : "false") +
-                         " wasEnabled=" + (isEnabled ? "true" : "false") + ")";
-    LOG_ERROR("StartMotion failed for axis " + axis);
-    return false;
-  }
-  LOG_DEBUG("StartMotion succeeded");
+  LOG_DEBUG("acsc_ToPoint succeeded (immediate start)");
 
   // Move diagnostic: log reference (commanded) and feedback (encoder) positions
   // before/after each move at 6-decimal precision. Useful for diagnosing servo
@@ -496,11 +529,16 @@ bool ACSController::MoveRelative(const std::string& axis, double distance, bool 
   // For non-blocking jogs the 30 ms sample may catch the servo mid-flight on
   // larger moves — that's expected; the RPos value is still authoritative.
   {
-    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));   // outside the SDK lock
     double refPos = 0.0;
     double fbkPos = 0.0;
-    const bool gotRef = (acsc_GetRPosition(m_controllerId, axisIndex, &refPos, NULL) != 0);
-    const bool gotFbk = (acsc_GetFPosition(m_controllerId, axisIndex, &fbkPos, NULL) != 0);
+    bool gotRef = false;
+    bool gotFbk = false;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotRef = (acsc_GetRPosition(m_controllerId, axisIndex, &refPos, NULL) != 0);
+      gotFbk = (acsc_GetFPosition(m_controllerId, axisIndex, &fbkPos, NULL) != 0);
+    }
     std::ostringstream oss;
     oss << "[MoveDiag] " << axis
         << " req=" << std::fixed << std::setprecision(6) << std::showpos << distance << std::noshowpos
@@ -536,9 +574,17 @@ bool ACSController::HomeAxis(const std::string& axis) {
 
   LOG_INFO("Homing axis " + axis);
 
-  if (!acsc_FaultClear(m_controllerId, axisIndex, NULL)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to clear faults. Error: " + std::to_string(error));
+  bool cleared = false;
+  int clearError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    cleared = acsc_FaultClear(m_controllerId, axisIndex, NULL) != 0;
+    if (!cleared) {
+      clearError = acsc_GetLastError();
+    }
+  }
+  if (!cleared) {
+    LOG_ERROR("Failed to clear faults. Error: " + std::to_string(clearError));
   }
 
   return WaitForMotionCompletion(axis);
@@ -555,9 +601,17 @@ bool ACSController::StopAxis(const std::string& axis) {
 
   LOG_INFO("Stopping axis " + axis);
 
-  if (!acsc_Halt(m_controllerId, axisIndex, NULL)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to stop. Error: " + std::to_string(error));
+  bool halted = false;
+  int haltError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    halted = acsc_Halt(m_controllerId, axisIndex, NULL) != 0;
+    if (!halted) {
+      haltError = acsc_GetLastError();
+    }
+  }
+  if (!halted) {
+    LOG_ERROR("Failed to stop. Error: " + std::to_string(haltError));
     return false;
   }
 
@@ -576,9 +630,17 @@ bool ACSController::StopAllAxes() {
 
   LOG_INFO("Stopping all axes");
 
-  if (!acsc_KillAll(m_controllerId, NULL)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to stop all. Error: " + std::to_string(error));
+  bool killed = false;
+  int killError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    killed = acsc_KillAll(m_controllerId, NULL) != 0;
+    if (!killed) {
+      killError = acsc_GetLastError();
+    }
+  }
+  if (!killed) {
+    LOG_ERROR("Failed to stop all. Error: " + std::to_string(killError));
     return false;
   }
 
@@ -616,8 +678,11 @@ bool ACSController::IsMoving(const std::string& axis) {
   if (axisIndex < 0) return false;
 
   int state = 0;
-  if (!acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL)) {
-    return false;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    if (!acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL)) {
+      return false;
+    }
   }
 
   bool isMoving = (state & ACSC_MST_MOVE) != 0;
@@ -646,10 +711,18 @@ bool ACSController::GetPosition(const std::string& axis, double& position) {
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
-  if (!acsc_GetFPosition(m_controllerId, axisIndex, &position, NULL)) {
+  bool gotPos = false;
+  int posError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    gotPos = acsc_GetFPosition(m_controllerId, axisIndex, &position, NULL) != 0;
+    if (!gotPos && m_enableDebug) {
+      posError = acsc_GetLastError();
+    }
+  }
+  if (!gotPos) {
     if (m_enableDebug) {
-      int error = acsc_GetLastError();
-      LOG_DEBUG("Error getting position for " + axis + ": " + std::to_string(error));
+      LOG_DEBUG("Error getting position for " + axis + ": " + std::to_string(posError));
     }
     return false;
   }
@@ -679,7 +752,12 @@ bool ACSController::GetPositions(std::map<std::string, double>& positions) {
     int axisIndex = static_cast<int>(i);  // Physical axis index = position in array
     double pos = 0.0;
 
-    if (!acsc_GetFPosition(m_controllerId, axisIndex, &pos, NULL)) {
+    bool gotPos;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotPos = acsc_GetFPosition(m_controllerId, axisIndex, &pos, NULL) != 0;
+    }
+    if (!gotPos) {
       success = false;
     }
     else {
@@ -702,27 +780,40 @@ bool ACSController::EnableServo(const std::string& axis, bool enable) {
   LOG_INFO("Setting servo " + axis + " to " + (enable ? "enabled" : "disabled"));
 
   bool result = false;
+  int servoError = 0;
   if (enable) {
     // First, clear any faults on the axis before enabling
     // This is required by ACS controllers - motors cannot be enabled if faults are present
-    if (acsc_FaultClear(m_controllerId, axisIndex, NULL) == 0) {
+    bool faultCleared;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      faultCleared = acsc_FaultClear(m_controllerId, axisIndex, NULL) != 0;
+    }
+    if (!faultCleared) {
       LOG_WARNING("FaultClear returned 0 for axis " + axis);
       // Continue anyway - might not have any faults
     }
 
-    // Small delay to ensure fault clear is processed
+    // Small delay to ensure fault clear is processed (outside the SDK lock)
     Sleep(50);
 
     // Now try to enable the motor
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
     result = acsc_Enable(m_controllerId, axisIndex, NULL) != 0;
+    if (!result) {
+      servoError = acsc_GetLastError();
+    }
   }
   else {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
     result = acsc_Disable(m_controllerId, axisIndex, NULL) != 0;
+    if (!result) {
+      servoError = acsc_GetLastError();
+    }
   }
 
   if (!result) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to set servo. Error code: " + std::to_string(error));
+    LOG_ERROR("Failed to set servo. Error code: " + std::to_string(servoError));
   }
   else {
     LOG_INFO("Servo " + axis + " " + (enable ? "enabled" : "disabled") + " successfully");
@@ -738,8 +829,11 @@ bool ACSController::IsServoEnabled(const std::string& axis, bool& enabled) {
   if (axisIndex < 0) return false;
 
   int state = 0;
-  if (!acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL)) {
-    return false;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    if (!acsc_GetMotorState(m_controllerId, axisIndex, &state, NULL)) {
+      return false;
+    }
   }
 
   enabled = (state & ACSC_MST_ENABLE) != 0;
@@ -757,9 +851,17 @@ bool ACSController::SetVelocity(const std::string& axis, double velocity) {
 
   LOG_DEBUG("Setting velocity " + axis + " to " + std::to_string(velocity));
 
-  if (!acsc_SetVelocity(m_controllerId, axisIndex, velocity, NULL)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to set velocity. Error: " + std::to_string(error));
+  bool set = false;
+  int velError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    set = acsc_SetVelocity(m_controllerId, axisIndex, velocity, NULL) != 0;
+    if (!set) {
+      velError = acsc_GetLastError();
+    }
+  }
+  if (!set) {
+    LOG_ERROR("Failed to set velocity. Error: " + std::to_string(velError));
     return false;
   }
 
@@ -772,6 +874,7 @@ bool ACSController::GetVelocity(const std::string& axis, double& velocity) {
   int axisIndex = GetAxisIndex(axis);
   if (axisIndex < 0) return false;
 
+  std::lock_guard<std::mutex> lock(m_sdkMutex);
   if (!acsc_GetVelocity(m_controllerId, axisIndex, &velocity, NULL)) {
     return false;
   }
@@ -793,82 +896,58 @@ bool ACSController::WaitForMotionCompletion(const std::string& axis, double time
 
   auto startTime = std::chrono::steady_clock::now();
 
-  // Phase 1: Wait for motion to START (motor flag becomes MOVING)
-  // This prevents false "completed" when motion hasn't begun yet
-  constexpr int kMaxStartIter = 50;  // 500ms / 10ms poll
-  constexpr int kStartPollMs = 10;
-  bool motionStarted = false;
+  // Completion is detected by polling the motor MST_MOVE flag, mirroring the
+  // proven Horizon C# adapter (poll GetMotorState until MST_MOVE clears). The
+  // long blocking acsc_WaitMotionEnd is intentionally NOT used: it would hold the
+  // controller comm channel for the whole move and force every SDK read to stay
+  // short, so each acsc_GetMotorState below is taken under m_sdkMutex and released
+  // before sleeping, letting the background poll thread interleave its own reads.
+  constexpr int kPollMs = 10;
 
+  // Phase 1: brief wait for motion to START (MST_MOVE set). Guards against a false
+  // "already complete" if we poll before the controller has begun the move.
+  constexpr int kMaxStartIter = 50;  // 500ms / 10ms poll
   for (int i = 0; i < kMaxStartIter; ++i) {
     int motorState = 0;
-    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
-      if ((motorState & ACSC_MST_MOVE) != 0) {
-        motionStarted = true;
-        LOG_DEBUG("Axis " + axis + " motion started after " + std::to_string(i * kStartPollMs) + "ms");
-        break;
-      }
+    bool gotState;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotState = acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL) != 0;
     }
-
-    std::this_thread::sleep_for(std::chrono::milliseconds(kStartPollMs));
+    if (gotState && (motorState & ACSC_MST_MOVE) != 0) {
+      LOG_DEBUG("Axis " + axis + " motion started after " + std::to_string(i * kPollMs) + "ms");
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
   }
 
-  if (!motionStarted) {
-    // Motion never started - check if we're already at target (position didn't change)
-    LOG_DEBUG("Axis " + axis + " motion flag never set after " +
-              std::to_string(kMaxStartIter * kStartPollMs) + "ms - checking if already at target");
-    // Proceed to completion check anyway - might be a very short move
-  }
-
-  // Phase 2: Wait for motion to COMPLETE
+  // Phase 2: wait for motion to COMPLETE (MST_MOVE clears).
   LOG_DEBUG("Waiting for " + axis + " motion completion");
-
-  // Calculate remaining timeout for Phase 2
-  auto phase1Elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::steady_clock::now() - startTime).count();
-  int remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(phase1Elapsed);
-  if (remainingTimeoutMs < 100) {
-    remainingTimeoutMs = 100;  // Minimum 100ms
-  }
-
-  // Try acsc_WaitMotionEnd first (SDK blocking wait)
-  if (acsc_WaitMotionEnd(m_controllerId, axisIndex, remainingTimeoutMs)) {
-    auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - startTime).count();
-    LOG_DEBUG("Axis " + axis + " motion completed via SDK after " + std::to_string(totalMs) + "ms total");
-    CheckInPosition(axis, axisIndex);
-    VerifyFinalPosition(axis, axisIndex, targetPosition);
-    return true;
-  }
-
-  // SDK wait failed — log and fall back to manual polling
-  int sdkError = acsc_GetLastError();
-  LOG_DEBUG("acsc_WaitMotionEnd failed (error=" + std::to_string(sdkError) +
-            "), falling back to manual poll");
-
-  // Fallback: bounded poll loop
-  constexpr int kMaxPollIter = 1200;  // Safety bound: 30s / 50ms * 2x margin
+  const int kMaxPollIter = static_cast<int>((timeoutSeconds * 1000.0) / kPollMs) + 100;
   for (int iteration = 0; iteration < kMaxPollIter; ++iteration) {
     int motorState = 0;
-    if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
-      if ((motorState & ACSC_MST_MOVE) == 0) {
-        auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-          std::chrono::steady_clock::now() - startTime).count();
-        LOG_DEBUG("Axis " + axis + " motion completed via fallback after " + std::to_string(totalMs) + "ms total");
-        CheckInPosition(axis, axisIndex);
-        VerifyFinalPosition(axis, axisIndex, targetPosition);
-        return true;
-      }
+    bool gotState;
+    {
+      std::lock_guard<std::mutex> lock(m_sdkMutex);
+      gotState = acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL) != 0;
+    }
+    if (gotState && (motorState & ACSC_MST_MOVE) == 0) {
+      auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - startTime).count();
+      LOG_DEBUG("Axis " + axis + " motion completed after " + std::to_string(totalMs) + "ms total");
+      CheckInPosition(axis, axisIndex);
+      VerifyFinalPosition(axis, axisIndex, targetPosition);
+      return true;
     }
 
-    auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+    auto elapsedSeconds = std::chrono::duration_cast<std::chrono::duration<double>>(
       std::chrono::steady_clock::now() - startTime).count();
-
     if (elapsedSeconds > timeoutSeconds) {
       LOG_WARNING("Timeout waiting for " + axis + " after " + std::to_string(timeoutSeconds) + " seconds");
       return false;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
   }
 
   LOG_ERROR("Loop safety bound reached in WaitForMotionCompletion (ACS)");
@@ -894,92 +973,54 @@ bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& a
   LOG_DEBUG("WaitForMultiAxisCompletion START for " + std::to_string(axes.size()) + " axes");
   auto startTime = std::chrono::steady_clock::now();
 
-  // Phase 1: Brief wait for ANY axis to show MOVING (confirms motion command was received)
-  constexpr int kMaxMultiStartIter = 20;  // 100ms / 5ms poll
-  constexpr int kMultiStartPollMs = 5;
-  bool anyStarted = false;
+  constexpr int kPollMs = 10;
 
-  for (int i = 0; i < kMaxMultiStartIter; ++i) {
+  // Phase 1: brief wait for ANY axis to show MOVING (confirms the move started).
+  constexpr int kMaxStartIter = 20;  // 200ms / 10ms poll
+  for (int i = 0; i < kMaxStartIter; ++i) {
+    bool anyMoving = false;
     for (int idx : axisIndices) {
       int motorState = 0;
-      if (acsc_GetMotorState(m_controllerId, idx, &motorState, NULL)) {
-        if ((motorState & ACSC_MST_MOVE) != 0) {
-          anyStarted = true;
-          break;
-        }
+      bool gotState;
+      {
+        std::lock_guard<std::mutex> lock(m_sdkMutex);
+        gotState = acsc_GetMotorState(m_controllerId, idx, &motorState, NULL) != 0;
+      }
+      if (gotState && (motorState & ACSC_MST_MOVE) != 0) {
+        anyMoving = true;
+        break;
       }
     }
-    if (anyStarted) break;
-    std::this_thread::sleep_for(std::chrono::milliseconds(kMultiStartPollMs));
-  }
-
-  if (!anyStarted) {
-    LOG_DEBUG("No axis showed MOVING flag after " +
-              std::to_string(kMaxMultiStartIter * kMultiStartPollMs) + "ms - may already be at target");
-  }
-
-  // Phase 2: Wait for motion completion
-  LOG_DEBUG("Waiting for multi-axis motion completion");
-
-  // Calculate remaining timeout
-  auto phase1Elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::steady_clock::now() - startTime).count();
-  int remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(phase1Elapsed);
-  if (remainingTimeoutMs < 100) {
-    remainingTimeoutMs = 100;
-  }
-
-  // Try acsc_WaitMotionEnd per axis sequentially (SDK blocking wait)
-  bool sdkWaitSucceeded = true;
-  for (size_t i = 0; i < axisIndices.size(); ++i) {
-    if (!acsc_WaitMotionEnd(m_controllerId, axisIndices[i], remainingTimeoutMs)) {
-      int sdkError = acsc_GetLastError();
-      LOG_DEBUG("acsc_WaitMotionEnd failed for axis " + axes[i] +
-                " (error=" + std::to_string(sdkError) + "), falling back to manual poll");
-      sdkWaitSucceeded = false;
+    if (anyMoving) {
       break;
     }
-    // Recalculate remaining timeout after each axis
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - startTime).count();
-    remainingTimeoutMs = static_cast<int>(timeoutSeconds * 1000.0) - static_cast<int>(elapsed);
-    if (remainingTimeoutMs < 100) {
-      remainingTimeoutMs = 100;
-    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
   }
 
-  if (sdkWaitSucceeded) {
-    auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
-      std::chrono::steady_clock::now() - startTime).count();
-    LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed via SDK after " + std::to_string(totalMs) + "ms");
-    // Run diagnostics on all axes
-    for (size_t i = 0; i < axes.size(); ++i) {
-      CheckInPosition(axes[i], axisIndices[i]);
-      if (i < targetPositions.size()) {
-        VerifyFinalPosition(axes[i], axisIndices[i], targetPositions[i]);
-      }
-    }
-    return true;
-  }
-
-  // Fallback: bounded poll loop — wait until ALL axes report NOT MOVING
-  constexpr int kMaxPollIter = 1200;
+  // Phase 2: wait until ALL axes report NOT MOVING. Each GetMotorState read is
+  // taken under m_sdkMutex and released before sleeping (drop-in for the old
+  // blocking acsc_WaitMotionEnd, which held the comm channel for the whole move).
+  LOG_DEBUG("Waiting for multi-axis motion completion");
+  const int kMaxPollIter = static_cast<int>((timeoutSeconds * 1000.0) / kPollMs) + 100;
   for (int iteration = 0; iteration < kMaxPollIter; ++iteration) {
     bool allStopped = true;
     for (int idx : axisIndices) {
       int motorState = 0;
-      if (acsc_GetMotorState(m_controllerId, idx, &motorState, NULL)) {
-        if ((motorState & ACSC_MST_MOVE) != 0) {
-          allStopped = false;
-          break;
-        }
+      bool gotState;
+      {
+        std::lock_guard<std::mutex> lock(m_sdkMutex);
+        gotState = acsc_GetMotorState(m_controllerId, idx, &motorState, NULL) != 0;
+      }
+      if (gotState && (motorState & ACSC_MST_MOVE) != 0) {
+        allStopped = false;
+        break;
       }
     }
 
     if (allStopped) {
       auto totalMs = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now() - startTime).count();
-      LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed via fallback after " + std::to_string(totalMs) + "ms");
+      LOG_DEBUG("All " + std::to_string(axes.size()) + " axes completed after " + std::to_string(totalMs) + "ms");
       // Run diagnostics on all axes
       for (size_t i = 0; i < axes.size(); ++i) {
         CheckInPosition(axes[i], axisIndices[i]);
@@ -990,14 +1031,14 @@ bool ACSController::WaitForMultiAxisCompletion(const std::vector<std::string>& a
       return true;
     }
 
-    auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(
+    auto elapsedSeconds = std::chrono::duration_cast<std::chrono::duration<double>>(
       std::chrono::steady_clock::now() - startTime).count();
     if (elapsedSeconds > timeoutSeconds) {
       LOG_WARNING("Timeout waiting for multi-axis motion after " + std::to_string(timeoutSeconds) + "s");
       return false;
     }
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    std::this_thread::sleep_for(std::chrono::milliseconds(kPollMs));
   }
 
   LOG_ERROR("Loop safety bound reached in WaitForMultiAxisCompletion (ACS)");
@@ -1069,9 +1110,17 @@ bool ACSController::StartMotion(const std::string& axis) {
 
   LOG_DEBUG("Calling acsc_GoM with controllerId=" + std::to_string(reinterpret_cast<uintptr_t>(m_controllerId)) + " axisIndex=" + std::to_string(axisIndex));
 
-  if (!acsc_GoM(m_controllerId, axes, NULL)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("acsc_GoM failed. Error code: " + std::to_string(error));
+  bool started = false;
+  int goError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    started = acsc_GoM(m_controllerId, axes, NULL) != 0;
+    if (!started) {
+      goError = acsc_GetLastError();
+    }
+  }
+  if (!started) {
+    LOG_ERROR("acsc_GoM failed. Error code: " + std::to_string(goError));
     return false;
   }
 
@@ -1127,7 +1176,12 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
 
     for (int j = 0; j < kMaxIdleIter; ++j) {
       int motorState = 0;
-      if (acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL)) {
+      bool gotState;
+      {
+        std::lock_guard<std::mutex> lock(m_sdkMutex);
+        gotState = acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL) != 0;
+      }
+      if (gotState) {
         isMoving = (motorState & ACSC_MST_MOVE) != 0;
 
         if (!isMoving) {
@@ -1161,25 +1215,39 @@ bool ACSController::MoveToPositionMultiAxis(const std::vector<std::string>& axes
   }
   axesArray[axisIndices.size()] = -1;
 
-  LOG_DEBUG("Calling acsc_ToPointM for multi-axis move");
+  // Synchronized multi-axis absolute move: build all axes with ACSC_AMF_WAIT then
+  // start them together with GoM (correct ACS usage for a coordinated start). The
+  // ToPointM+GoM pair is issued under a single SDK-lock scope so no other SDK call
+  // can interleave between building and starting the motion.
+  LOG_DEBUG("Calling acsc_ToPointM + acsc_GoM for multi-axis move");
+  bool toPointOk = false;
+  bool goOk = false;
+  int multiError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    toPointOk = acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axesArray.data(),
+      const_cast<double*>(positions.data()), NULL) != 0;
+    if (toPointOk) {
+      goOk = acsc_GoM(m_controllerId, axesArray.data(), NULL) != 0;
+    }
+    if (!toPointOk || !goOk) {
+      multiError = acsc_GetLastError();
+    }
+  }
 
-  if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axesArray.data(),
-    const_cast<double*>(positions.data()), NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(m_lastErrorCode);
-    LOG_ERROR("acsc_ToPointM failed. Error code: " + std::to_string(m_lastErrorCode));
+  if (!toPointOk) {
+    m_lastErrorCode = multiError;
+    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(multiError);
+    LOG_ERROR(m_lastErrorMessage);
     return false;
   }
-  LOG_DEBUG("acsc_ToPointM succeeded");
-
-  LOG_DEBUG("Calling acsc_GoM for multi-axis move");
-  if (!acsc_GoM(m_controllerId, axesArray.data(), NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(m_lastErrorCode);
-    LOG_ERROR("acsc_GoM failed. Error code: " + std::to_string(m_lastErrorCode));
+  if (!goOk) {
+    m_lastErrorCode = multiError;
+    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(multiError);
+    LOG_ERROR(m_lastErrorMessage);
     return false;
   }
-  LOG_DEBUG("acsc_GoM succeeded");
+  LOG_DEBUG("acsc_ToPointM + acsc_GoM succeeded");
 
   if (blocking) {
     LOG_DEBUG("Waiting for motion completion on all axes");
@@ -1239,7 +1307,12 @@ bool ACSController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
 
     for (int j = 0; j < kMaxIdleIter; ++j) {
       int motorState = 0;
-      if (acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL)) {
+      bool gotState;
+      {
+        std::lock_guard<std::mutex> lock(m_sdkMutex);
+        gotState = acsc_GetMotorState(m_controllerId, axisIdx, &motorState, NULL) != 0;
+      }
+      if (gotState) {
         isMoving = (motorState & ACSC_MST_MOVE) != 0;
         if (!isMoving) {
           if (j > 0) {
@@ -1263,12 +1336,14 @@ bool ACSController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
     }
   }
 
-  // Capture target absolute positions for blocking-completion verification
+  // Convert each relative request to an absolute target from current feedback,
+  // mirroring the single-axis MoveRelative path (and the Horizon C# adapter).
+  // The controller-side ACSC_AMF_RELATIVE mode is not used.
   std::vector<double> targetAbsPositions;
   targetAbsPositions.reserve(axes.size());
   for (size_t i = 0; i < axes.size(); i++) {
     double cur = 0.0;
-    GetPosition(axes[i], cur);
+    GetPosition(axes[i], cur);            // locks m_sdkMutex internally
     targetAbsPositions.push_back(cur + distances[i]);
   }
 
@@ -1279,19 +1354,33 @@ bool ACSController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
   }
   axesArray[axisIndices.size()] = -1;
 
-  LOG_DEBUG("Calling acsc_ToPointM (relative) for multi-axis move");
-  if (!acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT | ACSC_AMF_RELATIVE, axesArray.data(),
-    const_cast<double*>(distances.data()), NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_ToPointM (relative) failed: error=" + std::to_string(m_lastErrorCode);
+  // Synchronized absolute multi-axis move (ToPointM with absolute targets + GoM),
+  // issued as one SDK-lock scope so nothing interleaves between build and start.
+  LOG_DEBUG("Calling acsc_ToPointM (absolute) + acsc_GoM for multi-axis relative move");
+  bool toPointOk = false;
+  bool goOk = false;
+  int multiError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    toPointOk = acsc_ToPointM(m_controllerId, ACSC_AMF_WAIT, axesArray.data(),
+      targetAbsPositions.data(), NULL) != 0;
+    if (toPointOk) {
+      goOk = acsc_GoM(m_controllerId, axesArray.data(), NULL) != 0;
+    }
+    if (!toPointOk || !goOk) {
+      multiError = acsc_GetLastError();
+    }
+  }
+
+  if (!toPointOk) {
+    m_lastErrorCode = multiError;
+    m_lastErrorMessage = "acsc_ToPointM failed: error=" + std::to_string(multiError);
     LOG_ERROR(m_lastErrorMessage);
     return false;
   }
-
-  LOG_DEBUG("Calling acsc_GoM");
-  if (!acsc_GoM(m_controllerId, axesArray.data(), NULL)) {
-    m_lastErrorCode = acsc_GetLastError();
-    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(m_lastErrorCode);
+  if (!goOk) {
+    m_lastErrorCode = multiError;
+    m_lastErrorMessage = "acsc_GoM failed: error=" + std::to_string(multiError);
     LOG_ERROR(m_lastErrorMessage);
     return false;
   }
@@ -1307,7 +1396,12 @@ bool ACSController::MoveRelativeMultiAxis(const std::vector<std::string>& axes,
 
 void ACSController::CheckInPosition(const std::string& axis, int axisIndex) {
   int motorState = 0;
-  if (acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL)) {
+  bool gotState;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    gotState = acsc_GetMotorState(m_controllerId, axisIndex, &motorState, NULL) != 0;
+  }
+  if (gotState) {
     bool isMoving = (motorState & ACSC_MST_MOVE) != 0;
     bool isInPos  = (motorState & ACSC_MST_INPOS) != 0;
 
@@ -1327,7 +1421,12 @@ void ACSController::VerifyFinalPosition(const std::string& axis, int axisIndex, 
   }
 
   double actualPosition = 0.0;
-  if (acsc_GetFPosition(m_controllerId, axisIndex, &actualPosition, NULL)) {
+  bool gotPos;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    gotPos = acsc_GetFPosition(m_controllerId, axisIndex, &actualPosition, NULL) != 0;
+  }
+  if (gotPos) {
     double error = std::abs(actualPosition - targetPosition);
     if (error > kPositionToleranceMm) {
       LOG_WARNING("Axis " + axis + " position error: target=" + std::to_string(targetPosition) +
@@ -1370,9 +1469,17 @@ bool ACSController::RunBuffer(int bufferNumber, const std::string& labelName) {
     LOG_INFO("Running buffer " + std::to_string(bufferNumber));
   }
 
-  if (!acsc_RunBuffer(m_controllerId, bufferNumber, labelPtr, ACSC_SYNCHRONOUS)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to run buffer. Error: " + std::to_string(error));
+  bool ran = false;
+  int bufError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    ran = acsc_RunBuffer(m_controllerId, bufferNumber, labelPtr, ACSC_SYNCHRONOUS) != 0;
+    if (!ran) {
+      bufError = acsc_GetLastError();
+    }
+  }
+  if (!ran) {
+    LOG_ERROR("Failed to run buffer. Error: " + std::to_string(bufError));
     return false;
   }
 
@@ -1392,9 +1499,17 @@ bool ACSController::StopBuffer(int bufferNumber) {
 
   LOG_INFO("Stopping buffer " + std::to_string(bufferNumber));
 
-  if (!acsc_StopBuffer(m_controllerId, bufferNumber, ACSC_SYNCHRONOUS)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to stop buffer. Error: " + std::to_string(error));
+  bool stopped = false;
+  int bufError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    stopped = acsc_StopBuffer(m_controllerId, bufferNumber, ACSC_SYNCHRONOUS) != 0;
+    if (!stopped) {
+      bufError = acsc_GetLastError();
+    }
+  }
+  if (!stopped) {
+    LOG_ERROR("Failed to stop buffer. Error: " + std::to_string(bufError));
     return false;
   }
 
@@ -1409,9 +1524,17 @@ bool ACSController::StopAllBuffers() {
 
   LOG_INFO("Stopping all buffers");
 
-  if (!acsc_StopBuffer(m_controllerId, ACSC_NONE, ACSC_SYNCHRONOUS)) {
-    int error = acsc_GetLastError();
-    LOG_ERROR("Failed to stop all buffers. Error: " + std::to_string(error));
+  bool stopped = false;
+  int bufError = 0;
+  {
+    std::lock_guard<std::mutex> lock(m_sdkMutex);
+    stopped = acsc_StopBuffer(m_controllerId, ACSC_NONE, ACSC_SYNCHRONOUS) != 0;
+    if (!stopped) {
+      bufError = acsc_GetLastError();
+    }
+  }
+  if (!stopped) {
+    LOG_ERROR("Failed to stop all buffers. Error: " + std::to_string(bufError));
     return false;
   }
 
