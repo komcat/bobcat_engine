@@ -159,6 +159,13 @@ private:
     void OnCurrentIncreaseSmall();
     void OnCurrentDecreaseSmall();
 
+    // Top-bar gantry quick-move: move gantry-main to a named position.
+    void OnMoveToNamedPosition(const std::string& positionName);
+
+    // Top-bar right-click: teach the named position from the CURRENT gantry-main
+    // location. Shows a stored-vs-current comparison dialog and saves on confirm.
+    void OnSaveCurrentToNamedPosition(const std::string& positionName);
+
     // Exposure actions
     void OnAutoExposureToggle();
     void OnSetExposure(double microseconds);
@@ -398,6 +405,7 @@ private:
     static constexpr int TAG_Z_JOG_PLUS = 1030;
     static constexpr int TAG_BEAM_FIT = 1040;     // strip button (next to crops)
     static constexpr int TAG_BEAM_CENTER = 1050;  // strip button (center XY on beams)
+    static constexpr int TAG_TOPBAR_BASE = 1100;  // top-bar gantry quick-move buttons: 1100, 1101, ...
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};

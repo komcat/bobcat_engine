@@ -37,6 +37,24 @@ bool SwirBeamWindow::s_gdiplusInitialized = false;
 // Panel width ratio
 static constexpr double PANEL_RATIO = 0.25;
 
+// Top button bar (spans the image area; gantry-main quick-move presets)
+static constexpr int TOPBAR_HEIGHT = 40;
+
+// Top-bar buttons, left-to-right. {display label, named position to move to}.
+struct TopBarMove { const wchar_t* label; const char* position; };
+static const TopBarMove kTopBarMoves[] = {
+    {L"MOE-A2", "MOE-A2"},
+    {L"ch6",    "SA 13 14"},
+    {L"ch5",    "SA 11 12"},
+    {L"ch4",    "SA 09 10"},
+    {L"ch3",    "SA 07 08"},
+    {L"ch2",    "SA 05 06"},
+    {L"ch1",    "SA 03 04"},
+    {L"MOE-A1", "MOE-A1"},
+};
+static constexpr int kTopBarMoveCount =
+    static_cast<int>(sizeof(kTopBarMoves) / sizeof(kTopBarMoves[0]));
+
 // Color constants
 static const Gdiplus::Color CLR_PANEL_BG(255, 30, 30, 30);
 static const Gdiplus::Color CLR_SECTION_HEADER(255, 255, 102, 0);
@@ -358,6 +376,85 @@ void SwirBeamWindow::HandleClickToMove(int mouseX, int mouseY) {
     bool success = m_motionManager->MoveToAbs("gantry-main", newX, newY, currentPos.z, 10.0, false);
     if (!success) {
         std::cerr << "[SwirBeamWindow] Click-to-move failed!" << std::endl;
+    }
+}
+
+void SwirBeamWindow::OnMoveToNamedPosition(const std::string& positionName)
+{
+    if (!m_motionManager) {
+        std::cerr << "[SwirBeamWindow] Move to '" << positionName
+                  << "': no motion manager" << std::endl;
+        return;
+    }
+    std::cout << "[SwirBeamWindow] Top-bar move gantry-main -> '"
+              << positionName << "'" << std::endl;
+    // Non-blocking move; interlocks are enforced inside UnifiedMotionManager.
+    bool ok = m_motionManager->MoveToNamedPosition("gantry-main", positionName, false);
+    if (!ok) {
+        std::cerr << "[SwirBeamWindow] Move to named position '" << positionName
+                  << "' failed or was blocked" << std::endl;
+    }
+}
+
+void SwirBeamWindow::OnSaveCurrentToNamedPosition(const std::string& positionName)
+{
+    if (!m_motionManager) {
+        MessageBoxW(m_hwnd, L"No motion manager available.",
+                    L"Save Position", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // Current gantry-main location (synchronous query — same as click-to-move).
+    PositionStruct cur = m_motionManager->GetCurrentPosition("gantry-main");
+
+    // Existing stored position (if any) for the comparison.
+    PositionStruct stored;
+    const bool hasStored =
+        m_motionManager->GetNamedPosition("gantry-main", positionName, stored);
+
+    const std::wstring posW(positionName.begin(), positionName.end());
+
+    std::wostringstream msg;
+    msg << L"Save current gantry-main position to \"" << posW << L"\"?\n\n";
+    msg << std::fixed << std::setprecision(4);
+    auto axisLine = [&](const wchar_t* axis, double s, double c) {
+        msg << axis << L":  ";
+        if (hasStored) {
+            const double d = c - s;
+            msg << s << L"  \x2192  " << c
+                << L"   (\x0394 " << (d >= 0.0 ? L"+" : L"") << d << L")\n";
+        } else {
+            msg << c << L"   (new)\n";
+        }
+    };
+    axisLine(L"X", stored.x, cur.x);
+    axisLine(L"Y", stored.y, cur.y);
+    axisLine(L"Z", stored.z, cur.z);
+    msg << L"\nYes = Save,  No = Cancel";
+
+    const int res = MessageBoxW(
+        m_hwnd, msg.str().c_str(),
+        hasStored ? L"Overwrite Saved Position" : L"Save New Position",
+        MB_YESNO | MB_ICONQUESTION);
+    if (res != IDYES) {
+        std::cout << "[SwirBeamWindow] Save to '" << positionName
+                  << "' cancelled" << std::endl;
+        return;
+    }
+
+    // Persist + update runtime map; keep any existing waypoints intact.
+    const bool ok = m_motionManager->SaveNamedPositionToFile(
+        "gantry-main", positionName, cur, /*preserveWaypoints=*/true);
+    if (ok) {
+        std::cout << "[SwirBeamWindow] Saved current position to '"
+                  << positionName << "'" << std::endl;
+        MessageBoxW(m_hwnd, (L"Saved position \"" + posW + L"\".").c_str(),
+                    L"Save Position", MB_OK | MB_ICONINFORMATION);
+    } else {
+        std::cerr << "[SwirBeamWindow] Failed to save position '"
+                  << positionName << "'" << std::endl;
+        MessageBoxW(m_hwnd, (L"Failed to save position \"" + posW + L"\".").c_str(),
+                    L"Save Position", MB_OK | MB_ICONERROR);
     }
 }
 
@@ -1600,6 +1697,35 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
             centerBtn.tag = TAG_BEAM_CENTER;
             centerBtn.onClick = [this]() { OnCenterBeamsXY(); };
             m_buttons.push_back(centerBtn);
+        }
+    }
+
+    // === Top button bar: gantry-main quick-move presets, spread across the
+    // image area (right of the control panel). Drawn directly in OnPaint (the
+    // panel cache clips anything past panelRect.right). ===
+    {
+        RECT client{};
+        GetClientRect(m_hwnd, &client);
+        const int barLeft = panelRect.right;
+        const int barRight = client.right;
+        const int barW = barRight - barLeft;
+        if (barW > 0 && kTopBarMoveCount > 0) {
+            const int barMargin = 6;
+            const int barGap = 4;
+            const int barTop = barMargin;
+            const int barBtnH = TOPBAR_HEIGHT - 2 * barMargin;
+            const int usableW = barW - 2 * barMargin - (kTopBarMoveCount - 1) * barGap;
+            const int barBtnW = usableW / kTopBarMoveCount;
+            for (int i = 0; i < kTopBarMoveCount; ++i) {
+                SwirButton mvBtn;
+                int bx = barLeft + barMargin + i * (barBtnW + barGap);
+                mvBtn.rect = {bx, barTop, bx + barBtnW, barTop + barBtnH};
+                mvBtn.label = kTopBarMoves[i].label;
+                mvBtn.tag = TAG_TOPBAR_BASE + i;
+                std::string pos = kTopBarMoves[i].position;
+                mvBtn.onClick = [this, pos]() { OnMoveToNamedPosition(pos); };
+                m_buttons.push_back(mvBtn);
+            }
         }
     }
 }
@@ -3605,13 +3731,35 @@ void SwirBeamWindow::OnPaint()
                                (totalHeight - STRIP_HEIGHT) >= MIN_IMAGE_HEIGHT;
         const int imageBottom = drawStrip ? (totalHeight - STRIP_HEIGHT) : totalHeight;
 
+        // Top button bar carve-out: gantry-main quick-move presets sit above
+        // the image area (right of the control panel).
+        const int imageTop = TOPBAR_HEIGHT;
         RECT panelRect = {0, 0, panelW, totalHeight};
-        RECT imageRect = {panelW, 0, totalWidth, imageBottom};
+        RECT imageRect = {panelW, imageTop, totalWidth, imageBottom};
         RECT stripRect = {panelW, imageBottom, totalWidth, totalHeight};
+        RECT topBarRect = {panelW, 0, totalWidth, imageTop};
 
         RebuildButtons(panelRect);
         RenderFrame(m_memDC, imageRect);
         DrawOverlays(m_memDC);
+
+        // Top button bar (background + quick-move buttons). Drawn directly —
+        // the panel cache clips anything past panelRect.right.
+        {
+            Gdiplus::Graphics gfx(m_memDC);
+            gfx.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+            Gdiplus::SolidBrush barBg(Gdiplus::Color(255, 22, 22, 22));
+            gfx.FillRectangle(&barBg,
+                              static_cast<INT>(topBarRect.left),
+                              static_cast<INT>(topBarRect.top),
+                              static_cast<INT>(topBarRect.right - topBarRect.left),
+                              static_cast<INT>(topBarRect.bottom - topBarRect.top));
+            for (auto& btn : m_buttons) {
+                if (btn.tag >= TAG_TOPBAR_BASE && btn.tag < TAG_TOPBAR_BASE + 100) {
+                    DrawButton(gfx, btn);
+                }
+            }
+        }
 
         // Remember the strip rect so OnNewFrame's per-frame invalidate can
         // include it (otherwise BeginPaint clips the present to the image area
@@ -3821,6 +3969,20 @@ LRESULT SwirBeamWindow::HandleMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LPARA
         }
         InvalidatePanel();
         InvalidateRect(hwnd, nullptr, FALSE);
+        return 0;
+    }
+    case WM_RBUTTONUP: {
+        // Right-click a top-bar quick-move button to TEACH it from the current
+        // gantry-main position (with a confirm dialog). Ignored elsewhere.
+        int mx = LOWORD(lParam);
+        int my = HIWORD(lParam);
+        auto* btn = HitTestButton(mx, my);
+        if (btn && btn->tag >= TAG_TOPBAR_BASE && btn->tag < TAG_TOPBAR_BASE + 100) {
+            int idx = btn->tag - TAG_TOPBAR_BASE;
+            if (idx >= 0 && idx < kTopBarMoveCount) {
+                OnSaveCurrentToNamedPosition(kTopBarMoves[idx].position);
+            }
+        }
         return 0;
     }
     case WM_CLOSE:
