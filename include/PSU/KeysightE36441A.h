@@ -100,6 +100,8 @@ private:
     // Internal methods without locking (for use when already locked)
     std::string queryInternal(const std::string& command);
     bool writeInternal(const std::string& command);
+    bool connectInternal();      // assumes m_socketMutex is already locked
+    void disconnectInternal();   // assumes m_socketMutex is already locked
 
     SocketGuard m_socket;
     std::string m_ip;
@@ -111,6 +113,10 @@ private:
     mutable std::mutex m_socketMutex;
     bool m_connected;
     mutable std::string m_lastError;
+
+    // Consecutive receive failures (timeouts/closed) before a forced reconnect
+    int m_consecutiveTimeouts = 0;
+    static constexpr int MAX_CONSECUTIVE_TIMEOUTS = 3;
 
     static std::once_flag s_wsaInitFlag;
     static bool s_wsaReady;
