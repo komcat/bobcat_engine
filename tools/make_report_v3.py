@@ -528,7 +528,9 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
     if waist:
         s.append(f'<div class="card"><h3>Beam waist size</h3>{waist}{side_legend}</div>')
     if offset:
-        s.append(f'<div class="card"><h3>TX-RX delta (B0 − B1)</h3>{offset}</div>')
+        otable = table(["Station", "dx µm", "dy µm", "|Δ| µm"],
+                       [[r[0], r[3], r[4], r[5]] for r in offset_rows(entries)])
+        s.append(f'<div class="card"><h3>TX-RX delta (B0 − B1)</h3>{offset}{otable}</div>')
     s.append('<div class="card"><h3>Station summary</h3>'
              + table(["Station", "Axis", "Status", "Temp °C", "Exposure µs"], summary_rows(entries))
              + '</div>')
@@ -542,13 +544,6 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
                         "Poynt.X ° (0±0.5)", "Poynt.Y ° (0±0.5)",
                         "loc X µm", "loc Y µm", "waist X µm", "waist Y µm",
                         "M²x", "M²y", "z0 µm", "EE %", "Peak"], mrows))
-
-    # ---- TX-RX delta (B0 - B1) table ----
-    orows = offset_rows(entries)
-    if orows:
-        s.append("<h3>TX-RX delta (B0 − B1)</h3>")
-        s.append(table(["Station", "B0 (Rx)", "B1 (Tx)",
-                        "dx µm", "dy µm", "|Δ| µm"], orows))
 
     # ---- power table ----
     prows = power_rows(entries)
