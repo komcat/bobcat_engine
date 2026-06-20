@@ -358,6 +358,32 @@ def power_rows(entries):
     return rows
 
 
+def offset_rows(entries):
+    """Per-station TX-RX delta (dx, dy) computed as B0 − B1, matching the
+    'beam details' window. sorted_beams orders RX(b0) before TX(b1), so
+    beams[0]=B0(Rx), beams[1]=B1(Tx) and the delta is RX − TX. Stations
+    without exactly two beams are skipped."""
+    rows = []
+    for e in entries:
+        if not station_of(e).upper().startswith("MOE"):
+            continue
+        beams = sorted_beams(e)
+        if len(beams) != 2:
+            continue
+        b0, b1 = beams[0], beams[1]
+        if not all(isinstance(b.get(k), (int, float))
+                   for b in (b0, b1) for k in ("loc_x_um", "loc_y_um")):
+            continue
+        dx = b0["loc_x_um"] - b1["loc_x_um"]
+        dy = b0["loc_y_um"] - b1["loc_y_um"]
+        mag = (dx * dx + dy * dy) ** 0.5
+        rows.append([esc(station_of(e)),
+                     esc(b0.get("label") or beam_label(b0)),
+                     esc(b1.get("label") or beam_label(b1)),
+                     fmt(dx, 3), fmt(dy, 3), fmt(mag, 3)])
+    return rows
+
+
 def summary_rows(entries):
     rows = []
     for e in entries:
@@ -476,20 +502,21 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
             poynt_pts.append((px, py, f"{st} {lbl}: ({fmt(px)}, {fmt(py)})°", color, tag))
             wx, wy = b.get("waist_x_um"), b.get("waist_y_um")
             waist_pts.append((wx, wy, f"{st} {lbl}: waist ({fmt(wx,2)}, {fmt(wy,2)})µm", color, tag))
-        # pair offset: vector between the two beams (b1 - b0), per station.
-        if len(beams) == 2:
+        # TX-RX delta: B0 - B1 per station (matches the beam-details window).
+        # Only meaningful for the MOE RX/TX pairs; skip SA channel pairs.
+        if len(beams) == 2 and st.upper().startswith("MOE"):
             a, c = beams[0], beams[1]
             if all(isinstance(a.get(k), (int, float)) and isinstance(c.get(k), (int, float))
                    for k in ("loc_x_um", "loc_y_um")):
-                dx = c["loc_x_um"] - a["loc_x_um"]
-                dy = c["loc_y_um"] - a["loc_y_um"]
+                dx = a["loc_x_um"] - c["loc_x_um"]
+                dy = a["loc_y_um"] - c["loc_y_um"]
                 offset_pts.append((dx, dy, f"{st}: Δ({fmt(dx,2)}, {fmt(dy,2)})µm",
                                    PALETTE[i % len(PALETTE)], st.upper().replace("MOE-", "").replace(" ", "")))
 
     poynt = scatter_svg(poynt_pts, "Poynt.X [deg]", "Poynt.Y [deg]",
                         center=(0.0, 0.0), rings=(0.5, 1.0))
     waist = scatter_svg(waist_pts, "x Waist Size [um]", "y Waist Size [um]")
-    offset = scatter_svg(offset_pts, "Pair Offset - x [um]", "Pair Offset - y [um]")
+    offset = scatter_svg(offset_pts, "TX-RX delta dx [um]", "TX-RX delta dy [um]")
 
     side_legend = (f'<div class="legend">'
                    f'<span class="lg"><i style="background:{RX_COLOR}"></i>RX</span>'
@@ -501,7 +528,7 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
     if waist:
         s.append(f'<div class="card"><h3>Beam waist size</h3>{waist}{side_legend}</div>')
     if offset:
-        s.append(f'<div class="card"><h3>Pair offset (beam1 − beam0)</h3>{offset}</div>')
+        s.append(f'<div class="card"><h3>TX-RX delta (B0 − B1)</h3>{offset}</div>')
     s.append('<div class="card"><h3>Station summary</h3>'
              + table(["Station", "Axis", "Status", "Temp °C", "Exposure µs"], summary_rows(entries))
              + '</div>')
@@ -515,6 +542,13 @@ def render_run(run: Path, serial: str, run_tag: str, entries):
                         "Poynt.X ° (0±0.5)", "Poynt.Y ° (0±0.5)",
                         "loc X µm", "loc Y µm", "waist X µm", "waist Y µm",
                         "M²x", "M²y", "z0 µm", "EE %", "Peak"], mrows))
+
+    # ---- TX-RX delta (B0 - B1) table ----
+    orows = offset_rows(entries)
+    if orows:
+        s.append("<h3>TX-RX delta (B0 − B1)</h3>")
+        s.append(table(["Station", "B0 (Rx)", "B1 (Tx)",
+                        "dx µm", "dy µm", "|Δ| µm"], orows))
 
     # ---- power table ----
     prows = power_rows(entries)

@@ -7,8 +7,8 @@
 //     file and re-reads it whenever its mtime changes, so the view stays live.
 //   - Left panel : entries list (timestamp, step, location), newest first.
 //   - Right panel: B0/B1 poynt X/Y grid for MOE-A1 vs MOE-A2 (green if
-//     |value| < 0.5, red otherwise) plus a scatter plot with an r=0.5
-//     acceptance circle. Hover a cell for the hex-right correction hint.
+//     |value| < 0.5, red otherwise) plus a TX-RX delta (dx, dy) panel for
+//     each location. Hover a cell for the hex-right correction hint.
 //
 // Self-contained: it tracks the active product itself (via the poll tick),
 // so the host page does not need to wire any product-change signal.
@@ -67,27 +67,6 @@ struct SerialEntry {
   TxRx         txRx;
 };
 
-// Scatter plot: A1/A2 B0/B1 poynt points on a +/-5 deg grid with an r=0.5
-// acceptance circle. Plain QWidget (no signals/slots, so no MOC needed).
-class PoyntScatterWidget : public QWidget {
-public:
-  struct Point {
-    QString label;
-    double  x = 0.0;
-    double  y = 0.0;
-    QColor  color;
-  };
-
-  explicit PoyntScatterWidget(QWidget* parent = nullptr);
-  void setPoints(const std::vector<Point>& pts);
-
-protected:
-  void paintEvent(QPaintEvent* event) override;
-
-private:
-  std::vector<Point> m_points;
-};
-
 }  // namespace m4aa
 
 class M4AASerialDataWidget : public QWidget {
@@ -122,11 +101,13 @@ private:
   QLabel*      m_status       = nullptr;
   QTreeWidget* m_tree         = nullptr;
   QLabel*      m_detailHeader = nullptr;
-  m4aa::PoyntScatterWidget* m_scatter = nullptr;
   QTimer*      m_timer        = nullptr;
 
   // 8 poynt value labels, indexed [section 0=b0/1=b1][side 0=a1/1=a2][axis 0=x/1=y].
   QLabel* m_valueLabels[2][2][2] = {};
+
+  // TX-RX delta value labels, indexed [loc 0=a1/1=a2][axis 0=dx/1=dy] (µm).
+  QLabel* m_txRxLabels[2][2] = {};
 
   // Non-modal details popup (built lazily on first open).
   QPushButton* m_detailsButton = nullptr;

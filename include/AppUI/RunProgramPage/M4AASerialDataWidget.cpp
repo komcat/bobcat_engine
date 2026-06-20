@@ -214,120 +214,6 @@ m4aa::TxRx parseTxRx(const json& value) {
 }  // namespace
 
 // =========================================================================
-// PoyntScatterWidget
-// =========================================================================
-namespace m4aa {
-
-namespace {
-constexpr double kAxisMin = -5.0;
-constexpr double kAxisMax = 5.0;
-constexpr double kAcceptR = 0.5;
-}  // namespace
-
-PoyntScatterWidget::PoyntScatterWidget(QWidget* parent) : QWidget(parent) {
-  setMinimumHeight(220);
-}
-
-void PoyntScatterWidget::setPoints(const std::vector<Point>& pts) {
-  m_points = pts;
-  update();
-}
-
-void PoyntScatterWidget::paintEvent(QPaintEvent* /*event*/) {
-  QPainter p(this);
-  p.setRenderHint(QPainter::Antialiasing, true);
-
-  const int w = width();
-  const int h = height();
-  p.fillRect(rect(), QColor("#fafafa"));
-  if (w <= 40 || h <= 40) return;
-
-  const int marginL = 44, marginR = 14, marginT = 14, marginB = 30;
-  const int plot = std::min(w - marginL - marginR, h - marginT - marginB);
-  if (plot <= 0) return;
-  const int ox = marginL;
-  const int oy = marginT;
-
-  const double range = kAxisMax - kAxisMin;
-  auto toPx = [&](double x, double y) -> QPointF {
-    return QPointF(ox + (x - kAxisMin) / range * plot,
-                   oy + (kAxisMax - y) / range * plot);
-  };
-
-  // plot frame
-  p.setPen(QColor("#bbbbbb"));
-  p.drawRect(ox, oy, plot, plot);
-
-  // minor grid every 1 unit
-  p.setPen(QColor("#ececec"));
-  for (int v = static_cast<int>(kAxisMin) + 1; v < static_cast<int>(kAxisMax); ++v) {
-    if (v == 0) continue;
-    QPointF gx = toPx(v, 0);
-    p.drawLine(QPointF(gx.x(), oy), QPointF(gx.x(), oy + plot));
-    QPointF gy = toPx(0, v);
-    p.drawLine(QPointF(ox, gy.y()), QPointF(ox + plot, gy.y()));
-  }
-
-  // axes
-  QPointF origin = toPx(0, 0);
-  p.setPen(QColor("#888888"));
-  p.drawLine(QPointF(origin.x(), oy), QPointF(origin.x(), oy + plot));
-  p.drawLine(QPointF(ox, origin.y()), QPointF(ox + plot, origin.y()));
-
-  // acceptance circle r=0.5
-  const double rPx = kAcceptR / range * plot;
-  QPen circPen{QColor(kColorOk)};
-  circPen.setWidth(2);
-  circPen.setStyle(Qt::DashLine);
-  p.setPen(circPen);
-  p.setBrush(Qt::NoBrush);
-  p.drawEllipse(origin, rPx, rPx);
-  p.setPen(QColor(kColorOk));
-  p.drawText(QPointF(origin.x() + rPx + 4, origin.y() - rPx - 4),
-             QString("r=%1").arg(kAcceptR));
-
-  // tick labels
-  p.setPen(QColor("#555555"));
-  for (int v : {static_cast<int>(kAxisMin), 0, static_cast<int>(kAxisMax)}) {
-    QPointF tx = toPx(v, 0);
-    p.drawText(QRectF(tx.x() - 15, oy + plot + 2, 30, 14),
-               Qt::AlignCenter, QString::number(v));
-    QPointF ty = toPx(0, v);
-    p.drawText(QRectF(ox - 36, ty.y() - 7, 30, 14),
-               Qt::AlignRight | Qt::AlignVCenter, QString::number(v));
-  }
-
-  // axis titles
-  QFont titleFont = p.font();
-  titleFont.setBold(true);
-  p.setFont(titleFont);
-  p.setPen(QColor("#333333"));
-  p.drawText(QRectF(ox, oy + plot + 14, plot, 14),
-             Qt::AlignCenter, "Poynt.X (deg)");
-  p.save();
-  p.translate(ox - 30, oy + plot / 2.0);
-  p.rotate(-90);
-  p.drawText(QRectF(-plot / 2.0, -8, plot, 16),
-             Qt::AlignCenter, "Poynt.Y (deg)");
-  p.restore();
-
-  // points (skip any outside the visible range)
-  p.setFont(QFont());
-  for (const Point& pt : m_points) {
-    if (pt.x < kAxisMin || pt.x > kAxisMax ||
-        pt.y < kAxisMin || pt.y > kAxisMax) {
-      continue;
-    }
-    QPointF c = toPx(pt.x, pt.y);
-    p.setPen(QPen(Qt::white, 1));
-    p.setBrush(pt.color);
-    p.drawEllipse(c, 5, 5);
-  }
-}
-
-}  // namespace m4aa
-
-// =========================================================================
 // M4AASerialDataWidget
 // =========================================================================
 
@@ -428,14 +314,46 @@ void M4AASerialDataWidget::setupUI() {
   }
   rightLayout->addLayout(grid);
 
-  // Bottom area: scatter on the left, reference diagram (assets/M4AA/diagram.png,
-  // copied to the build output by the CMake POST_BUILD step) on the right.
+  // Bottom area: TX-RX delta panel on the left, reference diagram
+  // (assets/M4AA/diagram.png, copied to the build output by the CMake
+  // POST_BUILD step) on the right.
   auto* chartRow = new QHBoxLayout();
   chartRow->setContentsMargins(0, 0, 0, 0);
   chartRow->setSpacing(8);
 
-  m_scatter = new m4aa::PoyntScatterWidget();
-  chartRow->addWidget(m_scatter, 1);
+  // TX-RX (dx, dy) panel: one row per location (MOE-A1, MOE-A2), echoing the
+  // big poynt grid's right-aligned monospace style.
+  auto* txRxBox = new QGroupBox("TX - RX delta  (um)");
+  auto* txRxGrid = new QGridLayout(txRxBox);
+  txRxGrid->setHorizontalSpacing(18);
+  txRxGrid->setVerticalSpacing(8);
+  const QStringList txRxHeaders = {"", "dx (um)", "dy (um)"};
+  for (int c = 0; c < txRxHeaders.size(); ++c) {
+    auto* hh = new QLabel(txRxHeaders[c]);
+    hh->setStyleSheet("font-weight: bold;");
+    if (c > 0) hh->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    txRxGrid->addWidget(hh, 0, c);
+  }
+  const std::array<const char*, 2> txRxRowLabels = {"MOE-A1", "MOE-A2"};
+  for (int loc = 0; loc < 2; ++loc) {
+    auto* rl = new QLabel(txRxRowLabels[static_cast<size_t>(loc)]);
+    rl->setStyleSheet("font-weight: bold;");
+    txRxGrid->addWidget(rl, loc + 1, 0);
+    for (int axis = 0; axis < 2; ++axis) {
+      auto* lbl = new QLabel();
+      lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+      lbl->setMinimumWidth(120);
+      lbl->setStyleSheet(QString(
+        "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
+        .arg(kColorNeutral));
+      m_txRxLabels[loc][axis] = lbl;
+      txRxGrid->addWidget(lbl, loc + 1, axis + 1);
+    }
+  }
+  txRxGrid->setColumnStretch(1, 1);
+  txRxGrid->setColumnStretch(2, 1);
+  txRxGrid->setRowStretch(3, 1);
+  chartRow->addWidget(txRxBox, 1);
 
   auto* diagram = new AspectPixmapLabel();
   diagram->setAlignment(Qt::AlignCenter);
@@ -985,7 +903,13 @@ void M4AASerialDataWidget::clearRight() {
         lbl->setStyleSheet(QString("color: %1;").arg(kColorNeutral));
         lbl->setToolTip(QString());
       }
-  m_scatter->setPoints({});
+  for (auto& byloc : m_txRxLabels)
+    for (QLabel* lbl : byloc) {
+      lbl->setText(QString());
+      lbl->setStyleSheet(QString(
+        "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
+        .arg(kColorNeutral));
+    }
   clearDetailsDialog();
 }
 
@@ -1036,25 +960,20 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
     }
   }
 
-  // Build scatter points: A1/A2 x B0/B1.
-  static const struct {
-    const char* label; int side; int section; const char* color;
-  } series[4] = {
-    {"A1 B0 (Rx)", 0, 0, "#d32f2f"},
-    {"A1 B1 (Tx)", 0, 1, "#f57c00"},
-    {"A2 B0 (Rx)", 1, 0, "#1976d2"},
-    {"A2 B1 (Tx)", 1, 1, "#388e3c"},
-  };
-  std::vector<m4aa::PoyntScatterWidget::Point> pts;
-  for (const auto& s : series) {
-    if (!sides[s.side]) continue;
-    const m4aa::PoyntSection& sec =
-        (s.section == 0) ? sides[s.side]->b0 : sides[s.side]->b1;
-    if (sec.hasX && sec.hasY) {
-      pts.push_back({QString(s.label), sec.x, sec.y, QColor(s.color)});
+  // Fill the TX-RX delta panel (dx, dy per location).
+  for (int loc = 0; loc < 2; ++loc) {
+    const bool has = sides[loc] && sides[loc]->txRx.has;
+    const double vals[2] = {
+        has ? sides[loc]->txRx.dx : 0.0,
+        has ? sides[loc]->txRx.dy : 0.0};
+    for (int axis = 0; axis < 2; ++axis) {
+      QLabel* lbl = m_txRxLabels[loc][axis];
+      lbl->setText(has ? QString::number(vals[axis], 'f', 3) : QString());
+      lbl->setStyleSheet(QString(
+        "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
+        .arg(has ? kColorOk : kColorNeutral));
     }
   }
-  m_scatter->setPoints(pts);
 
   // Push the same A1/A2 entries into the popup (no-op if it hasn't been opened).
   refreshDetailsDialog(selIdx, a1Idx, a2Idx);
