@@ -45,11 +45,23 @@ using nlohmann::json;
 namespace {
 
 // --- color thresholds (matching view_serial_data.py, brightened for dark UI) -
-constexpr double kPoyntThreshold = 0.5;
+// Poynt angle bands: green < 0.5, yellow 0.5..<1.0, red >= 1.0 (|v|).
+constexpr double kPoyntThreshold   = 0.5;   // green / in-spec boundary
+constexpr double kPoyntRedMin      = 1.0;   // |v| >= this -> red
 const QString    kColorOk      = "#4caf50";   // green: |v| < 0.5
-const QString    kColorBad     = "#ef5350";   // red:   |v| >= 0.5
+const QString    kColorWarn    = "#ffca28";   // yellow: 0.5 <= |v| < 1.0
+const QString    kColorBad     = "#ef5350";   // red:   |v| >= 1.0
 const QString    kColorNeutral = "#888888";   // no value
 constexpr int    kPollMs       = 1000;
+
+// --- TX-RX delta spec (microns) ---------------------------------------------
+// dx nominal 0.0; dy nominal 50.0 (compared on magnitude, sign convention
+// varies). green within +/-1um; yellow within the wider warning band; red out.
+constexpr double kTxRxDxNominalUm = 0.0;
+constexpr double kTxRxDyNominalUm = 50.0;
+constexpr double kTxRxGreenUm     = 1.0;   // both axes: in-spec band (+/-1um)
+constexpr double kTxRxDxYellowUm  = 1.5;   // dx warning band (+/-1.5um)
+constexpr double kTxRxDyYellowUm  = 2.0;   // dy warning band (+/-2.0um)
 
 // --- hex-right response rules (docs/M4/hex_right_response_table.md) ----------
 // Cell layout (B0/B1 rows x A1.X / A1.Y / A2.X / A2.Y columns):
@@ -93,7 +105,24 @@ int cellNumber(int section, int side, int axis) {
 
 QString poyntColor(bool hasValue, double v) {
   if (!hasValue) return kColorNeutral;
-  return (std::fabs(v) < kPoyntThreshold) ? kColorOk : kColorBad;
+  const double a = std::fabs(v);
+  if (a < kPoyntThreshold) return kColorOk;    // < 0.5  green
+  if (a < kPoyntRedMin)    return kColorWarn;   // 0.5 .. <1.0 yellow
+  return kColorBad;                             // >= 1.0 red
+}
+
+// Color for a TX-RX delta cell. axis 0 = dx (nominal 0), 1 = dy (nominal 50,
+// compared on magnitude). green within +/-1um, yellow within the axis warning
+// band, red beyond.
+QString txRxColor(bool hasValue, int axis, double v) {
+  if (!hasValue) return kColorNeutral;
+  const double nominal  = (axis == 0) ? kTxRxDxNominalUm : kTxRxDyNominalUm;
+  const double yellow   = (axis == 0) ? kTxRxDxYellowUm  : kTxRxDyYellowUm;
+  // Sign-agnostic: compare the magnitude of the measured delta to nominal.
+  const double dev = std::fabs(std::fabs(v) - nominal);
+  if (dev <= kTxRxGreenUm) return kColorOk;
+  if (dev <= yellow)       return kColorWarn;
+  return kColorBad;
 }
 
 QString fmtNumber(bool hasValue, double v) {
@@ -971,7 +1000,7 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
       lbl->setText(has ? QString::number(vals[axis], 'f', 3) : QString());
       lbl->setStyleSheet(QString(
         "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
-        .arg(has ? kColorOk : kColorNeutral));
+        .arg(txRxColor(has, axis, vals[axis])));
     }
   }
 
