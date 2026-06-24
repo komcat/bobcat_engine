@@ -39,7 +39,7 @@ Corrects hexapod roll (W axis) using dual-channel peak position measurement. Spl
 
 1. Register CH1/CH2 peak X positions per hex device (hex-left, hex-right)
 2. Compute roll angle: `arctan(deltaX / spacing)` (in `RollCorrectionWidget::computeAndDisplayResults`)
-3. **Correct W** — `RollCorrectionController::onCorrectWRequested` moves to CH1 peak, shifts X halfway, then applies the W rotation
+3. **Correct W** — `RollCorrectionController::onCorrectWRequested` moves **W only** to the CH1 peak angle (other axes left as-is), optionally shifts X halfway (UI checkbox "Apply halfway X shift", default on), then applies the W rotation
 4. The W rotation is split into **micro-steps of ≤ 0.02°**. Around each micro-step the controller samples the tracking channel's optical power; a > 10% drop vs. the pre-step (rolling) baseline triggers a 0.5 µm XY regain scan (`XCANExtended`) so power never collapses into the noise floor
 5. All moves use a safe reduced velocity with automatic restore
 6. "Fine Grid Scan" button runs `GridScanDualChannel` on a background thread; "STOP Scan" uses `SequenceContext`-based stop control

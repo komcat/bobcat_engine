@@ -40,8 +40,17 @@ void RollCorrectionWidget::setupUI()
     emit stopScanRequested();
   });
 
+  // Halfway X shift toggle — when checked (default) the correction shifts X by
+  // the halfway offset so the W rotation pivots about the CH1<->CH2 midpoint.
+  m_halfwayXShiftCheckbox = new QCheckBox("Apply halfway X shift");
+  m_halfwayXShiftCheckbox->setChecked(true);
+  m_halfwayXShiftCheckbox->setToolTip(
+    "Before applying the W rotation, shift X by half the CH1<->CH2 delta so the\n"
+    "rotation pivots about the midpoint. Uncheck to rotate W in place at the CH1 peak.");
+
   spacingLayout->addWidget(spacingLabel);
   spacingLayout->addWidget(m_spacingInput);
+  spacingLayout->addWidget(m_halfwayXShiftCheckbox);
   spacingLayout->addWidget(m_stopScanButton);
   spacingLayout->addStretch();
   mainLayout->addLayout(spacingLayout);
@@ -253,7 +262,8 @@ QGroupBox* RollCorrectionWidget::createDeviceGroup(const QString& deviceName, co
   connect(dev.correctWButton, &QPushButton::clicked, this, [this, deviceName]() {
     DeviceUI& d = getDeviceUI(deviceName);
     emit correctWRequested(deviceName, currentChannel(),
-                           d.correctionAngleDeg, d.correctionPositiveW, d.correctionHalfwayXmm);
+                           d.correctionAngleDeg, d.correctionPositiveW, d.correctionHalfwayXmm,
+                           applyHalfwayXShift());
   });
   connect(dev.fineGridScanButton, &QPushButton::clicked, this, [this, deviceName]() {
     emit fineGridScanRequested(deviceName);
@@ -449,6 +459,12 @@ bool RollCorrectionWidget::bypassChannelRequirement() const
   return m_bypassChannelCheckbox && m_bypassChannelCheckbox->isChecked();
 }
 
+bool RollCorrectionWidget::applyHalfwayXShift() const
+{
+  // Default to applying the shift if the checkbox somehow doesn't exist.
+  return !m_halfwayXShiftCheckbox || m_halfwayXShiftCheckbox->isChecked();
+}
+
 QString RollCorrectionWidget::currentChannel() const
 {
   if (!m_channelCombo) return QString();
@@ -463,6 +479,7 @@ void RollCorrectionWidget::setCorrectionRunning(bool running)
   m_stopScanButton->setEnabled(running);
   if (m_channelCombo) m_channelCombo->setEnabled(!running && !bypassChannelRequirement());
   if (m_bypassChannelCheckbox) m_bypassChannelCheckbox->setEnabled(!running);
+  if (m_halfwayXShiftCheckbox) m_halfwayXShiftCheckbox->setEnabled(!running);
   m_spacingInput->setEnabled(!running);
 
   auto setDeviceEnabled = [running](DeviceUI& d) {
