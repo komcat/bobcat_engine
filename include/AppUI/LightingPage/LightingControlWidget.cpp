@@ -1130,49 +1130,43 @@ void LightingControlWidget::onColorSelected(const QString& group, const QString&
 {
     if (!m_isConnected) return;
 
-    // Toggle: clicking the already-active group+color deselects it
-    if (m_activeGroup == group && m_activeColor == color) {
-        m_activeGroup.clear();
-        m_activeColor.clear();
-    } else {
-        m_activeGroup = group;
-        m_activeColor = color;
-    }
+    // Clicking a color makes it the active target for the intensity presets.
+    m_activeGroup = group;
+    m_activeColor = color;
 
-    // Update button checked states (only one can be active across all groups)
-    for (auto* btn : m_colorButtons) {
-        bool match = (btn->property("groupName").toString() == m_activeGroup &&
-                      btn->property("colorName").toString() == m_activeColor);
-        btn->setChecked(match);
-    }
+    // Toggle just this color's channel(s) on/off; other channels are untouched.
+    toggleColor(group, color);
 
-    // If no color selected, do nothing further (just deselect)
-    if (m_activeColor.isEmpty()) {
-        std::cout << "[LightingControlWidget] Color deselected" << std::endl;
-        return;
-    }
-
-    // Activate: within the selected group, turn on matching color, turn off others
-    activateColor(m_activeGroup, m_activeColor);
+    // Reflect each color's live on/off state on its button (non-exclusive).
+    refreshColorButtonStates();
 
     std::cout << "[LightingControlWidget] Active: " << m_activeGroup.toStdString()
               << "." << m_activeColor.toStdString() << std::endl;
 }
 
-void LightingControlWidget::activateColor(const QString& group, const QString& color)
+void LightingControlWidget::toggleColor(const QString& group, const QString& color)
 {
     if (!m_parameterWorker || !m_isConnected) return;
 
+    // Current state of this color = ON if any matching channel is on. Toggle to
+    // the opposite. Non-matching channels are left exactly as they are.
+    bool anyOn = false;
     for (auto* widget : m_channelWidgets) {
+        if (getChannelGroup(widget) == group && getChannelColor(widget) == color &&
+            widget->isOn()) {
+            anyOn = true;
+            break;
+        }
+    }
+    const bool turnOn = !anyOn;
+
+    for (auto* widget : m_channelWidgets) {
+        if (getChannelGroup(widget) != group) continue;
+        if (getChannelColor(widget) != color) continue;
+
         int channel = widget->channelNumber();
-        QString chGroup = getChannelGroup(widget);
-        QString chColor = getChannelColor(widget);
-
-        // Only affect channels in the selected group
-        if (chGroup != group) continue;
-
-        if (chColor == color) {
-            // Matching channel: turn ON, if intensity is 0 set to 50%
+        if (turnOn) {
+            // Turn ON; if intensity is 0 bump it to a visible 50%.
             if (widget->currentIntensity() <= 0) {
                 int defaultIntensity = Lighting::PercentToIntensity(50.0);
                 m_parameterWorker->requestSetIntensity(channel, defaultIntensity);
@@ -1181,12 +1175,27 @@ void LightingControlWidget::activateColor(const QString& group, const QString& c
             m_parameterWorker->requestSetOn(channel, true);
             widget->setOn(true);
         } else {
-            // Non-matching channel in same group: turn OFF
-            m_parameterWorker->requestSetIntensity(channel, 0);
+            // Turn OFF; keep the intensity value so the next toggle restores it.
             m_parameterWorker->requestSetOn(channel, false);
-            widget->setIntensity(0);
             widget->setOn(false);
         }
+    }
+}
+
+void LightingControlWidget::refreshColorButtonStates()
+{
+    for (auto* btn : m_colorButtons) {
+        const QString grp = btn->property("groupName").toString();
+        const QString col = btn->property("colorName").toString();
+        bool anyOn = false;
+        for (auto* widget : m_channelWidgets) {
+            if (getChannelGroup(widget) == grp && getChannelColor(widget) == col &&
+                widget->isOn()) {
+                anyOn = true;
+                break;
+            }
+        }
+        btn->setChecked(anyOn);
     }
 }
 
