@@ -52,6 +52,11 @@ public:
   // stepwise W correction runs without an XCANExtended re-peak between sub-steps.
   bool bypassChannelRequirement() const;
 
+  // When true (default), the correction shifts X by the halfway offset before
+  // applying the W rotation, so the rotation pivots about the CH1<->CH2 midpoint.
+  // When false, the W rotation is applied in place at the CH1 peak.
+  bool applyHalfwayXShift() const;
+
   // Scanning state control
   void setScanRunning(bool running);
 
@@ -80,8 +85,8 @@ signals:
   /** Emitted when user clicks "Move to CH2" for a device */
   void moveToCH2Requested(QString deviceName);
 
-  /** Emitted when user clicks "Correct W" - moves to CH1 peak, applies halfway X + stepwise W correction */
-  void correctWRequested(QString deviceName, QString channel, double angleDeg, bool positiveW, double halfwayXmm);
+  /** Emitted when user clicks "Correct W" - moves W to CH1 peak, optional halfway X shift, then stepwise W correction */
+  void correctWRequested(QString deviceName, QString channel, double angleDeg, bool positiveW, double halfwayXmm, bool applyHalfwayX);
 
   /** Emitted when user clicks "Fine Grid Scan" for a device */
   void fineGridScanRequested(QString deviceName);
@@ -105,6 +110,7 @@ private:
   QComboBox* m_channelCombo = nullptr;
   QLabel*    m_channelHintLabel = nullptr;
   QCheckBox* m_bypassChannelCheckbox = nullptr;
+  QCheckBox* m_halfwayXShiftCheckbox = nullptr;
 
   // Re-evaluate Correct W enable state after channel selection changes
   void refreshCorrectionEnableState();

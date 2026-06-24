@@ -139,7 +139,8 @@ void RollCorrectionController::onMoveToCH2Requested(QString deviceName)
 }
 
 void RollCorrectionController::onCorrectWRequested(QString deviceName, QString channel,
-                                                   double angleDeg, bool positiveW, double halfwayXmm)
+                                                   double angleDeg, bool positiveW, double halfwayXmm,
+                                                   bool applyHalfwayX)
 {
   // ----- Pre-flight validation (UI thread) -----
   if (!m_deps.context || !m_deps.context->motionManager ||
@@ -218,6 +219,7 @@ void RollCorrectionController::onCorrectWRequested(QString deviceName, QString c
   auto* ctx = m_correctionContext.get();
   RollCorrectionWidget::StoredPosition ch1Snapshot = ch1Pos;
   const double halfwayMm = halfwayXmm;
+  const bool applyHalfwayFlag = applyHalfwayX;
   const int microStepCount = microSteps;
   const double signedStepDeg = signedMicroStep;
   const double powerLossThreshold = kPowerLossThreshold;
@@ -225,7 +227,7 @@ void RollCorrectionController::onCorrectWRequested(QString deviceName, QString c
 
   // ----- Background worker -----
   auto future = std::async(std::launch::async,
-    [handler, mgr, ds, ctx, dev, channelStd, ch1Snapshot, halfwayMm,
+    [handler, mgr, ds, ctx, dev, channelStd, ch1Snapshot, halfwayMm, applyHalfwayFlag,
      microStepCount, signedStepDeg, powerLossThreshold, bypassChannelFlag]()
       -> std::pair<bool, std::string>
     {
@@ -238,24 +240,25 @@ void RollCorrectionController::onCorrectWRequested(QString deviceName, QString c
         return { ok, msg };
       };
 
-      // Step 1: Move to CH1 peak (full 6-axis)
-      PositionStruct ch1Target;
-      ch1Target.x = ch1Snapshot.x; ch1Target.y = ch1Snapshot.y; ch1Target.z = ch1Snapshot.z;
-      ch1Target.u = ch1Snapshot.u; ch1Target.v = ch1Snapshot.v; ch1Target.w = ch1Snapshot.w;
-      if (!mgr->MoveToAbs6(dev, ch1Target, true)) {
-        return restoreAndReturn(false, "FAILED move to CH1 peak");
+      // Step 1: Move W only to the CH1 peak's W angle (no XYZ/UV change). The
+      // other axes are left wherever the operator already peaked them.
+      if (!mgr->MoveToPosition(dev, "W", ch1Snapshot.w, true)) {
+        return restoreAndReturn(false, "FAILED move W to CH1 peak");
       }
 
-      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after CH1 move");
+      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after CH1 W move");
 
-      // Step 2: Halfway X shift (subtract because halfway is (ch2-ch1)/2, move opposite)
+      // Step 2 (optional): Halfway X shift so the W rotation pivots about the
+      // CH1<->CH2 midpoint. Subtract because halfway is (ch2-ch1)/2, move opposite.
       auto curr = mgr->GetCurrentPosition(dev);
-      const double newX = curr.x - halfwayMm;
-      if (!mgr->MoveToPosition(dev, "X", newX, true)) {
-        return restoreAndReturn(false, "FAILED halfway X move");
-      }
+      if (applyHalfwayFlag) {
+        const double newX = curr.x - halfwayMm;
+        if (!mgr->MoveToPosition(dev, "X", newX, true)) {
+          return restoreAndReturn(false, "FAILED halfway X move");
+        }
 
-      if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after halfway X");
+        if (ctx->IsStopRequested()) return restoreAndReturn(false, "stopped after halfway X");
+      }
 
       // Step 3..N: stepwise W loop. Each iteration rotates W by a tiny micro-step
       // (<= 0.02 deg) and guards optical power around the rotation:
