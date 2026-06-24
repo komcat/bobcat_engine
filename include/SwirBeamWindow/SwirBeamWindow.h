@@ -166,6 +166,12 @@ private:
     // location. Shows a stored-vs-current comparison dialog and saves on confirm.
     void OnSaveCurrentToNamedPosition(const std::string& positionName);
 
+    // "update ch1-6" top-bar button: derive the ch1..ch6 named positions from the
+    // saved MOE-A1 anchor. X/Z are copied from MOE-A1; Y is offset in the Y-
+    // direction by the per-channel cumulative spacing (375um then +500um each).
+    // Shows a confirm dialog listing the computed positions, then saves on Yes.
+    void OnUpdateChannelsFromMoeA1();
+
     // Exposure actions
     void OnAutoExposureToggle();
     void OnSetExposure(double microseconds);
@@ -406,6 +412,7 @@ private:
     static constexpr int TAG_BEAM_FIT = 1040;     // strip button (next to crops)
     static constexpr int TAG_BEAM_CENTER = 1050;  // strip button (center XY on beams)
     static constexpr int TAG_TOPBAR_BASE = 1100;  // top-bar gantry quick-move buttons: 1100, 1101, ...
+    static constexpr int TAG_TOPBAR_UPDATE_CH = 1190;  // top-bar "update ch1-6" derive button (right of MOE-A1)
 
     // Mouse tracking
     POINT m_mousePosition = {0, 0};

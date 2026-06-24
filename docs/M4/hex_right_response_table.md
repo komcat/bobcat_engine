@@ -1,6 +1,6 @@
 # Hex-right axis → beam response rule table
 
-Empirically derived response of the eight beam-pointing readings to a small move on each `hex-right` axis. Verified against SN 7112 plant data (`out/build/x64-debug-hardware/data/Stage main position/7112.json`) on 2026-05-01.
+Empirically derived response of the eight beam-pointing readings to a small move on each `hex-right` axis. Verified against SN 7112 plant data (`out/build/x64-debug-hardware/data/Stage main position/7112.json`) on 2026-05-01. The **rotation axes (U/V/W) were re-verified on 2026-06-24** against four fresh datasets (SN 7207 / 7208 / 7213) — polarities all held, several gains were refined (see "Rotation re-verification — SN 7207 / 7208 / 7213" below).
 
 ## Cell index
 
@@ -180,11 +180,29 @@ A1 reached its target (0); A2 picked up the same +Δ ≈ +4° and overshot zero.
 | 7 | A2.B1.Px | −0.026 | na | ✓ (corrected from ↑sm) |
 | 8 | A2.B1.Py | −0.050 | na | ✓ (corrected from ↑) |
 
-The B0-row Px gain is **~3.2 °/°** at both A1 and A2 — i.e. U+ is **A1/A2 common-mode on B0 Px**, not the antisymmetric tilt the geometric derivation predicted. Py is essentially flat (|Δ| < 0.06° at all four cells). The original U row was derived from geometry without isolated-axis data; this measurement supersedes it.
+The B0-row Px gain is **~3.2 °/°** at both A1 and A2 — i.e. U+ is **A1/A2 common-mode on B0 Px**, not the antisymmetric tilt the geometric derivation predicted. Py is essentially flat (|Δ| < 0.06° at all four cells). The original U row was derived from geometry without isolated-axis data; this measurement supersedes it. *(The 2026-06-24 re-verification on SN 7207/7213 measured this gain at ~5.4 °/° — same structure, larger magnitude; treat the U→B0.Px gain as pose/unit-dependent, range 3.2–5.4 °/°.)*
 
 **Implication:** U is the only axis that drives B0-row Px without touching B1-row Px. It is **orthogonal to Y on Px** (Y is full common-mode across both rows; U is B0-only). If a residual leaves B0 Px off-zero after Y zeroes the global Px average, U is the only single-axis lever. The current `CLAUDE_step_all.lua` does not move U and so cannot fix this residual.
 
 Z was not isolated in this dataset and remains derived from geometry plus the legacy Z−1 µm screenshot. Mark for verification when a clean single-axis step is captured.
+
+### Rotation re-verification — SN 7207 / 7208 / 7213 (2026-06-24)
+
+U/V/W were re-derived from four fresh datasets (`7207_1.json`, `7208_1.json`, `7213-2.json`, `7213.json` in `out/build/x64-debug-hardware/data/Stage main position/test_sample/`) with `analyze_hex_poynt.py` (same folder). Each consecutive single-axis rotation step (all other axes frozen < 1e−4) gives one `Δpoynt/Δhex` sample; the slopes below are the **Theil-Sen robust median (deg/deg)** pooled over all such steps. SN 7208's Py readings carry several >3σ outliers, but Theil-Sen is insensitive to them (every number shifts < 5 % when 7208 is dropped). **Every cell's polarity matches the master table** — only magnitudes are refined.
+
+| Axis | cell1 A1.B0.Px | cell2 A1.B0.Py | cell3 A2.B0.Px | cell4 A2.B0.Py | cell5 A1.B1.Px | cell6 A1.B1.Py | cell7 A2.B1.Px | cell8 A2.B1.Py |
+|------|---:|---:|---:|---:|---:|---:|---:|---:|
+| **U+** | **+5.6** | na | **+5.2** | na | na | na | na | na |
+| **V+** | +1.2 sm | **−6.5** | +0.9 sm | **−5.8** | +1.1 sm | −0.9 | +0.8 sm | −1.0 |
+| **W+** | +0.7 sm | **+6.0** | +0.9 sm | **−5.4** | +0.8 sm | **−5.1** | +0.7 sm | **+4.6** |
+
+n per cell: U 26, V 45–63, W 60. R² of the dominant (bold) cells: U Px 0.94–0.96; V B0.Py 0.59 (A1) / 0.88 (A2); W B0.Py 0.45 (A1) / 0.94 (A2); W B1.Py 0.93 (A1) / 0.16 (A2, 7208-driven).
+
+**Refinements vs the 7112 / 7112b derivation:**
+
+- **U gain is ≈ 5.4 °/°, not 3.2.** The B0-row Px common-mode (A1 ≈ A2, B1 ≈ na, Py ≈ na) is confirmed crisply (R² 0.94–0.96 across three serials), but the magnitude is ~70 % higher than 7112b. Treat U→B0.Px as **pose/unit-dependent (observed range 3.2–5.4 °/°)** — a per-unit calibration, not a fixed constant.
+- **V is far more A1/A2-symmetric than the old −9.7 cross-check implied.** B0.Py gain is −6.5 (A1) / −5.8 (A2) — ~10 % apart, not 60 %. The earlier A2 figure of −9.7 came from a single X-contaminated 2-point cross-check and is **superseded**. *New:* V also drives a small **+0.9 °/° Px common-mode on all four cells** (R² ≈ 0.6), previously logged as "none".
+- **W is now well-measured on all four Py cells and is nearly symmetric (~5–6 °/°).** A1.B1.Py (cell 6) is **−5.1 °/° here (R² 0.93)**, not the ~2.5 °/° seen on 7112b — the strong W-asymmetry called out for 7112b does **not** reproduce on these units. The double-antisymmetry (B0/B1 oppose AND A1/A2 oppose) remains intact and clean. The step-3 W-balance error `A2.B1.Py − A1.B1.Py` therefore has an effective differential gain ≈ 9.6 °/° (4.6 − (−5.1)), close to the 7112b estimate.
 
 ## Use in correction solving
 
@@ -263,7 +281,7 @@ The scripts assume **0.15 °/µm** for translation→Poynt sensitivity. SN 7112 
 | Y− → A2.B0.Px | 0.15 | 0.24 | post-step-5 1 µm test |
 | Y− → A2.B1.Px | 0.15 | 0.26 | post-step-5 1 µm test |
 
-Rotation gains from the SN 7112b isolation ladders:
+Rotation gains from the SN 7112b isolation ladders (see the 2026-06-24 re-verification above for the current best estimates — cells 4, 6 and the U magnitude have since been refined):
 
 | Move | Empirical (°/°) | Notes |
 |------|----------------:|-------|
@@ -279,9 +297,9 @@ Rotation gains from the SN 7112b isolation ladders:
 | V+ → A2.B0.Py | ~−9.7 | Phase 3 cross-check (Δv=+0.17°, X-corrected) |
 | V+ → A1.B1.Py | ~−0.8 | small in-station coupling |
 
-**W asymmetry note:** A1.B1.Py (~2.5 °/°) carries about 40% of the swing the other three Py cells get (~6.3–6.7 °/°). The script uses `A2.B1.Py − A1.B1.Py` as the W-balance error → effective differential gain ≈ 9.2 °/°, vs. the script's conservative `W_SENSITIVITY_DEG_PER_DEG = 15.0`. A more accurate constant would converge in fewer iterations; current value is safe but slow.
+**W asymmetry note (revised 2026-06-24):** the strong A1.B1.Py weakness seen on 7112b (~2.5 °/°) does **not** reproduce on SN 7207/7208/7213, where cell 6 is −5.1 °/° (R² 0.93) — comparable to the other three Py cells (~4.6–6.0 °/°). The `A2.B1.Py − A1.B1.Py` W-balance error therefore has an effective differential gain ≈ 9.6 °/°, still well below the script's conservative `W_SENSITIVITY_DEG_PER_DEG = 15.0` (safe but slow). Treat cell-6 W-gain as unit-dependent (2.5–5.1 °/°); the conservative constant covers both.
 
-**V A1/A2 asymmetry:** A2.B0.Py gain (~9.7 °/°) is ~60% larger than A1.B0.Py (~6.1 °/°). The script controls on A1 only, so this just means A2 over-corrects — fine because Phase 2 (W) already balanced A1↔A2, and V is then applied symmetrically.
+**V A1/A2 asymmetry (revised 2026-06-24):** the 7112b cross-check suggested A2.B0.Py (~9.7 °/°) was ~60% larger than A1.B0.Py (~6.1 °/°), but that figure was X-contaminated. The 4-serial re-derivation gives −6.5 (A1) / −5.8 (A2) — essentially symmetric. Controlling V on A1 only is therefore safe; A2 tracks within ~10%, not over-correcting as previously feared. Note the new small +0.9 °/° Px common-mode V also induces on all four cells.
 
 **Y gain is asymmetric across stations:** A1 ≈ 0.33 °/µm, A2 ≈ 0.25 °/µm (A1 is ~30 % higher). Step 5 controls on A1 only, so this doesn't affect convergence at A1, but it explains why A2 always sits with a larger Px residual after step 5 completes.
 
@@ -289,3 +307,52 @@ The conservative spec is *safe* — it just costs 4–5 iterations where 1–2 w
 
 1. Bump `SENSITIVITY_DEG_PER_UM` from 0.15 to ~0.25 (X) and ~0.30 (Y at A1).
 2. Optionally split Y sensitivity per station if a future controller measures A2 inside the loop.
+
+## Two correction algorithms
+
+There are now two scripts behind the F1 → Poynt Optimize tab, both driven from
+`config/{product}/scripts/`:
+
+### v1 — `CLAUDE_step_all.lua`  ("Automate correction" button)
+
+Greedy **coordinate descent**: 5 sequential phases (W → V → X → re-iter V/X → Y,
+optional U), each a clamped proportional controller `move = −err / sens` iterated
+≤5× per phase. Re-measures A1+A2 every iteration (~25 measurement cycles worst
+case). Sensitivity constants refreshed 2026-06-24 to the 4-serial fit
+(W 9.6, V 6.5, X 0.19, Y 0.25, U-diff 5.3). Robust and interpretable; slow.
+
+### v2 — `CLAUDE_autocorrect_v2.lua`  ("Auto-correct v2" button)
+
+**Jacobian / damped least-squares** solver. Each cycle measures all 8 cells →
+error vector `e`, computes `dhex = −gain · (JINV · e)` (clamped per axis), and moves
+**X, Y, U, V, W together**, then re-measures. `JINV` is the Tikhonov-damped
+(λ = 0.05) pseudo-inverse of the measured 8×5 Jacobian below, hardcoded in the
+script. Validated offline against SN 7213 / 7213-2 baselines: drives max|cell|
+from 3.5° → 0.3° in ~4 cycles, 5.3° → 0.5° in ~4 cycles — far fewer measurement
+trips than v1.
+
+Measured Jacobian (Theil-Sen, 2026-06-24; rows = cells, cols = X,Y [°/µm] · U,V,W [°/°]):
+
+| cell | X | Y | U | V | W |
+|------|---:|---:|---:|---:|---:|
+| A1.B0.Px | −0.003 | 0.221 | 5.558 | 1.176 | 0.708 |
+| A1.B0.Py | 0.214 | 0.000 | 0.039 | −6.544 | 5.947 |
+| A2.B0.Px | 0.005 | 0.196 | 5.241 | 0.854 | 0.918 |
+| A2.B0.Py | 0.211 | −0.008 | 1.202 | −5.841 | −5.425 |
+| A1.B1.Px | 0.005 | 0.212 | 0.241 | 1.125 | 0.774 |
+| A1.B1.Py | −0.185 | −0.014 | −0.397 | −0.909 | −5.097 |
+| A2.B1.Px | 0.012 | 0.155 | 0.285 | 0.780 | 0.653 |
+| A2.B1.Py | −0.162 | −0.003 | −0.234 | −1.037 | 4.547 |
+
+SVD singular values `[10.7, 9.1, 7.7, 0.29, 0.23]`, condition number **45.7**. The
+two tiny singular values are dominated by **B1-row Px** (`A1.B1.Px`, `A2.B1.Px`):
+no X/Y/U/V/W combination moves them independently, so the B1.Px differential is a
+**structurally uncontrollable** residual (matches the long-standing "A2.Px is a
+structural optics bias" verdict note). v2 reports this case as PASS (structural)
+rather than iterating against it.
+
+**Per-unit caveat:** `JINV` is baked from the 7207/7208/7213 fit, and U gain in
+particular is unit-dependent (3.2–5.4 °/°). v2's under-relaxation gain (0.8) and
+per-axis clamps absorb moderate model error, but if a unit fails to converge,
+recapture single-axis steps and rebuild `JINV` with
+`test_sample/analyze_hex_poynt.py`.

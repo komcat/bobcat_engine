@@ -69,6 +69,12 @@ static const Gdiplus::Color CLR_BTN_ACTIVE(255, 52, 152, 219);
 static const Gdiplus::Color CLR_DIVIDER(255, 80, 80, 80);
 static const Gdiplus::Color CLR_PSU_SELECTED(255, 52, 152, 219);
 static const Gdiplus::Color CLR_PSU_UNSELECTED(255, 50, 50, 50);
+// Top-bar accent colors: MOE-A1/MOE-A2 (cyan) and the "update ch1-6" derive
+// button (yellow), each with a lighter hover variant.
+static const Gdiplus::Color CLR_BTN_CYAN(255, 0, 188, 212);
+static const Gdiplus::Color CLR_BTN_CYAN_HOVER(255, 38, 211, 233);
+static const Gdiplus::Color CLR_BTN_YELLOW(255, 251, 192, 45);
+static const Gdiplus::Color CLR_BTN_YELLOW_HOVER(255, 255, 213, 79);
 
 SwirBeamWindow::SwirBeamWindow()
 {
@@ -455,6 +461,96 @@ void SwirBeamWindow::OnSaveCurrentToNamedPosition(const std::string& positionNam
                   << positionName << "'" << std::endl;
         MessageBoxW(m_hwnd, (L"Failed to save position \"" + posW + L"\".").c_str(),
                     L"Save Position", MB_OK | MB_ICONERROR);
+    }
+}
+
+void SwirBeamWindow::OnUpdateChannelsFromMoeA1()
+{
+    if (!m_motionManager) {
+        MessageBoxW(m_hwnd, L"No motion manager available.",
+                    L"Update ch1-6", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // Anchor on the saved MOE-A1 named position. X/Z are copied verbatim; Y is
+    // shifted in the Y- direction by the per-channel cumulative spacing.
+    PositionStruct anchor;
+    if (!m_motionManager->GetNamedPosition("gantry-main", "MOE-A1", anchor)) {
+        MessageBoxW(m_hwnd,
+                    L"No saved \"MOE-A1\" position found.\n\n"
+                    L"Teach MOE-A1 first (right-click the MOE-A1 button), then "
+                    L"click \"update ch1-6\".",
+                    L"Update ch1-6", MB_OK | MB_ICONWARNING);
+        return;
+    }
+
+    // ch1..ch6 named positions and their cumulative Y- offset from MOE-A1 (mm):
+    // 375um to ch1, then +500um for each subsequent channel.
+    struct ChannelDef { const char* position; const wchar_t* label; double offsetMm; };
+    static const ChannelDef kChannels[] = {
+        {"SA 03 04", L"ch1", 0.375},
+        {"SA 05 06", L"ch2", 0.875},
+        {"SA 07 08", L"ch3", 1.375},
+        {"SA 09 10", L"ch4", 1.875},
+        {"SA 11 12", L"ch5", 2.375},
+        {"SA 13 14", L"ch6", 2.875},
+    };
+    constexpr int kChannelCount =
+        static_cast<int>(sizeof(kChannels) / sizeof(kChannels[0]));
+
+    // Build the computed positions and a confirm-dialog preview.
+    PositionStruct targets[kChannelCount];
+    std::wostringstream msg;
+    msg << std::fixed << std::setprecision(4);
+    msg << L"Derive ch1-6 from saved MOE-A1 (anchor X/Z kept, Y offset in Y-)?\n\n";
+    msg << L"MOE-A1:  X=" << anchor.x << L"  Y=" << anchor.y
+        << L"  Z=" << anchor.z << L"\n\n";
+    for (int i = 0; i < kChannelCount; ++i) {
+        targets[i] = anchor;                       // copy X/Z (and U/V/W etc.)
+        targets[i].y = anchor.y - kChannels[i].offsetMm;  // Y- direction
+        msg << kChannels[i].label << L" (" << std::wstring(
+                  kChannels[i].position, kChannels[i].position + strlen(kChannels[i].position))
+            << L"):  Y=" << targets[i].y
+            << L"   (-" << kChannels[i].offsetMm << L" mm)\n";
+    }
+    msg << L"\nYes = Save all,  No = Cancel";
+
+    const int res = MessageBoxW(m_hwnd, msg.str().c_str(),
+                                L"Update ch1-6 from MOE-A1",
+                                MB_YESNO | MB_ICONQUESTION);
+    if (res != IDYES) {
+        std::cout << "[SwirBeamWindow] update ch1-6 cancelled" << std::endl;
+        return;
+    }
+
+    // Persist each derived position (keep any existing waypoints intact).
+    int saved = 0;
+    std::wostringstream fails;
+    for (int i = 0; i < kChannelCount; ++i) {
+        const bool ok = m_motionManager->SaveNamedPositionToFile(
+            "gantry-main", kChannels[i].position, targets[i],
+            /*preserveWaypoints=*/true);
+        if (ok) {
+            ++saved;
+        } else {
+            fails << L"  " << kChannels[i].label << L"\n";
+            std::cerr << "[SwirBeamWindow] update ch1-6: failed to save '"
+                      << kChannels[i].position << "'" << std::endl;
+        }
+    }
+
+    std::cout << "[SwirBeamWindow] update ch1-6: saved " << saved << "/"
+              << kChannelCount << " channels from MOE-A1" << std::endl;
+
+    if (saved == kChannelCount) {
+        MessageBoxW(m_hwnd, L"Updated ch1-6 from MOE-A1.",
+                    L"Update ch1-6", MB_OK | MB_ICONINFORMATION);
+    } else {
+        std::wostringstream done;
+        done << L"Saved " << saved << L" of " << kChannelCount
+             << L" channels.\n\nFailed:\n" << fails.str();
+        MessageBoxW(m_hwnd, done.str().c_str(),
+                    L"Update ch1-6", MB_OK | MB_ICONERROR);
     }
 }
 
@@ -1714,7 +1810,12 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
             const int barGap = 4;
             const int barTop = barMargin;
             const int barBtnH = TOPBAR_HEIGHT - 2 * barMargin;
-            const int usableW = barW - 2 * barMargin - (kTopBarMoveCount - 1) * barGap;
+            // Reserve a fixed-width slot on the right for the "update ch1-6"
+            // derive button; spread the quick-move presets across what remains.
+            const int updateBtnW = 100;
+            const int usableW = barW - 2 * barMargin
+                              - (kTopBarMoveCount - 1) * barGap
+                              - updateBtnW - barGap;
             const int barBtnW = usableW / kTopBarMoveCount;
             for (int i = 0; i < kTopBarMoveCount; ++i) {
                 SwirButton mvBtn;
@@ -1725,6 +1826,17 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
                 std::string pos = kTopBarMoves[i].position;
                 mvBtn.onClick = [this, pos]() { OnMoveToNamedPosition(pos); };
                 m_buttons.push_back(mvBtn);
+            }
+            // "update ch1-6": sits immediately to the right of MOE-A1 (the last
+            // preset). Derives ch1..ch6 from the saved MOE-A1 anchor.
+            {
+                SwirButton upBtn;
+                int bx = barLeft + barMargin + kTopBarMoveCount * (barBtnW + barGap);
+                upBtn.rect = {bx, barTop, bx + updateBtnW, barTop + barBtnH};
+                upBtn.label = L"update ch1-6";
+                upBtn.tag = TAG_TOPBAR_UPDATE_CH;
+                upBtn.onClick = [this]() { OnUpdateChannelsFromMoeA1(); };
+                m_buttons.push_back(upBtn);
             }
         }
     }
@@ -1764,6 +1876,16 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
         } else {
             bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? Gdiplus::Color(255, 200, 70, 70) : CLR_BTN_OFF);
         }
+    } else if (btn.tag >= TAG_TOPBAR_BASE && btn.tag < TAG_TOPBAR_BASE + 100) {
+        // Top-bar gantry quick-move presets. The MOE anchors are cyan, the
+        // "update ch1-6" derive button is yellow, the rest stay neutral grey.
+        if (btn.tag == TAG_TOPBAR_UPDATE_CH) {
+            bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? CLR_BTN_YELLOW_HOVER : CLR_BTN_YELLOW);
+        } else if (btn.label == L"MOE-A1" || btn.label == L"MOE-A2") {
+            bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? CLR_BTN_CYAN_HOVER : CLR_BTN_CYAN);
+        } else {
+            bgColor = btn.pressed ? CLR_BTN_PRESSED : (btn.hovered ? CLR_BTN_HOVER : CLR_BTN_NORMAL);
+        }
     } else {
         // Exposure preset buttons - highlight active one
         bool isActive = false;
@@ -1799,8 +1921,12 @@ void SwirBeamWindow::DrawButton(Gdiplus::Graphics& gfx, const SwirButton& btn)
     Gdiplus::Pen pen(Gdiplus::Color(255, 90, 90, 90), 1.0f);
     gfx.DrawPath(&pen, &path);
 
-    // Label text
-    Gdiplus::SolidBrush textBrush(Gdiplus::Color(255, 255, 255, 255));
+    // Label text — dark on the yellow "update ch1-6" button for contrast,
+    // white everywhere else.
+    const Gdiplus::Color textColor = (btn.tag == TAG_TOPBAR_UPDATE_CH)
+        ? Gdiplus::Color(255, 26, 26, 26)
+        : Gdiplus::Color(255, 255, 255, 255);
+    Gdiplus::SolidBrush textBrush(textColor);
     static Gdiplus::Font font(L"Segoe UI", 8.5f, Gdiplus::FontStyleBold);
     Gdiplus::StringFormat format;
     format.SetAlignment(Gdiplus::StringAlignmentCenter);

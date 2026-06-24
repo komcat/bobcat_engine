@@ -47,6 +47,7 @@ namespace {
 constexpr const char* kHexDevice           = "hex-right";
 constexpr const char* kBaselineScript      = "CLAUDE_step1_baseline.lua";
 constexpr const char* kAutomateScript      = "CLAUDE_step_all.lua";
+constexpr const char* kAutomateV2Script    = "CLAUDE_autocorrect_v2.lua";
 constexpr const char* kDutInitScript       = "dut_init.lua";
 constexpr const char* kDutCloseScript      = "dut_close.lua";
 constexpr double      kTranslationStepUmIncrement = 0.5;     // um
@@ -115,6 +116,12 @@ void PoyntOptimizeWidget::setupUI() {
   m_automateBtn->setToolTip(
     "Run CLAUDE_step_all.lua in the background. Stop button breaks it.");
   m_automateBtn->setStyleSheet(kYellowStyle);
+  m_automateV2Btn = new QPushButton("Auto-correct v2");
+  m_automateV2Btn->setToolTip(
+    "Run CLAUDE_autocorrect_v2.lua — Jacobian (damped least-squares) solver that "
+    "moves X/Y/U/V/W together each cycle. Faster than 'Automate correction'. "
+    "Stop button breaks it.");
+  m_automateV2Btn->setStyleSheet(kYellowStyle);
   m_singleBtn    = new QPushButton("Single measurement");
   m_singleBtn->setToolTip("Run CLAUDE_step1_baseline.lua in the background.");
   m_singleBtn->setStyleSheet(kOrangeStyle);
@@ -124,7 +131,7 @@ void PoyntOptimizeWidget::setupUI() {
     "blocking motion move that has already been dispatched.");
   m_stopBtn->setStyleSheet(kRedStyle);
 
-  for (QPushButton* b : {m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_singleBtn}) {
+  for (QPushButton* b : {m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_automateV2Btn, m_singleBtn}) {
     b->setMinimumWidth(150);
     topRow->addWidget(b);
   }
@@ -145,6 +152,7 @@ void PoyntOptimizeWidget::setupUI() {
   connect(m_dutInitBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onDutInit);
   connect(m_dutCloseBtn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onDutClose);
   connect(m_automateBtn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onAutomate);
+  connect(m_automateV2Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onAutomateV2);
   connect(m_singleBtn,   &QPushButton::clicked, this, &PoyntOptimizeWidget::onSingleMeasurement);
   connect(m_stopBtn,     &QPushButton::clicked, this, &PoyntOptimizeWidget::onStop);
 
@@ -367,7 +375,7 @@ void PoyntOptimizeWidget::setBusy(bool busy, const QString& whatRunning) {
   // also disabled because changing the step mid-flight would confuse the
   // operator about which step value the running jog used.
   QPushButton* gated[] = {
-    m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_singleBtn,
+    m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_automateV2Btn, m_singleBtn,
     m_translationStepPlusBtn, m_translationStepMinusBtn,
     m_xPlusBtn, m_xMinusBtn, m_yPlusBtn, m_yMinusBtn, m_zPlusBtn, m_zMinusBtn,
     m_rotationStepPlusBtn, m_rotationStepMinusBtn,
@@ -504,6 +512,9 @@ void PoyntOptimizeWidget::onDutClose() {
 }
 void PoyntOptimizeWidget::onAutomate() {
   launchScript(QString::fromUtf8(kAutomateScript), QStringLiteral("Automate correction"));
+}
+void PoyntOptimizeWidget::onAutomateV2() {
+  launchScript(QString::fromUtf8(kAutomateV2Script), QStringLiteral("Auto-correct v2"));
 }
 void PoyntOptimizeWidget::onSingleMeasurement() {
   // Arm image capture if the operator opted in. The script saves the SWIR

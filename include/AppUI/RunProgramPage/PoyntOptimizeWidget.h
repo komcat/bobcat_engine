@@ -9,7 +9,8 @@
 // Top action row:
 //   - DUT Init         -> dut_init.lua
 //   - DUT Close        -> dut_close.lua
-//   - Automate         -> CLAUDE_step_all.lua
+//   - Automate         -> CLAUDE_step_all.lua (greedy per-axis coordinate descent)
+//   - Auto-correct v2  -> CLAUDE_autocorrect_v2.lua (Jacobian damped least-squares)
 //   - Single measure   -> CLAUDE_step1_baseline.lua
 //   - Stop             -> ScriptEngine::RequestStop() to break a running script
 //
@@ -47,6 +48,7 @@ private slots:
   void onDutInit();
   void onDutClose();
   void onAutomate();
+  void onAutomateV2();
   void onSingleMeasurement();
   void onStop();
 
@@ -125,6 +127,7 @@ private:
   QPushButton* m_dutInitBtn   = nullptr;
   QPushButton* m_dutCloseBtn  = nullptr;
   QPushButton* m_automateBtn  = nullptr;
+  QPushButton* m_automateV2Btn = nullptr;  // "Auto-correct v2" — Jacobian solver
   QPushButton* m_singleBtn    = nullptr;
   QPushButton* m_stopBtn      = nullptr;
   QCheckBox*   m_captureImagesCheck = nullptr;  // capture+save images on single measure
