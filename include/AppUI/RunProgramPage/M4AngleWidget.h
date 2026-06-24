@@ -32,6 +32,7 @@ class QLabel;
 class QPushButton;
 class QButtonGroup;
 class QCheckBox;
+class QGroupBox;
 class QHBoxLayout;
 class QTimer;
 class QtCameraWindow;
@@ -198,6 +199,9 @@ private:
   void   gantryJog(const std::string& axis, double deltaMm);
   // Highlight the active step-size button and update m_jogStepUm.
   void   selectJogStep(double stepUm);
+  // Switch the jog target between "gantry-main" and "hex-right", repaint the
+  // selector, and refresh the panel title + arrow tooltips.
+  void   selectJogDevice(const std::string& device);
   // Enable/disable the jog arrow pads (called from setMoveButtonsEnabledForBusy).
   void   setJogButtonsEnabled(bool enabled);
 
@@ -291,6 +295,8 @@ private:
   QLabel*      m_autoInstructionLabel = nullptr;
   QLabel*      m_autoThumbnailLabel   = nullptr;
   QCheckBox*   m_autoOverwriteChk     = nullptr;
+  QCheckBox*   m_autoInvertWChk       = nullptr;  // negate W correction sign
+  QCheckBox*   m_autoInvertUChk       = nullptr;  // negate U correction sign
   QLabel*      m_autoStepChips[4]     = {nullptr, nullptr, nullptr, nullptr};  // A1, A2, MA1, MA2
   AutoStep     m_autoStep             = AutoStep::Idle;
   bool         m_autoActive           = false;
@@ -305,6 +311,10 @@ private:
   // during the wizard so the operator can fine-tune / focus gantry-main.
   double       m_jogStepUm = 2.0;                 // active step size in microns
   QPushButton* m_jogStepBtns[3] = {nullptr, nullptr, nullptr};  // 2um / 5um / 10um
+  // Jog target device, switchable between "gantry-main" and "hex-right".
+  std::string  m_jogDevice = "gantry-main";
+  QPushButton* m_jogDeviceBtns[2] = {nullptr, nullptr};  // gantry-main / hex-right
+  QGroupBox*   m_jogGroup = nullptr;              // panel box (title updated on switch)
   QPushButton* m_jogXPlusBtn  = nullptr;
   QPushButton* m_jogXMinusBtn = nullptr;
   QPushButton* m_jogYPlusBtn  = nullptr;

@@ -471,13 +471,29 @@ void M4AngleWidget::setupUI() {
   chipsRow->addStretch(1);
   ag->addLayout(chipsRow, 1, 0);
 
-  // Overwrite-image checkbox (default on).
+  // Right-column option checkboxes (overwrite + inverse-sign toggles).
   m_autoOverwriteChk = new QCheckBox("Overwrite image on capture");
   m_autoOverwriteChk->setChecked(true);
   m_autoOverwriteChk->setToolTip(
     "When checked, Capture overwrites the saved SWIR thumbnail for the current "
     "point; when unchecked, an existing thumbnail is preserved.");
-  ag->addWidget(m_autoOverwriteChk, 2, 1, Qt::AlignRight);
+
+  m_autoInvertWChk = new QCheckBox("Inverse sign for W correction");
+  m_autoInvertWChk->setToolTip(
+    "When checked, the auto-correction negates the computed W (roll) delta before "
+    "applying it to hex-right.");
+
+  m_autoInvertUChk = new QCheckBox("Inverse sign for U correction");
+  m_autoInvertUChk->setToolTip(
+    "When checked, the auto-correction negates the computed U (yaw) delta before "
+    "applying it to hex-right.");
+
+  auto* autoOptsCol = new QVBoxLayout();
+  autoOptsCol->setSpacing(4);
+  autoOptsCol->addWidget(m_autoOverwriteChk);
+  autoOptsCol->addWidget(m_autoInvertWChk);
+  autoOptsCol->addWidget(m_autoInvertUChk);
+  ag->addLayout(autoOptsCol, 2, 1, Qt::AlignRight);
 
   // Operator instruction text.
   m_autoInstructionLabel = new QLabel("Idle. Click \"Start correction\" to begin.");
@@ -1534,9 +1550,27 @@ void M4AngleWidget::recompute() {
 
 QWidget* M4AngleWidget::buildGantryJogPanel() {
   auto* group = new QGroupBox("Jog gantry-main");
+  m_jogGroup = group;
   auto* v = new QVBoxLayout(group);
   v->setContentsMargins(10, 10, 10, 10);
   v->setSpacing(8);
+
+  // Device selector (gantry-main / hex-right). Exclusive highlight via
+  // selectJogDevice(), which also retargets the arrow pads.
+  auto* devRow = new QHBoxLayout();
+  devRow->setSpacing(6);
+  const char* devNames[2] = {"gantry-main", "hex-right"};
+  for (int i = 0; i < 2; ++i) {
+    auto* b = new QPushButton(devNames[i]);
+    b->setCheckable(true);
+    b->setMinimumSize(96, 30);
+    m_jogDeviceBtns[i] = b;
+    const std::string dev = devNames[i];
+    connect(b, &QPushButton::clicked, this, [this, dev]() { selectJogDevice(dev); });
+    devRow->addWidget(b);
+  }
+  devRow->addStretch(1);
+  v->addLayout(devRow);
 
   // Step-size selector (2 / 5 / 10 um). Exclusive highlight via selectJogStep().
   auto* stepRow = new QHBoxLayout();
@@ -1581,12 +1615,7 @@ QWidget* M4AngleWidget::buildGantryJogPanel() {
     b->setStyleSheet(kTeal);
   for (QPushButton* b : {m_jogZMinusBtn, m_jogZPlusBtn})
     b->setStyleSheet(kBlue);
-  m_jogXPlusBtn->setToolTip("gantry-main X+");
-  m_jogXMinusBtn->setToolTip("gantry-main X-");
-  m_jogYMinusBtn->setToolTip("gantry-main Y-");
-  m_jogYPlusBtn->setToolTip("gantry-main Y+");
-  m_jogZMinusBtn->setToolTip("gantry-main Z-");
-  m_jogZPlusBtn->setToolTip("gantry-main Z+");
+  // Arrow tooltips are device-specific; selectJogDevice() sets them below.
 
   auto* xy = new QGridLayout();
   xy->setSpacing(4);
@@ -1615,7 +1644,8 @@ QWidget* M4AngleWidget::buildGantryJogPanel() {
   connect(m_jogZPlusBtn,  &QPushButton::clicked, this, [this]() { gantryJog("Z", +m_jogStepUm / 1000.0); });
   connect(m_jogZMinusBtn, &QPushButton::clicked, this, [this]() { gantryJog("Z", -m_jogStepUm / 1000.0); });
 
-  selectJogStep(m_jogStepUm);  // paint the initial (2 um) selection
+  selectJogStep(m_jogStepUm);     // paint the initial (2 um) selection
+  selectJogDevice(m_jogDevice);   // paint device selection + title + tooltips
   return group;
 }
 
@@ -1632,6 +1662,29 @@ void M4AngleWidget::selectJogStep(double stepUm) {
   }
 }
 
+void M4AngleWidget::selectJogDevice(const std::string& device) {
+  m_jogDevice = device;
+  const char* names[2] = {"gantry-main", "hex-right"};
+  for (int i = 0; i < 2; ++i) {
+    if (!m_jogDeviceBtns[i]) continue;
+    const bool sel = (device == names[i]);
+    m_jogDeviceBtns[i]->setChecked(sel);
+    m_jogDeviceBtns[i]->setStyleSheet(sel
+      ? bezel3d("#42a5f5", "#1565c0", "#64b5f6", "#0d47a1", "white")
+      : bezel3d("#d4d9de", "#aeb4ba", "#e2e6ea", "#9aa0a6", "#1a1a1a"));
+  }
+
+  // Retarget the panel title and arrow tooltips to the active device.
+  const QString dev = QString::fromStdString(device);
+  if (m_jogGroup) m_jogGroup->setTitle(QStringLiteral("Jog ") + dev);
+  if (m_jogXPlusBtn)  m_jogXPlusBtn->setToolTip(dev + " X+");
+  if (m_jogXMinusBtn) m_jogXMinusBtn->setToolTip(dev + " X-");
+  if (m_jogYMinusBtn) m_jogYMinusBtn->setToolTip(dev + " Y-");
+  if (m_jogYPlusBtn)  m_jogYPlusBtn->setToolTip(dev + " Y+");
+  if (m_jogZMinusBtn) m_jogZMinusBtn->setToolTip(dev + " Z-");
+  if (m_jogZPlusBtn)  m_jogZPlusBtn->setToolTip(dev + " Z+");
+}
+
 void M4AngleWidget::setJogButtonsEnabled(bool enabled) {
   for (QPushButton* b : {m_jogXPlusBtn, m_jogXMinusBtn, m_jogYPlusBtn,
                          m_jogYMinusBtn, m_jogZPlusBtn, m_jogZMinusBtn}) {
@@ -1642,15 +1695,17 @@ void M4AngleWidget::setJogButtonsEnabled(bool enabled) {
 void M4AngleWidget::gantryJog(const std::string& axis, double deltaMm) {
   if (!m_context || !m_context->motionManager) return;
   auto* motionMgr = m_context->motionManager;
+  const std::string device = m_jogDevice;
+  const QString deviceQ = QString::fromStdString(device);
   const QString axisQ = QString::fromStdString(axis);
-  const QString msg = QStringLiteral("[jog] gantry-main %1 %2 um...")
-    .arg(axisQ).arg(deltaMm * 1000.0, 0, 'f', 1);
+  const QString msg = QStringLiteral("[jog] %1 %2 %3 um...")
+    .arg(deviceQ).arg(axisQ).arg(deltaMm * 1000.0, 0, 'f', 1);
   runInBackground(msg,
-    [motionMgr, axis, deltaMm, axisQ]() -> std::pair<bool, QString> {
-      const bool ok = motionMgr->MoveRelative(kGantryDevice, axis, deltaMm, true);
+    [motionMgr, device, axis, deltaMm, deviceQ, axisQ]() -> std::pair<bool, QString> {
+      const bool ok = motionMgr->MoveRelative(device, axis, deltaMm, true);
       return {ok, ok
-        ? QStringLiteral("[jog] gantry-main %1 %2 um done.").arg(axisQ).arg(deltaMm * 1000.0, 0, 'f', 1)
-        : QStringLiteral("[jog] gantry-main %1 jog FAILED.").arg(axisQ)};
+        ? QStringLiteral("[jog] %1 %2 %3 um done.").arg(deviceQ).arg(axisQ).arg(deltaMm * 1000.0, 0, 'f', 1)
+        : QStringLiteral("[jog] %1 %2 jog FAILED.").arg(deviceQ).arg(axisQ)};
     });
 }
 
@@ -1914,14 +1969,16 @@ void M4AngleWidget::autoEnterStep(AutoStep step) {
     }
     case AutoStep::ApplyU: {
       updateAutoUi(step, "[auto] applying U correction to hex-right...");
-      const double deltaU = lineAngleDegXY(m_a1, m_a2) - lineAngleDegXY(m_ma1, m_ma2);
+      double deltaU = lineAngleDegXY(m_a1, m_a2) - lineAngleDegXY(m_ma1, m_ma2);
+      if (m_autoInvertUChk && m_autoInvertUChk->isChecked()) deltaU = -deltaU;
       applyHexRightCorrection(deltaU, 'U',
         [this](bool) { if (m_autoActive) autoAdvance(); });
       break;
     }
     case AutoStep::ApplyW: {
       updateAutoUi(step, "[auto] applying W correction to hex-right...");
-      const double deltaW = lineRollDeg(m_a1, m_a2) - lineRollDeg(m_ma1, m_ma2);
+      double deltaW = lineRollDeg(m_a1, m_a2) - lineRollDeg(m_ma1, m_ma2);
+      if (m_autoInvertWChk && m_autoInvertWChk->isChecked()) deltaW = -deltaW;
       applyHexRightCorrection(deltaW, 'W',
         [this](bool) { if (m_autoActive) autoAdvance(); });
       break;
