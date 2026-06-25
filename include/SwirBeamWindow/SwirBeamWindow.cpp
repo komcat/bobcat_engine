@@ -11,6 +11,7 @@
 #include "camera/CameraConfigManager.h"
 #include "camera/CameraManager.h"
 #include "motions/unified_motion_manager.h"
+#include "motions/MoeChannelLayout.h"
 #include "PSU/PowerSupplyManager.h"
 #include "TEC/TECManager.h"
 #include "pneumatics/PneumaticManager.h"
@@ -484,34 +485,22 @@ void SwirBeamWindow::OnUpdateChannelsFromMoeA1()
         return;
     }
 
-    // ch1..ch6 named positions and their cumulative Y- offset from MOE-A1 (mm):
-    // 375um to ch1, then +500um for each subsequent channel.
-    struct ChannelDef { const char* position; const wchar_t* label; double offsetMm; };
-    static const ChannelDef kChannels[] = {
-        {"SA 03 04", L"ch1", 0.375},
-        {"SA 05 06", L"ch2", 0.875},
-        {"SA 07 08", L"ch3", 1.375},
-        {"SA 09 10", L"ch4", 1.875},
-        {"SA 11 12", L"ch5", 2.375},
-        {"SA 13 14", L"ch6", 2.875},
-    };
-    constexpr int kChannelCount =
-        static_cast<int>(sizeof(kChannels) / sizeof(kChannels[0]));
+    // The ch1..ch6 + MOE-A2 layout lives in bobcat::MoeChannelLayout() so the
+    // SWIR button and the headless "UpdateChannelsFromMoeA1" motion command
+    // (Lua / recipe accessible) derive identical positions.
+    const std::vector<bobcat::MoeChannelDef>& channels = bobcat::MoeChannelLayout();
 
-    // Build the computed positions and a confirm-dialog preview.
-    PositionStruct targets[kChannelCount];
+    // Build a confirm-dialog preview from that same layout.
+    auto toW = [](const char* s) { return std::wstring(s, s + strlen(s)); };
     std::wostringstream msg;
     msg << std::fixed << std::setprecision(4);
-    msg << L"Derive ch1-6 from saved MOE-A1 (anchor X/Z kept, Y offset in Y-)?\n\n";
+    msg << L"Derive ch1-6 + MOE-A2 from saved MOE-A1 (anchor X/Z kept, Y offset in Y-)?\n\n";
     msg << L"MOE-A1:  X=" << anchor.x << L"  Y=" << anchor.y
         << L"  Z=" << anchor.z << L"\n\n";
-    for (int i = 0; i < kChannelCount; ++i) {
-        targets[i] = anchor;                       // copy X/Z (and U/V/W etc.)
-        targets[i].y = anchor.y - kChannels[i].offsetMm;  // Y- direction
-        msg << kChannels[i].label << L" (" << std::wstring(
-                  kChannels[i].position, kChannels[i].position + strlen(kChannels[i].position))
-            << L"):  Y=" << targets[i].y
-            << L"   (-" << kChannels[i].offsetMm << L" mm)\n";
+    for (const bobcat::MoeChannelDef& ch : channels) {
+        msg << toW(ch.label) << L" (" << toW(ch.position)
+            << L"):  Y=" << (anchor.y - ch.offsetMm)
+            << L"   (-" << ch.offsetMm << L" mm)\n";
     }
     msg << L"\nYes = Save all,  No = Cancel";
 
@@ -523,32 +512,17 @@ void SwirBeamWindow::OnUpdateChannelsFromMoeA1()
         return;
     }
 
-    // Persist each derived position (keep any existing waypoints intact).
-    int saved = 0;
-    std::wostringstream fails;
-    for (int i = 0; i < kChannelCount; ++i) {
-        const bool ok = m_motionManager->SaveNamedPositionToFile(
-            "gantry-main", kChannels[i].position, targets[i],
-            /*preserveWaypoints=*/true);
-        if (ok) {
-            ++saved;
-        } else {
-            fails << L"  " << kChannels[i].label << L"\n";
-            std::cerr << "[SwirBeamWindow] update ch1-6: failed to save '"
-                      << kChannels[i].position << "'" << std::endl;
-        }
-    }
+    // Derive + persist via the shared helper (waypoints preserved).
+    const bobcat::MoeChannelDeriveResult r =
+        bobcat::DeriveAndSaveMoeChannelsFromMoeA1(m_motionManager);
 
-    std::cout << "[SwirBeamWindow] update ch1-6: saved " << saved << "/"
-              << kChannelCount << " channels from MOE-A1" << std::endl;
-
-    if (saved == kChannelCount) {
-        MessageBoxW(m_hwnd, L"Updated ch1-6 from MOE-A1.",
+    if (r.ok()) {
+        MessageBoxW(m_hwnd, L"Updated ch1-6 + MOE-A2 from MOE-A1.",
                     L"Update ch1-6", MB_OK | MB_ICONINFORMATION);
     } else {
         std::wostringstream done;
-        done << L"Saved " << saved << L" of " << kChannelCount
-             << L" channels.\n\nFailed:\n" << fails.str();
+        done << L"Saved " << r.saved << L" of " << r.total << L" positions.\n\nFailed:\n";
+        for (const std::string& f : r.failed) done << L"  " << toW(f.c_str()) << L"\n";
         MessageBoxW(m_hwnd, done.str().c_str(),
                     L"Update ch1-6", MB_OK | MB_ICONERROR);
     }

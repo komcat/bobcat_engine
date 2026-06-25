@@ -34,6 +34,7 @@ class QPushButton;
 class QCheckBox;
 class QGroupBox;
 class QPlainTextEdit;
+class QProcess;
 class ScriptWorker;
 class M4AASerialDataWidget;
 struct ApplicationContext;
@@ -47,9 +48,10 @@ public:
 private slots:
   void onDutInit();
   void onDutClose();
-  void onAutomate();
   void onAutomateV2();
   void onSingleMeasurement();
+  void onBeamCaptureAllChannels();  // run beam_capture_all_channels_v2.lua
+  void onGenerateReport();          // build/open HTML report via make_report_v3.py
   void onStop();
 
   void onTranslationStepInc();   // step += 0.5 um
@@ -126,10 +128,12 @@ private:
   // Top-row action buttons.
   QPushButton* m_dutInitBtn   = nullptr;
   QPushButton* m_dutCloseBtn  = nullptr;
-  QPushButton* m_automateBtn  = nullptr;
   QPushButton* m_automateV2Btn = nullptr;  // "Auto-correct v2" — Jacobian solver
   QPushButton* m_singleBtn    = nullptr;
   QPushButton* m_stopBtn      = nullptr;
+  QPushButton* m_beamCaptureAllBtn = nullptr;  // "Capture all channels (ch1-6)"
+  QPushButton* m_generateReportBtn = nullptr;  // "Generate / open report"
+  QProcess*    m_reportProcess     = nullptr;  // running make_report_v3.py (or null)
   QCheckBox*   m_captureImagesCheck = nullptr;  // capture+save images on single measure
   QLabel*      m_busyLabel    = nullptr;
 

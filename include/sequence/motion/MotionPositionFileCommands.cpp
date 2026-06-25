@@ -5,6 +5,7 @@
 #include "unified_motion_manager.h"
 #include "product_position_manager.h"
 #include "SequenceContext.h"
+#include "motions/MoeChannelLayout.h"
 
 #include <iostream>
 
@@ -203,6 +204,51 @@ std::optional<bool> MotionPositionFileCommands::TryExecute(
       context->SetValue("update_position_all.axes", installedAxes);
     }
 
+    return true;
+  }
+
+  // ============================================================================
+  // UPDATE CH1-6 (+ MOE-A2) FROM MOE-A1 ANCHOR
+  // ============================================================================
+  // Derives the SWIR channel named positions ch1..ch6 plus MOE-A2 on
+  // "gantry-main" from the taught MOE-A1 position (X/Z kept, Y shifted in Y- by
+  // the fixed per-channel spacing) and saves them to the product file. This is
+  // the headless equivalent of the SWIR window "update ch1-6" button, exposed
+  // for Lua / recipes. No parameters.
+  if (methodName == "UpdateChannelsFromMoeA1") {
+    if (!motionManager) {
+      errorMessage = "UpdateChannelsFromMoeA1: Motion manager not available";
+      return false;
+    }
+
+    const bobcat::MoeChannelDeriveResult r =
+        bobcat::DeriveAndSaveMoeChannelsFromMoeA1(motionManager);
+
+    if (!r.anchorFound) {
+      errorMessage = "UpdateChannelsFromMoeA1: No saved 'MOE-A1' position on "
+                     "gantry-main - teach MOE-A1 first";
+      return false;
+    }
+
+    if (context) {
+      context->SetValue("update_channels.saved", static_cast<float>(r.saved));
+      context->SetValue("update_channels.total", static_cast<float>(r.total));
+      context->SetValue("update_channels.success", r.ok());
+    }
+
+    if (!r.ok()) {
+      std::string failed;
+      for (const std::string& f : r.failed) {
+        if (!failed.empty()) failed += ", ";
+        failed += f;
+      }
+      errorMessage = "UpdateChannelsFromMoeA1: saved " + std::to_string(r.saved) +
+                     "/" + std::to_string(r.total) + " positions; failed: " + failed;
+      return false;
+    }
+
+    std::cout << "[MotionCommandHandler] UpdateChannelsFromMoeA1: saved "
+              << r.saved << "/" << r.total << " positions from MOE-A1" << std::endl;
     return true;
   }
 

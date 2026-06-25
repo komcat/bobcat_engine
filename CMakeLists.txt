@@ -668,6 +668,7 @@ set(SOURCES
     include/motions/CoordinateTransformer.cpp
     include/motions/DeviceLinkManager.cpp
     include/motions/InterlockManager.cpp
+    include/motions/MoeChannelLayout.cpp
     src/motions/CoordinateSystemManager.cpp
     include/AppUI/JogWindow/JogPanelWindow.cpp
     include/AppUI/JogWindow/JogWorker.cpp

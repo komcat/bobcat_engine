@@ -35,6 +35,9 @@
 #include <QInputDialog>
 #include <QApplication>
 #include <QSplitter>
+#include <QProcess>
+#include <QDesktopServices>
+#include <QUrl>
 #include <QThread>
 #include <Qt>
 
@@ -46,8 +49,8 @@
 namespace {
 constexpr const char* kHexDevice           = "hex-right";
 constexpr const char* kBaselineScript      = "CLAUDE_step1_baseline.lua";
-constexpr const char* kAutomateScript      = "CLAUDE_step_all.lua";
 constexpr const char* kAutomateV2Script    = "CLAUDE_autocorrect_v2.lua";
+constexpr const char* kBeamCaptureAllScript = "beam_capture_all_channels_v2.lua";
 constexpr const char* kDutInitScript       = "dut_init.lua";
 constexpr const char* kDutCloseScript      = "dut_close.lua";
 constexpr double      kTranslationStepUmIncrement = 0.5;     // um
@@ -112,10 +115,6 @@ void PoyntOptimizeWidget::setupUI() {
   m_dutCloseBtn  = new QPushButton("DUT Close");
   m_dutCloseBtn->setToolTip("Run dut_close.lua in the background.");
   m_dutCloseBtn->setStyleSheet(kGreenStyle);
-  m_automateBtn  = new QPushButton("Automate correction");
-  m_automateBtn->setToolTip(
-    "Run CLAUDE_step_all.lua in the background. Stop button breaks it.");
-  m_automateBtn->setStyleSheet(kYellowStyle);
   m_automateV2Btn = new QPushButton("Auto-correct v2");
   m_automateV2Btn->setToolTip(
     "Run CLAUDE_autocorrect_v2.lua — Jacobian (damped least-squares) solver that "
@@ -131,7 +130,7 @@ void PoyntOptimizeWidget::setupUI() {
     "blocking motion move that has already been dispatched.");
   m_stopBtn->setStyleSheet(kRedStyle);
 
-  for (QPushButton* b : {m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_automateV2Btn, m_singleBtn}) {
+  for (QPushButton* b : {m_dutInitBtn, m_dutCloseBtn, m_automateV2Btn, m_singleBtn}) {
     b->setMinimumWidth(150);
     topRow->addWidget(b);
   }
@@ -151,7 +150,6 @@ void PoyntOptimizeWidget::setupUI() {
 
   connect(m_dutInitBtn,  &QPushButton::clicked, this, &PoyntOptimizeWidget::onDutInit);
   connect(m_dutCloseBtn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onDutClose);
-  connect(m_automateBtn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onAutomate);
   connect(m_automateV2Btn, &QPushButton::clicked, this, &PoyntOptimizeWidget::onAutomateV2);
   connect(m_singleBtn,   &QPushButton::clicked, this, &PoyntOptimizeWidget::onSingleMeasurement);
   connect(m_stopBtn,     &QPushButton::clicked, this, &PoyntOptimizeWidget::onStop);
@@ -333,6 +331,35 @@ void PoyntOptimizeWidget::setupUI() {
   bottomSplit->setStretchFactor(1, 2);  // give M4AA the bigger share by default
   bottomSplit->setChildrenCollapsible(false);
   root->addWidget(bottomSplit, 1);
+
+  // --- Bottom action row ----------------------------------------------------
+  // Capture all SWIR channels (ch1-ch6). Prompts the operator to confirm the
+  // ch1-ch6 positions are set in the SWIR window before launching the script.
+  auto* bottomRow = new QHBoxLayout();
+  bottomRow->addStretch(1);
+  m_beamCaptureAllBtn = new QPushButton("Capture all channels (ch1-6)");
+  m_beamCaptureAllBtn->setToolTip(
+    "Run beam_capture_all_channels_v2.lua in the background. Asks you to "
+    "confirm ch1-ch6 positions are set in the SWIR window first. "
+    "Stop button breaks it.");
+  m_beamCaptureAllBtn->setStyleSheet(kYellowStyle);
+  m_beamCaptureAllBtn->setMinimumWidth(220);
+  bottomRow->addWidget(m_beamCaptureAllBtn);
+
+  m_generateReportBtn = new QPushButton("Generate / open report");
+  m_generateReportBtn->setToolTip(
+    "Build (or, if it already exists, just open) the HTML beam report for the "
+    "current DUT's latest run folder via make_report_v3.py.");
+  m_generateReportBtn->setStyleSheet(kGreenStyle);
+  m_generateReportBtn->setMinimumWidth(220);
+  bottomRow->addWidget(m_generateReportBtn);
+  bottomRow->addStretch(1);
+  root->addLayout(bottomRow);
+
+  connect(m_beamCaptureAllBtn, &QPushButton::clicked,
+          this, &PoyntOptimizeWidget::onBeamCaptureAllChannels);
+  connect(m_generateReportBtn, &QPushButton::clicked,
+          this, &PoyntOptimizeWidget::onGenerateReport);
 }
 
 void PoyntOptimizeWidget::refreshTranslationStepLabel() {
@@ -375,7 +402,7 @@ void PoyntOptimizeWidget::setBusy(bool busy, const QString& whatRunning) {
   // also disabled because changing the step mid-flight would confuse the
   // operator about which step value the running jog used.
   QPushButton* gated[] = {
-    m_dutInitBtn, m_dutCloseBtn, m_automateBtn, m_automateV2Btn, m_singleBtn,
+    m_dutInitBtn, m_dutCloseBtn, m_automateV2Btn, m_singleBtn, m_beamCaptureAllBtn,
     m_translationStepPlusBtn, m_translationStepMinusBtn,
     m_xPlusBtn, m_xMinusBtn, m_yPlusBtn, m_yMinusBtn, m_zPlusBtn, m_zMinusBtn,
     m_rotationStepPlusBtn, m_rotationStepMinusBtn,
@@ -510,9 +537,133 @@ void PoyntOptimizeWidget::onDutInit() {
 void PoyntOptimizeWidget::onDutClose() {
   launchScript(QString::fromUtf8(kDutCloseScript), QStringLiteral("DUT Close"));
 }
-void PoyntOptimizeWidget::onAutomate() {
-  launchScript(QString::fromUtf8(kAutomateScript), QStringLiteral("Automate correction"));
+void PoyntOptimizeWidget::onBeamCaptureAllChannels() {
+  // Confirm ch1-ch6 positions are correctly set in the SWIR window before
+  // launching, since the capture script measures each channel in turn.
+  const auto answer = QMessageBox::question(
+    this,
+    QStringLiteral("Capture all channels"),
+    QStringLiteral("Make sure the ch1-ch6 positions are correctly set in the "
+                   "SWIR window before continuing.\n\nProceed with capture?"),
+    QMessageBox::Ok | QMessageBox::Cancel,
+    QMessageBox::Cancel);
+  if (answer != QMessageBox::Ok) return;
+  launchScript(QString::fromUtf8(kBeamCaptureAllScript),
+               QStringLiteral("Capture all channels"));
 }
+
+void PoyntOptimizeWidget::onGenerateReport() {
+  if (m_reportProcess) {
+    appendLog("[report] a report is already being generated", "#fb8c00");
+    return;
+  }
+
+  // Resolve product + serial the same way buildCaptureDir does (sanitized so
+  // the path matches the on-disk run folders the capture scripts wrote).
+  auto sanitize = [](QString s) -> QString {
+    static const QString illegal = QStringLiteral("<>:\"/\\|?*");
+    s = s.trimmed();
+    for (QChar& c : s) {
+      if (c.unicode() < 0x20 || illegal.contains(c)) c = QChar('_');
+    }
+    return s.isEmpty() ? QStringLiteral("unknown") : s;
+  };
+
+  QString product, serial;
+  if (m_context && m_context->productPositionManager &&
+      m_context->productPositionManager->HasLoadedProduct()) {
+    product = QString::fromStdString(
+        m_context->productPositionManager->GetCurrentProductName());
+  }
+  if (m_context && m_context->currentDUT) {
+    serial = QString::fromStdString(m_context->currentDUT->getSerialNumber());
+  }
+  if (product.isEmpty() || serial.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+                         "No product/DUT loaded - cannot locate the data folder.");
+    return;
+  }
+  product = sanitize(product);
+  serial  = sanitize(serial);
+
+  const QString appDir   = QCoreApplication::applicationDirPath();
+  const QString dataDir  = appDir + "/data/" + product;     // make_report_v3.py CWD
+  const QString serialDir = dataDir + "/" + serial;
+
+  QDir sd(serialDir);
+  if (!sd.exists()) {
+    QMessageBox::warning(this, "Generate report",
+        QStringLiteral("No data folder for serial '%1':\n%2").arg(serial, serialDir));
+    return;
+  }
+
+  // Latest run folder = most recently modified timestamp subdirectory.
+  const QFileInfoList subs = sd.entryInfoList(
+      QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);  // newest first
+  if (subs.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+        QStringLiteral("No run folders found under:\n%1").arg(serialDir));
+    return;
+  }
+  const QString runTag  = subs.first().fileName();
+  const QString runDir  = serialDir + "/" + runTag;
+  const QString reportPath = runDir + "/report_slices.html";
+
+  // If the report already exists, just open it.
+  if (QFileInfo::exists(reportPath)) {
+    appendLog(QStringLiteral("[report] opening existing %1").arg(reportPath), "#60a5fa");
+    QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath));
+    return;
+  }
+
+  // Otherwise locate make_report_v3.py and build the report (script opens it).
+  QString script;
+  for (const QString& cand : {dataDir + "/make_report_v3.py",
+                              appDir + "/make_report_v3.py",
+                              appDir + "/tools/make_report_v3.py"}) {
+    if (QFileInfo::exists(cand)) { script = cand; break; }
+  }
+  if (script.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+        "make_report_v3.py not found in the data folder or application folder.");
+    return;
+  }
+
+  m_reportProcess = new QProcess(this);
+  m_reportProcess->setWorkingDirectory(dataDir);
+  m_reportProcess->setProcessChannelMode(QProcess::MergedChannels);
+  connect(m_reportProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+    const QString out = QString::fromLocal8Bit(m_reportProcess->readAllStandardOutput());
+    for (const QString& line : out.split('\n', Qt::SkipEmptyParts))
+      appendLog(QStringLiteral("[report] %1").arg(line.trimmed()), "#c9d1d9");
+  });
+  connect(m_reportProcess,
+          QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+          [this](int code, QProcess::ExitStatus) {
+            if (code == 0)
+              appendLog("[report] done", "#22c55e");
+            else
+              appendLog(QStringLiteral("[report] make_report_v3.py exited with code %1")
+                            .arg(code), "#ef5350");
+            if (m_generateReportBtn) m_generateReportBtn->setEnabled(true);
+            m_reportProcess->deleteLater();
+            m_reportProcess = nullptr;
+          });
+  connect(m_reportProcess, &QProcess::errorOccurred, this,
+          [this](QProcess::ProcessError) {
+            appendLog("[report] failed to start python (is it on PATH?)", "#ef5350");
+          });
+
+  // Pass an absolute run-folder path so the script resolves serial/json
+  // regardless of CWD; --open pops the report when finished.
+  const QStringList args{script, QDir::toNativeSeparators(runDir),
+                         QStringLiteral("--open")};
+  appendLog(QStringLiteral("[report] python make_report_v3.py \"%1\\%2\" --open")
+                .arg(serial, runTag), "#60a5fa");
+  if (m_generateReportBtn) m_generateReportBtn->setEnabled(false);
+  m_reportProcess->start(QStringLiteral("python"), args);
+}
+
 void PoyntOptimizeWidget::onAutomateV2() {
   launchScript(QString::fromUtf8(kAutomateV2Script), QStringLiteral("Auto-correct v2"));
 }

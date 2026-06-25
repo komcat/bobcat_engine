@@ -1075,6 +1075,11 @@ motion = {
     updatePositionAxis = function(device, posName, axis, contextKey)
         return _dispatch(device, "UpdatePositionAxis", {position_name = posName, axis = axis, context_key = contextKey})
     end,
+    -- Derive ch1..ch6 + MOE-A2 on gantry-main from the taught MOE-A1 anchor and
+    -- save them to the product file (same as the SWIR "update ch1-6" button).
+    updateChannelsFromMoeA1 = function()
+        return _dispatch("gantry-main", "UpdateChannelsFromMoeA1", {})
+    end,
     gridScan = function(device, params)
         return _dispatch(device, "GridScan", params)
     end,
