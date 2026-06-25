@@ -85,9 +85,9 @@ const std::array<CellRule, 9>& cellRules() {
     /* 3 */ {{{"Y+","lg"},{"U+","lg"},{"W+","sm"}}, {{"Y-","lg"},{"U-","lg"},{"W-","sm"}}},
     /* 4 */ {{{"X+","lg"},{"Z-","lg"},{"V-","lg"},{"W-","lg"}}, {{"X-","lg"},{"Z+","lg"},{"V+","lg"},{"W+","lg"}}},
     /* 5 */ {{{"Y+","lg"},{"U-","sm"},{"W+","med"}}, {{"Y-","lg"},{"U+","sm"},{"W-","med"}}},
-    /* 6 */ {{{"X-","lg"},{"Z+","lg"},{"V-","lg"},{"W-","lg"}}, {{"X+","lg"},{"Z-","lg"},{"V+","lg"},{"W+","lg"}}},
+    /* 6 */ {{{"X-","lg"},{"Z+","lg"},{"W-","lg"},{"V-","sm"}}, {{"X+","lg"},{"Z-","lg"},{"W+","lg"},{"V+","sm"}}},
     /* 7 */ {{{"Y+","lg"},{"W+","sm"}}, {{"Y-","lg"},{"W-","sm"}}},
-    /* 8 */ {{{"X-","lg"},{"Z+","lg"},{"V+","lg"},{"W+","lg"}}, {{"X+","lg"},{"Z-","lg"},{"V-","lg"},{"W-","lg"}}},
+    /* 8 */ {{{"X-","lg"},{"Z+","lg"},{"W+","lg"},{"V-","sm"}}, {{"X+","lg"},{"Z-","lg"},{"W-","lg"},{"V+","sm"}}},
   }};
   return rules;
 }
@@ -96,6 +96,49 @@ QString tagLabel(const QString& tag) {
   if (tag == "lg")  return "dominant";
   if (tag == "med") return "medium";
   return "small";
+}
+
+// Per-cell, per-axis response gain from the v2 Jacobian (Theil-Sen, 2026-06-24;
+// docs/M4/hex_right_response_table.md). X/Y in deg-of-poynt per um; U/V/W in
+// deg/deg. Used to estimate how far to move an axis to null a given cell. Z is
+// not characterized (no span) -> no magnitude shown for Z.
+struct CellGain { double x, y, u, v, w; };
+const std::array<CellGain, 9>& cellGains() {
+  static const std::array<CellGain, 9> g = {{
+    /* 0 unused */ {},
+    /* 1 A1.B0.Px */ {-0.003,  0.221,  5.558,  1.176,  0.708},
+    /* 2 A1.B0.Py */ { 0.214,  0.000,  0.039, -6.544,  5.947},
+    /* 3 A2.B0.Px */ { 0.005,  0.196,  5.241,  0.854,  0.918},
+    /* 4 A2.B0.Py */ { 0.211, -0.008,  1.202, -5.841, -5.425},
+    /* 5 A1.B1.Px */ { 0.005,  0.212,  0.241,  1.125,  0.774},
+    /* 6 A1.B1.Py */ {-0.185, -0.014, -0.397, -0.909, -5.097},
+    /* 7 A2.B1.Px */ { 0.012,  0.155,  0.285,  0.780,  0.653},
+    /* 8 A2.B1.Py */ {-0.162, -0.003, -0.234, -1.037,  4.547},
+  }};
+  return g;
+}
+
+// Estimated single-axis move to drive |cell| to 0, from the Jacobian gain.
+// Returns e.g. "~0.35 deg" / "~9.7 um", or empty if the axis isn't
+// characterized (Z) or its gain is below a usable threshold.
+QString moveMagnitude(int cellNum, char axisLetter, double value) {
+  if (cellNum < 1 || cellNum > 8) return QString();
+  const CellGain& g = cellGains()[static_cast<size_t>(cellNum)];
+  double gain = 0.0;
+  bool isDeg = false;
+  switch (axisLetter) {
+    case 'X': gain = g.x; isDeg = false; break;
+    case 'Y': gain = g.y; isDeg = false; break;
+    case 'U': gain = g.u; isDeg = true;  break;
+    case 'V': gain = g.v; isDeg = true;  break;
+    case 'W': gain = g.w; isDeg = true;  break;
+    default:  return QString();  // Z or unknown: gain not characterized
+  }
+  const double a = std::fabs(gain);
+  if (a < 1e-3) return QString();  // gain too small to be a useful lever
+  const double mag = std::fabs(value) / a;
+  return isDeg ? QString("~%1 deg").arg(mag, 0, 'f', 3)
+               : QString("~%1 um").arg(mag, 0, 'f', 1);
 }
 
 // section 0=b0/1=b1, side 0=a1/1=a2, axis 0=x/1=y -> cell number 1..8.
@@ -141,9 +184,13 @@ QString cellTip(int cellNum, double value) {
 
   QStringList grpLg, grpMed, grpSm;
   for (const AxisRule& m : moves) {
-    if (QString(m.tag) == "lg")       grpLg  << m.axis;
-    else if (QString(m.tag) == "med") grpMed << m.axis;
-    else                              grpSm  << m.axis;
+    // Append the estimated move (axis letter is the first char of e.g. "X+").
+    const QString mag = moveMagnitude(cellNum, m.axis[0], value);
+    QString label = mag.isEmpty() ? QString(m.axis)
+                                  : QString("%1 %2").arg(m.axis, mag);
+    if (QString(m.tag) == "lg")       grpLg  << label;
+    else if (QString(m.tag) == "med") grpMed << label;
+    else                              grpSm  << label;
   }
 
   QString status;
@@ -167,6 +214,11 @@ QString cellTip(int cellNum, double value) {
   if (!grpLg.isEmpty())  lines << QString("  %1: %2").arg(tagLabel("lg"),  grpLg.join(", "));
   if (!grpMed.isEmpty()) lines << QString("  %1: %2").arg(tagLabel("med"), grpMed.join(", "));
   if (!grpSm.isEmpty())  lines << QString("  %1: %2").arg(tagLabel("sm"),  grpSm.join(", "));
+  if (!inSpec) {
+    lines << QString()
+          << "Est. single-axis move to null this cell (axes couple;"
+          << "use Auto-correct v2 for a combined solve). Z not characterized.";
+  }
   return lines.join('\n');
 }
 

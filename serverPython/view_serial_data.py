@@ -88,14 +88,43 @@ CELL_RULES = {
         "down": [("X-", "lg"), ("Z+", "lg"), ("V+", "lg"), ("W+", "lg")]},
     5: {"up":   [("Y+", "lg"), ("U-", "sm"), ("W+", "med")],
         "down": [("Y-", "lg"), ("U+", "sm"), ("W-", "med")]},
-    6: {"up":   [("X-", "lg"), ("Z+", "lg"), ("V-", "lg"), ("W-", "lg")],
-        "down": [("X+", "lg"), ("Z-", "lg"), ("V+", "lg"), ("W+", "lg")]},
+    6: {"up":   [("X-", "lg"), ("Z+", "lg"), ("W-", "lg"), ("V-", "sm")],
+        "down": [("X+", "lg"), ("Z-", "lg"), ("W+", "lg"), ("V+", "sm")]},
     7: {"up":   [("Y+", "lg"), ("W+", "sm")],
         "down": [("Y-", "lg"), ("W-", "sm")]},
-    8: {"up":   [("X-", "lg"), ("Z+", "lg"), ("V+", "lg"), ("W+", "lg")],
-        "down": [("X+", "lg"), ("Z-", "lg"), ("V-", "lg"), ("W-", "lg")]},
+    8: {"up":   [("X-", "lg"), ("Z+", "lg"), ("W+", "lg"), ("V-", "sm")],
+        "down": [("X+", "lg"), ("Z-", "lg"), ("W-", "lg"), ("V+", "sm")]},
 }
 TAG_LABEL = {"lg": "dominant", "med": "medium", "sm": "small"}
+
+# Per-cell, per-axis response gain from the v2 Jacobian (Theil-Sen, 2026-06-24;
+# docs/M4/hex_right_response_table.md). X/Y in deg-of-poynt per um; U/V/W in
+# deg/deg. Used to estimate how far to move an axis to null a cell. Z is not
+# characterized (no span) -> no magnitude shown for Z.
+CELL_GAINS = {
+    1: {"X": -0.003, "Y": 0.221, "U": 5.558, "V": 1.176, "W": 0.708},
+    2: {"X": 0.214, "Y": 0.000, "U": 0.039, "V": -6.544, "W": 5.947},
+    3: {"X": 0.005, "Y": 0.196, "U": 5.241, "V": 0.854, "W": 0.918},
+    4: {"X": 0.211, "Y": -0.008, "U": 1.202, "V": -5.841, "W": -5.425},
+    5: {"X": 0.005, "Y": 0.212, "U": 0.241, "V": 1.125, "W": 0.774},
+    6: {"X": -0.185, "Y": -0.014, "U": -0.397, "V": -0.909, "W": -5.097},
+    7: {"X": 0.012, "Y": 0.155, "U": 0.285, "V": 0.780, "W": 0.653},
+    8: {"X": -0.162, "Y": -0.003, "U": -0.234, "V": -1.037, "W": 4.547},
+}
+_AXIS_UNIT = {"X": "um", "Y": "um", "U": "deg", "V": "deg", "W": "deg"}
+
+
+def move_magnitude(cell_num, axis, value):
+    """Estimated single-axis move to drive |cell| to 0, or '' if not
+    characterized (Z) or the gain is too small to be a useful lever."""
+    letter = axis[0]
+    gain = CELL_GAINS.get(cell_num, {}).get(letter)
+    if gain is None or abs(gain) < 1e-3:
+        return ""
+    mag = abs(value) / abs(gain)
+    if _AXIS_UNIT[letter] == "deg":
+        return f"~{mag:.3f} deg"
+    return f"~{mag:.1f} um"
 
 
 def fmt_number(v):
@@ -124,7 +153,8 @@ def cell_tip(cell_num, value):
         direction, arrow = "up", "↑"
     grouped = {"lg": [], "med": [], "sm": []}
     for axis, tag in rules[direction]:
-        grouped[tag].append(axis)
+        mag = move_magnitude(cell_num, axis, value)
+        grouped[tag].append(f"{axis} {mag}" if mag else axis)
     if in_spec:
         status = f"In spec (|v| < {POYNT_THRESHOLD})"
     else:
@@ -139,6 +169,12 @@ def cell_tip(cell_num, value):
     for tag in ("lg", "med", "sm"):
         if grouped[tag]:
             lines.append(f"  {TAG_LABEL[tag]:>8}: {', '.join(grouped[tag])}")
+    if not in_spec:
+        lines += [
+            "",
+            "Est. single-axis move to null this cell (axes couple;",
+            "use Auto-correct v2 for a combined solve). Z not characterized.",
+        ]
     return "\n".join(lines)
 
 

@@ -35,8 +35,8 @@ Compact notation: `2+4−, 6+8−` means cell 2 ↑, cell 4 ↓, cell 6 ↑, cel
 | Z−   | 2−4+, 6−8−                       | na        | ↓(2) | na        | ↑(4) | | na        | ↓(6) | na        | ↓(8) |
 | U+   | 1+3+, 5−sm                       | ↑(1)      | na   | ↑(3)      | na   | | ↓sm(5)    | na   | na        | na   |
 | U−   | 1−3−, 5+sm                       | ↓(1)      | na   | ↓(3)      | na   | | ↑sm(5)    | na   | na        | na   |
-| V+   | 2−4−, 6−8+                       | na        | ↓(2) | na        | ↓(4) | | na        | ↓(6) | na        | ↑(8) |
-| V−   | 2+4+, 6+8−                       | na        | ↑(2) | na        | ↑(4) | | na        | ↑(6) | na        | ↓(8) |
+| V+   | 2−4−, 6−8−                       | na        | ↓(2) | na        | ↓(4) | | na        | ↓sm(6) | na      | ↓sm(8) |
+| V−   | 2+4+, 6+8+                       | na        | ↑(2) | na        | ↑(4) | | na        | ↑sm(6) | na      | ↑sm(8) |
 | W+   | 2+4−, 6−8+ ; 1+3+5+7+ (A1>A2)    | ↑sm-lg(1) | ↑(2) | ↑sm(3)    | ↓(4) | | ↑sm-lg(5) | ↓(6) | ↑sm(7)    | ↑(8) |
 | W−   | 2−4+, 6+8− ; 1−3−5−7− (A1>A2)    | ↓sm-lg(1) | ↓(2) | ↓sm(3)    | ↑(4) | | ↓sm-lg(5) | ↑(6) | ↓sm(7)    | ↓(8) |
 
@@ -48,7 +48,7 @@ Compact notation: `2+4−, 6+8−` means cell 2 ↑, cell 4 ↓, cell 6 ↑, cel
 | Y    | translation | none | all four cells common-mode | none |
 | Z    | translation | B0/B1 oppose at A1; B0 == B1 at A2 | none | none |
 | U    | rotation | none — Py barely moves | B0-row Px ↑↑ in unison across A1/A2; B1-row Px ~na | not measured here (legacy claim from geometry) |
-| V    | rotation | B0 == B1 within station; A1/A2 same | none | none |
+| V    | rotation | all four Py same direction; **B0 strong (~6 °/°), B1 weak (~1 °/°)** | small Px common-mode (~0.9 °/°, all four) | none |
 | W    | rotation | B0/B1 oppose AND A1/A2 oppose | Px common-mode, A1 ≈ 2× A2 | none |
 
 ## Verification — SN 7112
@@ -188,7 +188,7 @@ Z was not isolated in this dataset and remains derived from geometry plus the le
 
 ### Rotation re-verification — SN 7207 / 7208 / 7213 (2026-06-24)
 
-U/V/W were re-derived from four fresh datasets (`7207_1.json`, `7208_1.json`, `7213-2.json`, `7213.json` in `out/build/x64-debug-hardware/data/Stage main position/test_sample/`) with `analyze_hex_poynt.py` (same folder). Each consecutive single-axis rotation step (all other axes frozen < 1e−4) gives one `Δpoynt/Δhex` sample; the slopes below are the **Theil-Sen robust median (deg/deg)** pooled over all such steps. SN 7208's Py readings carry several >3σ outliers, but Theil-Sen is insensitive to them (every number shifts < 5 % when 7208 is dropped). **Every cell's polarity matches the master table** — only magnitudes are refined.
+U/V/W were re-derived from four fresh datasets (`7207_1.json`, `7208_1.json`, `7213-2.json`, `7213.json` in `out/build/x64-debug-hardware/data/Stage main position/test_sample/`) with `analyze_hex_poynt.py` (same folder). Each consecutive single-axis rotation step (all other axes frozen < 1e−4) gives one `Δpoynt/Δhex` sample; the slopes below are the **Theil-Sen robust median (deg/deg)** pooled over all such steps. SN 7208's Py readings carry several >3σ outliers, but Theil-Sen is insensitive to them (every number shifts < 5 % when 7208 is dropped). Every cell's polarity matches the master table **except cell 8 (A2.B1.Py) under V**: the master table originally had V+ → ↑(8), but all four serials measure V+ → cell 8 = −1.0 °/° (**↓**, small). This was a stale geometric guess — no isolated A2.B1.Py-under-V step existed in the 7112 data. The master table V± rows have been corrected to `2−4−, 6−8−` / `2+4+, 6+8+`, restoring the in-station Py common-mode (all four Py cells move the same direction under V). Other magnitudes are refined only.
 
 | Axis | cell1 A1.B0.Px | cell2 A1.B0.Py | cell3 A2.B0.Px | cell4 A2.B0.Py | cell5 A1.B1.Px | cell6 A1.B1.Py | cell7 A2.B1.Px | cell8 A2.B1.Py |
 |------|---:|---:|---:|---:|---:|---:|---:|---:|
