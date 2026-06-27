@@ -4,6 +4,15 @@ All notable changes to bobcat_engine, tracked by git commit.
 
 ---
 
+## Unreleased (cherry-picked from master)
+
+- **Lua: camera pixel↔mm calibration script + `file.writeText` writer**
+  - New `scripts/camera_pixel_calibration.lua` — camera-to-stage scale/orientation ("known-offset dot") calibration. Starts with the white dot centred under the crosshair (Z at focus), steps `gantry-main` over a grid (independent `N_STEPS_X`/`N_STEPS_Y` each side of centre, `STEP_UM` per step), runs the `vision_profile_CaptureZero` (CircleDetect Robust) profile at each cell to detect the dot, then least-squares fits `pixel = G·stage` and decomposes G into mm/px (and µm/px) for X and Y, camera rotation vs stage axes, axis skew/orthogonality, and residual RMS/max. Cells where the dot leaves the FOV are logged `no_detect` and skipped, so a partial grid still completes. Writes an HTML report (KPI cards + SVG scatter of detected dots + per-cell residual table) and a reusable `calibration.json` to `config/{product}/calibration report/{timestamp}/`, raw points to `data/calibration_report/...`, and optionally pushes the new mm/px into `config/SYSTEM/val_pixelmm.json` (`UPDATE_SYSTEM_CALIB`). Lua 5.4 (`math.atan(y,x)`); JSON template uses a level-2 long bracket so the embedded `[[..],[..]]` matrix doesn't terminate the string.
+  - `System.WriteTextFile` — new command in `SysPersistenceCommands` to write (or append) a full text/HTML/JSON file. Like `AppendCsv` it rejects `..` and caps path length, but also permits writing under a `config/` directory (not just `data/`) so reports and calibration result files can land in the product folder and `config/SYSTEM/`. Exposed to Lua as `file.writeText(path, content[, append])`.
+
+
+---
+
 ## v1.13.0 — 2026-05-28
 
 ### Highlights
