@@ -48,7 +48,8 @@ private slots:
   void onMoveToCH1Requested(QString deviceName);
   void onMoveToCH2Requested(QString deviceName);
   void onCorrectWRequested(QString deviceName, QString channel,
-                           double angleDeg, bool positiveW, double halfwayXmm);
+                           double angleDeg, bool positiveW, double halfwayXmm,
+                           bool applyHalfwayX);
   void onFineGridScanRequested(QString deviceName);
   void onStopGridScanRequested();
   void onGridScanFinished(bool success, QString deviceName, QString errorMessage);

@@ -41,6 +41,7 @@ public:
     int channelNumber() const { return m_channelNumber; }
     QString channelName() const { return m_channelName; }
     int currentIntensity() const { return m_currentIntensity; }
+    bool isOn() const { return m_isOn; }
 
 signals:
     void intensityChanged(int channel, int intensity);
@@ -126,7 +127,10 @@ private:
     void updateStatus();
     void updateChannelWidgets();
     void applyIntensityToActiveColor(int intensity);
-    void activateColor(const QString& group, const QString& color);
+    // Toggle the matching channel(s) on/off without touching other channels.
+    void toggleColor(const QString& group, const QString& color);
+    // Repaint every preset color button's checked state from live channel on/off.
+    void refreshColorButtonStates();
     QString getChannelColor(LightingChannelWidget* widget) const;
     QString getChannelGroup(LightingChannelWidget* widget) const;
 

@@ -56,6 +56,12 @@ void KeysightE36441A::cleanupWSA()
 bool KeysightE36441A::connect()
 {
     std::lock_guard<std::mutex> lock(m_socketMutex);
+    return connectInternal();
+}
+
+bool KeysightE36441A::connectInternal()
+{
+    // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
     if (m_connected) {
         m_lastError = "Already connected";
@@ -113,6 +119,7 @@ bool KeysightE36441A::connect()
     }
 
     m_connected = true;
+    m_consecutiveTimeouts = 0;
     std::cout << "[KeysightE36441A] Connected to " << m_ip << ":" << m_port << std::endl;
 
     // Query device ID (use internal method since mutex is already locked)
@@ -124,6 +131,12 @@ bool KeysightE36441A::connect()
 void KeysightE36441A::disconnect()
 {
     std::lock_guard<std::mutex> lock(m_socketMutex);
+    disconnectInternal();
+}
+
+void KeysightE36441A::disconnectInternal()
+{
+    // ASSUME MUTEX IS ALREADY LOCKED BY CALLER
 
     if (m_socket.valid()) {
         m_socket.reset();
@@ -228,14 +241,38 @@ std::string KeysightE36441A::receiveResponse()
         m_lastError = "Receive failed";
 #endif
         std::cerr << "[KeysightE36441A] " << m_lastError << std::endl;
+
+        // A timed-out recv (WSAETIMEDOUT/10060) leaves the socket connected but
+        // the SCPI request/response stream can be desynced or the device wedged.
+        // After several in a row, drop and reconnect so it self-heals instead of
+        // looping forever.
+        if (++m_consecutiveTimeouts >= MAX_CONSECUTIVE_TIMEOUTS) {
+            std::cerr << "[KeysightE36441A] " << m_consecutiveTimeouts
+                      << " consecutive receive failures - reconnecting to "
+                      << m_ip << ":" << m_port << std::endl;
+            m_consecutiveTimeouts = 0;   // reset before reconnect to avoid re-entrant trigger
+            disconnectInternal();
+            if (connectInternal()) {
+                std::cerr << "[KeysightE36441A] Reconnect succeeded" << std::endl;
+            } else {
+                std::cerr << "[KeysightE36441A] Reconnect failed: " << m_lastError << std::endl;
+            }
+        }
         return "";
     }
 
     if (bytesReceived == 0) {
         m_lastError = "Connection closed by remote host";
+        std::cerr << "[KeysightE36441A] " << m_lastError << " - reconnecting to "
+                  << m_ip << ":" << m_port << std::endl;
+        m_consecutiveTimeouts = 0;
+        disconnectInternal();
+        connectInternal();
         return "";
     }
 
+    // Got a valid response - the link is healthy again
+    m_consecutiveTimeouts = 0;
     buffer[bytesReceived] = '\0';
     std::string response(buffer);
 
