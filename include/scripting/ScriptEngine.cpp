@@ -1566,6 +1566,15 @@ file = {
         if header then p.header = header end
         return _dispatch("system", "AppendCsv", p)
     end,
+    -- Write (overwrite) a full text/HTML/JSON file. Path must be under a
+    -- 'data/' or 'config/' directory and must not contain '..'. Pass
+    -- append=true to append instead of overwrite.
+    --   file.writeText("config/SIPHOG888/calibration report/report.html", html)
+    writeText = function(path, content, append)
+        local p = {path = path, content = content}
+        if append then p.append = "true" end
+        return _dispatch("system", "WriteTextFile", p)
+    end,
     -- Build a CSV line from a Lua array, escaping commas/quotes/newlines per RFC 4180.
     csvRow = function(values)
         local parts = {}

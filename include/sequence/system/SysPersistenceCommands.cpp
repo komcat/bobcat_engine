@@ -411,5 +411,93 @@ std::optional<bool> SysPersistenceCommands::TryExecute(
     return true;
   }
 
+  // ============================================================================
+  // WRITE TEXT FILE — write (overwrite) a full text/HTML/JSON file.
+  // Unlike AppendCsv (data/ only, append), this is meant for reports and
+  // calibration result files, so it also permits writing under a 'config/'
+  // directory (e.g. config/{product}/... and config/SYSTEM/...).
+  //   params: path, content, [append="true"]
+  // ============================================================================
+  if (methodName == "WriteTextFile") {
+    auto pathIt = params.find("path");
+    auto contentIt = params.find("content");
+    if (pathIt == params.end() || pathIt->second.empty()) {
+      errorMessage = "WriteTextFile requires 'path' parameter";
+      return false;
+    }
+    if (contentIt == params.end()) {
+      errorMessage = "WriteTextFile requires 'content' parameter";
+      return false;
+    }
+
+    namespace fs = std::filesystem;
+    fs::path target(pathIt->second);
+
+    // Path safety: no ".." components anywhere in the path.
+    for (const auto& part : target) {
+      if (part == "..") {
+        errorMessage = "WriteTextFile: path must not contain '..': " + pathIt->second;
+        return false;
+      }
+    }
+
+    // Must live under a "data" or "config" directory.
+    bool underAllowed = false;
+    for (const auto& part : target) {
+      if (part == "data" || part == "config") { underAllowed = true; break; }
+    }
+    if (!underAllowed) {
+      errorMessage = "WriteTextFile: path must be under a 'data/' or 'config/' directory: " + pathIt->second;
+      return false;
+    }
+
+    if (pathIt->second.size() > 260) {
+      errorMessage = "WriteTextFile: path exceeds 260 chars";
+      return false;
+    }
+
+    std::error_code ec;
+    fs::path parent = target.parent_path();
+    if (!parent.empty()) {
+      fs::create_directories(parent, ec);
+      if (ec) {
+        errorMessage = "WriteTextFile: failed to create directory '" + parent.string() + "': " + ec.message();
+        return false;
+      }
+    }
+
+    auto appendIt = params.find("append");
+    const bool append = (appendIt != params.end() &&
+                         (appendIt->second == "true" || appendIt->second == "1"));
+
+    std::ios::openmode mode = std::ios::binary |
+                              (append ? std::ios::app : std::ios::trunc);
+    std::ofstream ofs(target, mode);
+    if (!ofs.is_open()) {
+      errorMessage = "WriteTextFile: failed to open '" + target.string() + "' for writing";
+      return false;
+    }
+
+    ofs << contentIt->second;
+    ofs.flush();
+    if (!ofs) {
+      errorMessage = "WriteTextFile: write failed on '" + target.string() + "'";
+      return false;
+    }
+
+    if (context) {
+      auto capIt = params.find("captureAs");
+      if (capIt != params.end() && !capIt->second.empty()) {
+        context->SetValue(capIt->second, target.string(), "system", "WriteTextFile");
+      }
+    }
+
+    if (logger) {
+      logger->Info("WriteTextFile wrote " + std::to_string(contentIt->second.size()) +
+                   " bytes to " + target.string(), "SystemHandler");
+    }
+    return true;
+  }
+
   return std::nullopt;  // not our family
 }
