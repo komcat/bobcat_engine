@@ -610,10 +610,34 @@ void DrawSingleBeamCropTile(Gdiplus::Graphics& gfx,
     const auto& d4 = beam.d4;
     const bool hasFrame = (frameData && frameW > 0 && frameH > 0);
 
-    int srcX0 = std::max(d4.roi.x0, 0);
-    int srcY0 = std::max(d4.roi.y0, 0);
-    int srcX1 = std::min(d4.roi.x1, static_cast<int>(frameW));
-    int srcY1 = std::min(d4.roi.y1, static_cast<int>(frameH));
+    // Crop window. Do NOT crop to the raw detection ROI (d4.roi): when a beam
+    // saturates/blooms, the projection-based ROI degenerates into a full-width,
+    // thin band, so the tile shows a letterboxed stripe instead of the beam.
+    // Instead crop a beam-centred SQUARE box sized from the (saturation-aware)
+    // d4sigma diameter — this stays centred and square no matter how the coarse
+    // ROI came out. Fall back to d4.roi only when the d4sigma is degenerate.
+    static constexpr double CROP_SPAN_FACTOR = 2.5;  // box = 2.5 x beam diameter
+    int srcX0, srcY0, srcX1, srcY1;
+    const double beamDiam = std::max(d4.dx, d4.dy);
+    if (hasFrame && beamDiam > 1.0) {
+        int half = static_cast<int>(std::ceil(beamDiam * CROP_SPAN_FACTOR * 0.5));
+        // Cap so an inflated d4sigma can't produce a giant box; keep it square
+        // and on-image by bounding to half the smaller frame dimension.
+        const int maxHalf =
+            std::min(static_cast<int>(frameW), static_cast<int>(frameH)) / 2;
+        half = std::clamp(half, 4, std::max(4, maxHalf));
+        const int icx = static_cast<int>(std::lround(d4.cx));
+        const int icy = static_cast<int>(std::lround(d4.cy));
+        srcX0 = std::max(icx - half, 0);
+        srcY0 = std::max(icy - half, 0);
+        srcX1 = std::min(icx + half, static_cast<int>(frameW));
+        srcY1 = std::min(icy + half, static_cast<int>(frameH));
+    } else {
+        srcX0 = std::max(d4.roi.x0, 0);
+        srcY0 = std::max(d4.roi.y0, 0);
+        srcX1 = std::min(d4.roi.x1, static_cast<int>(frameW));
+        srcY1 = std::min(d4.roi.y1, static_cast<int>(frameH));
+    }
     int cropW = srcX1 - srcX0;
     int cropH = srcY1 - srcY0;
 
