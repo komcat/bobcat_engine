@@ -23,6 +23,7 @@
 #include "MotionInspectorWidget.h"
 #include "M4AngleWidget.h"
 #include "PoyntOptimizeWidget.h"
+#include "MoeScreeningWidget.h"
 #include "Theme.h"
 #include "ThemeButtonStyles.h"
 #include "common/ScanActivityTracker.h"
@@ -827,6 +828,14 @@ void RunProgramPage::createExecutionWidget()
   // UI thread stays responsive; Stop button breaks the script.
   m_poyntOptimizeWidget = new PoyntOptimizeWidget(m_context);
   m_executionTabWidget->addTab(m_poyntOptimizeWidget, "Poynt Optimize");
+
+  // === MOE SCREENING TAB ===
+  // Screens bare MOEs (identified by a MOE ID, not a DUT serial): move/save
+  // gantry-main screener + IR positions, and a "Measure MOE" button that runs
+  // moe_screen_baseline.lua (IR read at screen-A1-IR / screen-A2-IR) with a
+  // dedicated read-back panel over data/<product>/moe-screen/.
+  m_moeScreeningWidget = new MoeScreeningWidget(m_context);
+  m_executionTabWidget->addTab(m_moeScreeningWidget, "MOE Screening");
 
   // === M4AA branch: hide tabs that aren't used in this flow ===
   // The widgets remain constructed (their signal wiring above stays valid);

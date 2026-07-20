@@ -35,6 +35,7 @@ class PlacementRetraceWidget;
 class MotionInspectorWidget;
 class M4AngleWidget;
 class PoyntOptimizeWidget;
+class MoeScreeningWidget;
 #include "PlacementCorrectionData.h"  // PlacementCorrectionSet (value member)
 #include "../EdgeTransferTrainer/EdgeTransferData.h"  // EdgeTransferSet (value member)
 #include "../../sequence/EdgeTransferRetrace.h"       // EdgeTransferRetraceOutcome
@@ -234,6 +235,7 @@ private:
   int m_motionInspectorTabIndex = -1;  // Index of the Motion Inspector tab in m_executionTabWidget
   M4AngleWidget*        m_m4AngleWidget        = nullptr;  // M4 angle (U / W) delta calculator tab
   PoyntOptimizeWidget*  m_poyntOptimizeWidget  = nullptr;  // Poynt optimize tab (scripts + jog)
+  MoeScreeningWidget*   m_moeScreeningWidget   = nullptr;  // MOE Screening tab (IR read + panel)
   PlacementCorrectionSet m_activePlacementSet;          // Loaded set (owned copy, pointer passed to widget)
   std::string m_activePlacementStoreBasePath;           // Base path for persisting tuned offsets
   bool m_placementRetraceResponse = false;

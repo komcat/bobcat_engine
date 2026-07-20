@@ -459,9 +459,9 @@ bool CameraCommandHandler::ExecuteCommand(
       return false;
     }
 
-    // Validate range (1 - 10000 microseconds)
-    if (exposureValue < 1.0 || exposureValue > 10000.0) {
-      errorMessage = "Exposure value out of range (1-10000 microseconds): " + std::to_string(exposureValue);
+    // Validate range (1 - 1000000 microseconds)
+    if (exposureValue < 1.0 || exposureValue > 1000000.0) {
+      errorMessage = "Exposure value out of range (1-1000000 microseconds): " + std::to_string(exposureValue);
       return false;
     }
 
