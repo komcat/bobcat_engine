@@ -66,6 +66,10 @@ private:
   // Live-apply the given exposure (µs) to the SWIR/IR camera right now.
   void applyExposure(int us);
 
+  // "Fit scan..." dialog: quick-edit the Z-scan step size / count.
+  void openScanSettingsDialog();
+  void refreshScanButtonText();
+
   // Persist / restore the two per-position IR exposures for the active product
   // (config/<product>/moe_screen_exposure.json).
   QString exposureConfigPath() const;
@@ -99,6 +103,11 @@ private:
   QSpinBox*    m_expA2Spin = nullptr;   // at screen-A2-IR
   QPushButton* m_applyA1Btn = nullptr;  // live-apply A1 exposure to the camera
   QPushButton* m_applyA2Btn = nullptr;  // live-apply A2 exposure to the camera
+  QPushButton* m_scanSettingsBtn = nullptr;  // opens the "Fit scan..." dialog
+
+  // Beam-fit Z-scan geometry (passed to the script; persisted per product).
+  int m_scanSlices = 9;    // number of Z steps
+  int m_scanStepUm = 5;    // step size between slices (µm)
 
   QPlainTextEdit* m_log = nullptr;
 

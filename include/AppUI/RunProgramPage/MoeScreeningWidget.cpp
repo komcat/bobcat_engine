@@ -21,6 +21,9 @@
 #include <QSignalBlocker>
 #include <QInputDialog>
 #include <QLineEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
 #include <QMessageBox>
 #include <QFont>
 #include <QFileInfo>
@@ -221,8 +224,17 @@ void MoeScreeningWidget::setupUI() {
   expRow->addWidget(new QLabel("screen-A2-IR:"));
   expRow->addWidget(m_expA2Spin);
   expRow->addWidget(m_applyA2Btn);
+  expRow->addSpacing(24);
+  m_scanSettingsBtn = new QPushButton();
+  m_scanSettingsBtn->setToolTip(
+      "Quick-edit the beam-fit Z-scan: step size (µm) and number of steps. "
+      "Applied to the next Measure MOE run; saved per product.");
+  expRow->addWidget(m_scanSettingsBtn);
   expRow->addStretch(1);
   root->addLayout(expRow);
+  refreshScanButtonText();
+  connect(m_scanSettingsBtn, &QPushButton::clicked, this,
+          &MoeScreeningWidget::openScanSettingsDialog);
 
   connect(m_applyA1Btn, &QPushButton::clicked, this,
           [this]{ applyExposure(m_expA1Spin->value()); });
@@ -429,6 +441,10 @@ void MoeScreeningWidget::onMeasureMoe() {
       "MOE_SCREEN_EXP_A1_US", std::to_string(m_expA1Spin->value()));
   m_context->scriptEngine->SetScriptGlobalString(
       "MOE_SCREEN_EXP_A2_US", std::to_string(m_expA2Spin->value()));
+  m_context->scriptEngine->SetScriptGlobalString(
+      "MOE_SCREEN_SLICES", std::to_string(m_scanSlices));
+  m_context->scriptEngine->SetScriptGlobalString(
+      "MOE_SCREEN_STEP_UM", std::to_string(m_scanStepUm));
 
   launchScript(QString::fromUtf8(kMoeScreenScript),
                QStringLiteral("Measure MOE %1").arg(moeId));
@@ -548,6 +564,62 @@ void MoeScreeningWidget::applyExposure(int us) {
   }
 }
 
+void MoeScreeningWidget::refreshScanButtonText() {
+  if (!m_scanSettingsBtn) return;
+  m_scanSettingsBtn->setText(
+      QStringLiteral("Fit scan\n%1 x %2um").arg(m_scanSlices).arg(m_scanStepUm));
+}
+
+void MoeScreeningWidget::openScanSettingsDialog() {
+  QDialog dlg(this);
+  dlg.setWindowTitle("Beam-fit Z-scan");
+
+  auto* form = new QFormLayout();
+  auto* countSpin = new QSpinBox(&dlg);
+  countSpin->setRange(3, 99);
+  countSpin->setValue(m_scanSlices);
+  auto* stepSpin = new QSpinBox(&dlg);
+  stepSpin->setRange(1, 500);
+  stepSpin->setSuffix(" um");
+  stepSpin->setValue(m_scanStepUm);
+  auto* rangeLbl = new QLabel(&dlg);
+  rangeLbl->setStyleSheet("color:#9ecbff;");
+
+  // Live "centred range" preview, matching the script's centring math.
+  auto updateRange = [countSpin, stepSpin, rangeLbl]() {
+    const double half = (countSpin->value() - 1) * stepSpin->value() / 2.0;
+    rangeLbl->setText(QString("%1 slices span %2 .. +%3 um around taught Z")
+                          .arg(countSpin->value())
+                          .arg(-half, 0, 'f', 1)
+                          .arg(half, 0, 'f', 1));
+  };
+  updateRange();
+  connect(countSpin, qOverload<int>(&QSpinBox::valueChanged), &dlg, updateRange);
+  connect(stepSpin,  qOverload<int>(&QSpinBox::valueChanged), &dlg, updateRange);
+
+  form->addRow("Number of steps (count):", countSpin);
+  form->addRow("Step size:", stepSpin);
+  form->addRow("", rangeLbl);
+
+  auto* buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+  connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+  connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+  auto* v = new QVBoxLayout(&dlg);
+  v->addLayout(form);
+  v->addWidget(buttons);
+
+  if (dlg.exec() != QDialog::Accepted) return;
+
+  m_scanSlices = countSpin->value();
+  m_scanStepUm = stepSpin->value();
+  refreshScanButtonText();
+  saveExposures();  // persists exposures + scan geometry to the same file
+  appendLog(QStringLiteral("[fit] Z-scan set to %1 slices x %2 um")
+                .arg(m_scanSlices).arg(m_scanStepUm), "#4caf50");
+}
+
 QString MoeScreeningWidget::exposureConfigPath() const {
   if (!m_context || !m_context->productPositionManager) return QString();
   if (!m_context->productPositionManager->HasLoadedProduct()) return QString();
@@ -582,6 +654,18 @@ void MoeScreeningWidget::loadExposures() {
   // Block valueChanged so restoring values doesn't immediately re-save.
   { QSignalBlocker b1(m_expA1Spin); m_expA1Spin->setValue(a1); }
   { QSignalBlocker b2(m_expA2Spin); m_expA2Spin->setValue(a2); }
+
+  // Beam-fit Z-scan geometry (clamped to the dialog's ranges).
+  auto readRange = [](const json& obj, const char* key, int def, int lo, int hi) -> int {
+    if (obj.contains(key) && obj.at(key).is_number()) {
+      int v = obj.at(key).get<int>();
+      return v < lo ? lo : (v > hi ? hi : v);
+    }
+    return def;
+  };
+  m_scanSlices = readRange(j, "scan_slices",  m_scanSlices, 3, 99);
+  m_scanStepUm = readRange(j, "scan_step_um", m_scanStepUm, 1, 500);
+  refreshScanButtonText();
 }
 
 void MoeScreeningWidget::saveExposures() {
@@ -591,6 +675,8 @@ void MoeScreeningWidget::saveExposures() {
   json j;
   j["a1_us"] = m_expA1Spin->value();
   j["a2_us"] = m_expA2Spin->value();
+  j["scan_slices"]  = m_scanSlices;
+  j["scan_step_um"] = m_scanStepUm;
   std::ofstream o(path.toStdString(), std::ios::binary | std::ios::trunc);
   if (!o.is_open()) return;
   o << j.dump(2);

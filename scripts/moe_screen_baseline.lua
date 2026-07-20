@@ -57,18 +57,19 @@ local function poyntFailed()
 end
 
 -- ----------------------------------------------------------------------------
--- Inline Z-scan (HARDCODED for MOE screening): mirrors the "Beam Detect Loop"
--- recipe step-for-step, but with the scan geometry fixed here so changing the
--- MOE step size / count does NOT affect the shared recipe (Poynt Optimize).
---   * 9 slices, 5 um step, centred on the taught Z (-20..+20 um).
--- To change: edit SCAN_NUM_SLICES / SCAN_STEP_UM below. Keep the scan centred by
--- leaving SCAN_START_OFFSET_UM = -(SCAN_NUM_SLICES - 1) * SCAN_STEP_UM / 2.
+-- Inline Z-scan for MOE screening: mirrors the "Beam Detect Loop" recipe
+-- step-for-step, but with the scan geometry local to this script so it does NOT
+-- affect the shared recipe (Poynt Optimize). Defaults 9 slices x 5 um; the MOE
+-- Screening tab's "Fit scan..." dialog overrides via the globals below. The scan
+-- is always centred on the taught Z.
 -- ----------------------------------------------------------------------------
 local BEAM_HOST            = "127.0.0.1"
 local BEAM_PORT            = "5555"
-local SCAN_NUM_SLICES      = 9      -- number of Z steps (slices)
-local SCAN_STEP_UM         = 5      -- step size between slices (um)
-local SCAN_START_OFFSET_UM = -20    -- = -(N-1)*step/2 -> scan centred on taught Z
+local SCAN_NUM_SLICES      = math.floor(tonumber(MOE_SCREEN_SLICES) or 9)   -- number of Z steps
+local SCAN_STEP_UM         = math.floor(tonumber(MOE_SCREEN_STEP_UM) or 5)  -- step size (um)
+if SCAN_NUM_SLICES < 3 then SCAN_NUM_SLICES = 3 end
+if SCAN_STEP_UM   < 1 then SCAN_STEP_UM   = 1 end
+local SCAN_START_OFFSET_UM = -(SCAN_NUM_SLICES - 1) * SCAN_STEP_UM / 2      -- centred on taught Z
 local DETECT_FRAMES        = 3      -- frames averaged per slice (recipe uses 3)
 local SCAN_VELOCITY        = 10
 local UM_PER_PX            = "0.25"
@@ -132,7 +133,7 @@ end
 
 local function runBeamDetect()
     log.info(string.format(
-        "Inline Z-scan: %d slices, step %d um (%+d..%+d um around taught Z)",
+        "Inline Z-scan: %d slices, step %d um (%+.1f..%+.1f um around taught Z)",
         SCAN_NUM_SLICES, SCAN_STEP_UM, SCAN_START_OFFSET_UM,
         SCAN_START_OFFSET_UM + (SCAN_NUM_SLICES - 1) * SCAN_STEP_UM))
     runBeamScan()
