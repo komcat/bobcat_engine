@@ -230,6 +230,7 @@ private:
     // Save current frame to disk (button handlers — private; UI-only)
     void OnSaveImage();
     void OnSaveImagePackage();
+    void OnOpenCapturesFolder();  // open logs/swir_captures in Explorer
 
 public:
     // Save APIs callable from C++/manager; safe to call from any thread.
@@ -404,6 +405,7 @@ private:
     static constexpr int TAG_BEAM_FOCUS = 960;
     static constexpr int TAG_SAVE_IMAGE = 970;
     static constexpr int TAG_SAVE_PACKAGE = 980;
+    static constexpr int TAG_OPEN_FOLDER = 985;
     static constexpr int TAG_AUTO_SAT = 990;
     static constexpr int TAG_TEC_25C = 1000;
     static constexpr int TAG_TEC_30C = 1010;

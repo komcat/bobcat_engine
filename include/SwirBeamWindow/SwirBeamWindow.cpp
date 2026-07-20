@@ -1668,6 +1668,17 @@ void SwirBeamWindow::RebuildButtons(const RECT& panelRect)
     }
     y += btnHeight + btnSpacing;
 
+    // Row 4b: OPEN SAVE FOLDER (opens logs/swir_captures in Explorer)
+    {
+        SwirButton openFolderBtn;
+        openFolderBtn.rect = {btnLeft, y, btnLeft + btnWidth, y + btnHeight};
+        openFolderBtn.label = L"OPEN SAVE FOLDER";
+        openFolderBtn.tag = TAG_OPEN_FOLDER;
+        openFolderBtn.onClick = [this]() { OnOpenCapturesFolder(); };
+        m_buttons.push_back(openFolderBtn);
+    }
+    y += btnHeight + btnSpacing;
+
     // Row 5: AUTO SAT (full width toggle)
     {
         SwirButton autoSatBtn;
@@ -2223,6 +2234,7 @@ void SwirBeamWindow::RenderControlPanel(HDC hdc, const RECT& panelRect)
     y += btnHeight + btnSpacing;  // Row 2: MARKER | CLEAR ALL | SET MAG
     y += btnHeight + btnSpacing;  // Row 3: B DETECT | B CONFIG | B OPTIM
     y += btnHeight + btnSpacing;  // Row 4: SAVE IMG | SAVE PKG
+    y += btnHeight + btnSpacing;  // Row 4b: OPEN SAVE FOLDER
     y += btnHeight + btnSpacing;  // Row 5: AUTO SAT
     y += btnHeight + btnSpacing;  // Row 6: Z- 10um | Z+ 10um
     y += groupPad;
@@ -3033,6 +3045,26 @@ void SwirBeamWindow::OnSaveImagePackage()
 
     std::cout << "[SwirBeamWindow] Image package saved to " << outDir.string()
               << " (" << savedFiles.size() << " files)" << std::endl;
+}
+
+void SwirBeamWindow::OnOpenCapturesFolder()
+{
+    // Same base dir SAVE IMG / SAVE PKG write to (relative to the working dir).
+    std::filesystem::path captureDir =
+        std::filesystem::path("logs") / "swir_captures";
+    std::error_code ec;
+    std::filesystem::create_directories(captureDir, ec);  // ensure it exists
+    const std::filesystem::path absPath = std::filesystem::absolute(captureDir, ec);
+    const std::wstring dir = absPath.wstring();
+
+    // Open the folder itself (verb "open" on a directory) — robust against
+    // spaces in the path, unlike passing it as an explorer.exe argument.
+    HINSTANCE rc = ShellExecuteW(m_hwnd, L"open", dir.c_str(),
+                                 nullptr, nullptr, SW_SHOWNORMAL);
+    if (reinterpret_cast<INT_PTR>(rc) <= 32) {
+        MessageBoxW(m_hwnd, L"Failed to open the SWIR captures folder.",
+                    L"Open Save Folder", MB_OK | MB_ICONERROR);
+    }
 }
 
 bool SwirBeamWindow::SaveFrameAsPng(const std::wstring& fullPath)
