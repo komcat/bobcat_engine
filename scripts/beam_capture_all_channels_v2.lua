@@ -19,12 +19,18 @@
 --     up to — instead the exposure JUMPS to the EXPOSURE_MAX_US ceiling (which
 --     deliberately over-exposes to force a detection) and then dims back DOWN
 --     into the window, which is far more reliable for a faint beam.
--- DRIVE-CURRENT FALLBACK: when exposure alone isn't enough — at EXPOSURE_MIN_US
--- a channel beam is STILL over-exposed — the script then steps that station's
--- PSU_UDP drive current DOWN by PSU_UDP_CURRENT_STEP_MA (15 mA) from
+-- DRIVE-CURRENT FALLBACK: when exposure alone isn't enough the script steps that
+-- station's PSU_UDP drive current DOWN by PSU_UDP_CURRENT_STEP_MA (20 mA) from
 -- PSU_UDP_DEFAULT_MA (870 mA) until the peak drops in range or the
--- PSU_UDP_CURRENT_MIN_MA (600 mA) floor is hit. The current is reset to the
--- default at the start of every station, so a reduction never carries forward.
+-- PSU_UDP_CURRENT_MIN_MA (600 mA) floor is hit. This kicks in two ways:
+--   * over-exposed even at the EXPOSURE_MIN_US floor (a very bright beam); OR
+--   * the exposure step OVERSHOOTS the window — the beam reads over-exposed at
+--     one exposure and weak one step lower, so no exposure fits. When that is
+--     detected the script holds the over-exposed exposure and trims the current
+--     down into range instead of ping-ponging between the two exposures.
+-- The reduced current is restored to the station default after the capture, and
+-- is also reset at the start of every station, so a reduction never carries
+-- forward.
 -- The exposure left applied for the station is recorded in the CSV
 -- (swir_exposure_us column) and the DUT JSON metadata; the actual (possibly
 -- reduced) drive current is captured by the per-station power read-back.
@@ -118,7 +124,7 @@ local EXPOSURE_MAX_ITERS     = 120   -- safety cap (jump-to-max dim-down + curre
 -- Only channel stations (ch1..ch6, driven by PSU_UDP) are reduced; the MOE
 -- stations' currents are managed externally and left untouched.
 local PSU_UDP_DEFAULT_MA     = 870   -- nominal channel drive current (mA)
-local PSU_UDP_CURRENT_STEP_MA = 15   -- reduce by this per step when still over-exposed (mA)
+local PSU_UDP_CURRENT_STEP_MA = 20   -- reduce by this per step when still over-exposed (mA)
 local PSU_UDP_CURRENT_MIN_MA = 600   -- floor; do not drive a channel below this (mA)
 local CURRENT_SETTLE_MS      = 400   -- settle after each current change before re-reading peak
 
@@ -307,12 +313,15 @@ end
 --    Read the live SWIR peak pixel value (from the beam window's detection) and
 --    step the exposure DOWN while either beam is over-exposed (peak >= SAT_PK),
 --    or UP while the brightest beam is too weak to detect (peak < WEAK_PK).
---    When exposure alone can't tame a hot beam — at EXPOSURE_MIN_US the peak is
---    still >= SAT_PK — step the station's PSU_UDP drive current DOWN (channel
---    stations only) until the beam drops into range or the current floor is hit.
---    Called once per station, at the taught Z (the brightest point, before the
---    Z-scan), so the whole scan is captured usable. Returns the exposure (us)
---    left applied for the station, which is recorded in the CSV/JSON metadata.
+--    When exposure alone can't tame a hot beam — either still >= SAT_PK at the
+--    EXPOSURE_MIN_US floor, OR the exposure step OVERSHOOTS the window (over at
+--    one exposure, weak one step lower, so no exposure fits) — hold an
+--    over-exposed exposure and step the station's PSU_UDP drive current DOWN
+--    (channel stations only) until the beam drops into range or the current floor
+--    is hit. Called once per station, at the taught Z (the brightest point,
+--    before the Z-scan), so the whole scan is captured usable. Returns the
+--    exposure (us) AND the (possibly reduced) PSU_UDP current (mA) left applied;
+--    the caller restores the current to the station default after the capture.
 -- ---------------------------------------------------------------------------
 local function readMaxPeak()
     -- Snapshot the SWIR window's beam state into context, then take the max
@@ -362,13 +371,31 @@ local function autoAdjustExposure(st)
     -- detection — and then dim back down into the window. At most one jump per
     -- station; afterwards we only fine-tune.
     local jumpedToMax = false
+    -- The exposure step can OVERSHOOT the window: a beam that is over-exposed at
+    -- one exposure but weak one step lower can never be landed by exposure alone
+    -- and the two branches ping-pong forever. justDimmed tracks whether the last
+    -- exposure change was a dim-DOWN, so the weak branch can spot the overshoot;
+    -- currentTrim latches us into trimming the PSU_UDP drive current (holding an
+    -- over-exposed exposure) instead of chasing exposure.
+    local justDimmed  = false
+    local currentTrim = false
 
     for _ = 1, EXPOSURE_MAX_ITERS do
         local pkMax, n = readMaxPeak()
         if n >= 1 and pkMax >= SAT_PK then
-            -- Over-exposed. Dim by the range step; once at EXPOSURE_MIN_US,
-            -- reduce the PSU_UDP drive current (channel stations only).
-            if expUs > EXPOSURE_MIN_US then
+            -- Over-exposed. Once trimming current (exposure overshoots the window)
+            -- or already at the EXPOSURE_MIN_US floor, reduce the PSU_UDP drive
+            -- current (channel stations only); otherwise dim by the range step.
+            if (currentTrim or expUs <= EXPOSURE_MIN_US) and udp ~= nil
+                    and (curMa - PSU_UDP_CURRENT_STEP_MA) >= PSU_UDP_CURRENT_MIN_MA then
+                local nextMa = curMa - PSU_UDP_CURRENT_STEP_MA
+                log.info(string.format("  [%s] over-exposed (peak=%d) at %d us -> %s ch%d current %d -> %d mA",
+                    st.pos, math.floor(pkMax + 0.5), expUs, udp.dev, udp.ch, curMa, nextMa))
+                curMa = nextMa
+                psuSetCurrent(udp.dev, udp.ch, curMa)
+                bobcat.wait(CURRENT_SETTLE_MS)
+                justDimmed = false
+            elseif expUs > EXPOSURE_MIN_US and not currentTrim then
                 local nextUs = expUs - exposureStepUs(expUs)
                 if nextUs < EXPOSURE_MIN_US then nextUs = EXPOSURE_MIN_US end
                 log.info(string.format("  [%s] over-exposed (peak=%d >= %d) -> exposure %d -> %d us",
@@ -376,26 +403,36 @@ local function autoAdjustExposure(st)
                 expUs = nextUs
                 camera.setExposure("swir_camera", expUs)
                 bobcat.wait(EXPOSURE_SETTLE_MS)
-            elseif udp ~= nil and (curMa - PSU_UDP_CURRENT_STEP_MA) >= PSU_UDP_CURRENT_MIN_MA then
-                local nextMa = curMa - PSU_UDP_CURRENT_STEP_MA
-                log.info(string.format("  [%s] over-exposed at min exposure (peak=%d) -> %s ch%d current %d -> %d mA",
-                    st.pos, math.floor(pkMax + 0.5), udp.dev, udp.ch, curMa, nextMa))
-                curMa = nextMa
-                psuSetCurrent(udp.dev, udp.ch, curMa)
-                bobcat.wait(CURRENT_SETTLE_MS)
+                justDimmed = true
             else
                 if udp ~= nil then
-                    log.warn(string.format("  [%s] still over-exposed (peak=%d) at min exposure %d us and min current %d mA",
-                        st.pos, math.floor(pkMax + 0.5), EXPOSURE_MIN_US, curMa))
+                    log.warn(string.format("  [%s] still over-exposed (peak=%d) at %d us and min current %d mA",
+                        st.pos, math.floor(pkMax + 0.5), expUs, curMa))
                 else
                     log.warn(string.format("  [%s] still over-exposed (peak=%d) at min exposure %d us (no PSU_UDP to reduce)",
                         st.pos, math.floor(pkMax + 0.5), EXPOSURE_MIN_US))
                 end
-                return expUs
+                return expUs, curMa
             end
         elseif n < 1 or pkMax < WEAK_PK then
             -- Under-exposed / undetected.
-            if not jumpedToMax and expUs < EXPOSURE_MAX_US then
+            if justDimmed and udp ~= nil then
+                -- We dimmed exposure and overshot below the window (weak now, but
+                -- over-exposed one step up): exposure granularity can't fit this
+                -- beam. Latch into current-trim mode and raise the exposure back
+                -- up one step so the beam is over-exposed again — the over-exposed
+                -- branch then trims the PSU_UDP current down into range.
+                currentTrim = true
+                justDimmed  = false
+                local nextUs = expUs + exposureStepUs(expUs)
+                if nextUs > EXPOSURE_MAX_US then nextUs = EXPOSURE_MAX_US end
+                log.info(string.format("  [%s] exposure overshoot (peak=%d < %d at %d us) -> raise to %d us and trim %s current",
+                    st.pos, math.floor(pkMax + 0.5), WEAK_PK, expUs, nextUs,
+                    udp.dev))
+                expUs = nextUs
+                camera.setExposure("swir_camera", expUs)
+                bobcat.wait(EXPOSURE_SETTLE_MS)
+            elseif not jumpedToMax and not currentTrim and expUs < EXPOSURE_MAX_US then
                 local why = (n < 1) and "no beam"
                     or string.format("peak=%d < %d", math.floor(pkMax + 0.5), WEAK_PK)
                 log.info(string.format("  [%s] weak/undetected (%s) at %d us -> jump to max %d us, then dim down",
@@ -407,7 +444,7 @@ local function autoAdjustExposure(st)
             elseif expUs >= EXPOSURE_MAX_US then
                 log.warn(string.format("  [%s] still weak/undetected at ceiling %d us",
                     st.pos, EXPOSURE_MAX_US))
-                return expUs
+                return expUs, curMa
             else
                 -- Dimming overshot just below the window; nudge back UP by the
                 -- range step. (Drive current is only ever reduced, never raised.)
@@ -418,6 +455,7 @@ local function autoAdjustExposure(st)
                 expUs = nextUs
                 camera.setExposure("swir_camera", expUs)
                 bobcat.wait(EXPOSURE_SETTLE_MS)
+                justDimmed = false
             end
         else
             -- In the good window [WEAK_PK, SAT_PK).
@@ -428,12 +466,12 @@ local function autoAdjustExposure(st)
                 log.info(string.format("  [%s] exposure OK: %d us (peak=%d, %d <= peak < %d)",
                     st.pos, expUs, math.floor(pkMax + 0.5), WEAK_PK, SAT_PK))
             end
-            return expUs
+            return expUs, curMa
         end
     end
     log.warn(string.format("  [%s] auto-exposure hit %d iters, leaving %d us",
         st.pos, EXPOSURE_MAX_ITERS, expUs))
-    return expUs
+    return expUs, curMa
 end
 
 -- ---------------------------------------------------------------------------
@@ -613,8 +651,21 @@ local function measureStation(st)
     -- beam is bright enough to detect at this station. Done at the taught Z
     -- (brightest point) before the Z-scan, so the whole scan stays usable.
     -- Recorded in the CSV/JSON metadata.
-    local stationExposureUs = autoAdjustExposure(st)
+    local stationExposureUs, stationCurrentMa = autoAdjustExposure(st)
     bobcat.watch(st.pos .. ".exposureUs", stationExposureUs)
+
+    -- Restore the PSU_UDP drive current to the station default after the capture.
+    -- auto-exposure may have trimmed it down (over-exposure / overshoot fallback);
+    -- the Z-scan below runs at the trimmed current, then we put it back so the
+    -- reduction never carries past this station.
+    local udpOut = udpOutputOf(st)
+    local function restoreStationCurrent()
+        if udpOut ~= nil and stationCurrentMa ~= nil and stationCurrentMa ~= udpOut.mA then
+            log.info(string.format("  [%s] restore %s ch%d current %d -> %d mA (station default)",
+                st.pos, udpOut.dev, udpOut.ch, math.floor(stationCurrentMa + 0.5), udpOut.mA))
+            psuSetCurrent(udpOut.dev, udpOut.ch, udpOut.mA)
+        end
+    end
 
     -- Image output dirs: final centred package at <station>/, slices under
     -- <station>/slices/.
@@ -647,6 +698,7 @@ local function measureStation(st)
                 naming     = "<station>_slice_<NN>_z<offset>um_{raw|overlay|B0|B1|collage}.png",
             },
         })
+        restoreStationCurrent()
         return
     end
 
@@ -722,6 +774,8 @@ local function measureStation(st)
     log.info(string.format("[%s] %s -> beam_B%d (%.1f,%.1f)px | %s -> beam_B%d (%.1f,%.1f)px | %.2f C | exp %d us",
         st.pos, st.b0, b0.slot, b0.cx_px, b0.cy_px,
         st.b1, b1.slot, b1.cx_px, b1.cy_px, tempC, stationExposureUs))
+
+    restoreStationCurrent()
 end
 
 -- ---------------------------------------------------------------------------

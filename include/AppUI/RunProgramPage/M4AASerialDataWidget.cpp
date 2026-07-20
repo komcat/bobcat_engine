@@ -63,6 +63,14 @@ constexpr double kTxRxGreenUm     = 1.0;   // both axes: in-spec band (+/-1um)
 constexpr double kTxRxDxYellowUm  = 1.5;   // dx warning band (+/-1.5um)
 constexpr double kTxRxDyYellowUm  = 2.0;   // dy warning band (+/-2.0um)
 
+// dy is measured negative (~ -50um); the color logic above compares on
+// magnitude but the tooltip works in signed terms against the real -50um target.
+constexpr double kTxRxDyNominalSignedUm = -50.0;
+// hex-right W drives dy antisymmetrically across the two locations (W is the
+// A1<->A2 balancer). Slopes dy/dW [um/deg] derived from the SN 7230 W-sweep via
+// Theil-Sen (A1: -7.9, r=-0.75; A2: +15.1, r=+0.67 -- see 7230.json). [A1, A2].
+constexpr double kTxRxDyDwUmPerDeg[2] = {-7.9, 15.1};
+
 // --- hex-right response rules (docs/M4/hex_right_response_table.md) ----------
 // Cell layout (B0/B1 rows x A1.X / A1.Y / A2.X / A2.Y columns):
 //   B0: 1=A1.Px 2=A1.Py 3=A2.Px 4=A2.Py
@@ -170,6 +178,71 @@ QString txRxColor(bool hasValue, int axis, double v) {
 
 QString fmtNumber(bool hasValue, double v) {
   return hasValue ? QString::number(v, 'f', 4) : QString();
+}
+
+// Tooltip for a TX-RX dx cell. Unlike dy, dx has no clean single-axis lever:
+// in the SN 7230 data dx tracks X/Y/Z translation (correlations cross-coupled
+// because autocorrect moves all axes together) and is ~independent of W. So this
+// stays descriptive -- nominal 0um + spec status, no move hint.
+QString txRxDxTip(int loc, double dx) {
+  if (loc < 0 || loc > 1) return QString();
+  const double adev = std::fabs(dx - kTxRxDxNominalUm);
+  const bool inSpec = adev <= kTxRxGreenUm;
+  const char* locName = (loc == 0) ? "MOE-A1" : "MOE-A2";
+  const QString signedDx =
+      (dx >= 0 ? QString("+") : QString()) + QString::number(dx, 'f', 3);
+
+  QStringList lines;
+  lines << QString("%1  dx = %2 um").arg(locName, signedDx)
+        << QString("Nominal %1 um (in-spec +/-%2 um)")
+               .arg(kTxRxDxNominalUm, 0, 'f', 0)
+               .arg(kTxRxGreenUm, 0, 'f', 0)
+        << (inSpec ? QString("In spec (%1 um from nominal)").arg(adev, 0, 'f', 2)
+                   : QString("Out of spec: %1 um from nominal").arg(adev, 0, 'f', 2))
+        << QString()
+        << "dx tracks TX-RX lateral offset; coupled to X/Y/Z translation,"
+        << "not a clean single-axis lever, and ~independent of W.";
+  return lines.join('\n');
+}
+
+// Tooltip for a TX-RX dy cell: dy is set by hex-right W, so report how far the
+// value sits from the -50um nominal and which W direction (and rough magnitude)
+// nulls it. loc 0 = MOE-A1, loc 1 = MOE-A2. W drives the two locations in
+// opposite directions, so a single W move trades one against the other.
+QString txRxDyTip(int loc, double dy) {
+  if (loc < 0 || loc > 1) return QString();
+  const double slope = kTxRxDyDwUmPerDeg[loc];
+  const double dev  = dy - kTxRxDyNominalSignedUm;  // signed offset from -50um
+  const double adev = std::fabs(dev);
+  const bool inSpec = adev <= kTxRxGreenUm;
+  const char* locName = (loc == 0) ? "MOE-A1" : "MOE-A2";
+
+  const QString signedDy =
+      (dy >= 0 ? QString("+") : QString()) + QString::number(dy, 'f', 3);
+
+  QStringList lines;
+  lines << QString("%1  dy = %2 um").arg(locName, signedDy)
+        << QString("Nominal %1 um (in-spec +/-%2 um)")
+               .arg(kTxRxDyNominalSignedUm, 0, 'f', 0)
+               .arg(kTxRxGreenUm, 0, 'f', 0);
+  if (inSpec) {
+    lines << QString("In spec (%1 um from nominal)").arg(adev, 0, 'f', 2);
+  } else {
+    lines << QString("Out of spec: %1 um %2 nominal")
+                 .arg(adev, 0, 'f', 2)
+                 .arg(dev < 0 ? "below (too negative)" : "above");
+    // To null dev we need dy to change by -dev, i.e. dW = -dev / slope.
+    const double dw = -dev / slope;
+    lines << QString("Toward nominal: %1 ~%2 deg")
+                 .arg(dw >= 0 ? "W+" : "W-")
+                 .arg(std::fabs(dw), 0, 'f', 2);
+  }
+  lines << QString()
+        << QString("W response: dy/dW ~ %1 um/deg (from SN 7230)")
+               .arg(slope, 0, 'f', 1)
+        << "W is the A1<->A2 balancer: one W move shifts both"
+        << "locations oppositely. Use Auto-correct v2 for a combined solve.";
+  return lines.join('\n');
 }
 
 // Tooltip text for a poynt cell: which hex-right moves drive it toward 0.
@@ -990,6 +1063,7 @@ void M4AASerialDataWidget::clearRight() {
       lbl->setStyleSheet(QString(
         "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
         .arg(kColorNeutral));
+      lbl->setToolTip(QString());
     }
   clearDetailsDialog();
 }
@@ -1053,6 +1127,10 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
       lbl->setStyleSheet(QString(
         "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
         .arg(txRxColor(has, axis, vals[axis])));
+      // axis 0 = dx (translation-coupled, descriptive), 1 = dy (W-corrected).
+      lbl->setToolTip(!has ? QString()
+                     : axis == 1 ? txRxDyTip(loc, vals[axis])
+                                 : txRxDxTip(loc, vals[axis]));
     }
   }
 
