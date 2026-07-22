@@ -42,6 +42,8 @@ public:
 
 private slots:
   void onMeasureMoe();
+  void onMeasureStats();   // run the A1/A2 measurement N times (statistics)
+  void onStopScript();     // request the running script abort at its next Lua line
 
   // ScriptWorker signal handlers.
   void onScriptStarted();
@@ -58,6 +60,10 @@ private:
   void setBusy(bool busy, const QString& whatRunning = QString());
   QString resolveScriptPath(const QString& scriptFile) const;
   bool launchScript(const QString& scriptFile, const QString& busyLabel);
+
+  // Shared entry for both Measure MOE (repeats==1) and the statistics run
+  // (repeats>1): prompt for a MOE ID, set the script globals and launch.
+  void launchMoeMeasurement(int repeats);
 
   // gantry-main named-position helpers (ported from PoyntOptimizeWidget).
   void moveToNamedGantryPosition(const char* name);
@@ -96,6 +102,9 @@ private:
   QPushButton* m_saveScreenerA2Btn = nullptr;
   QPushButton* m_saveIrA2Btn       = nullptr;
   QPushButton* m_measureBtn = nullptr;
+  QPushButton* m_measureStatsBtn = nullptr;  // repeated statistics run
+  QSpinBox*    m_repeatSpin = nullptr;       // number of repeats for the stats run
+  QPushButton* m_stopBtn    = nullptr;       // abort the running script mid-run
   QLabel*      m_busyLabel  = nullptr;
 
   // Per-position IR camera exposure (µs) applied at the start of each run.

@@ -255,12 +255,43 @@ void MoeScreeningWidget::setupUI() {
       "Prompt for a MOE ID (not a DUT id), then run moe_screen_baseline.lua: "
       "measure IR beams at screen-A1-IR and screen-A2-IR and log to "
       "data/<product>/moe-screen/<MOE_ID>.csv.");
+  m_measureStatsBtn = new QPushButton("Measure\nstatistics");
+  m_measureStatsBtn->setStyleSheet(kGreenStyle);
+  m_repeatSpin = new QSpinBox();
+  m_repeatSpin->setRange(1, 1000);
+  m_repeatSpin->setValue(10);
+  m_repeatSpin->setSuffix(" x");
+  m_repeatSpin->setToolTip("Number of times the A1 + A2 measurement is repeated "
+                           "by the statistics run.");
+  m_measureStatsBtn->setToolTip(
+      "Prompt for a MOE ID, then repeat the A1/A2 beam measurement the configured "
+      "number of times, appending one CSV row per location per run (with a "
+      "run_index column) to data/<product>/moe-screen/<MOE_ID>.csv.");
+
+  m_stopBtn = new QPushButton("Stop");
+  m_stopBtn->setStyleSheet(
+      "QPushButton{background:#e53935;color:#fff;font-weight:bold;padding:8px;}"
+      "QPushButton:disabled{background:#5a2320;color:#a77;}");
+  m_stopBtn->setToolTip("Abort the running measurement script — it stops at the "
+                        "next Lua line (a move or scan already in progress "
+                        "finishes first).");
+  m_stopBtn->setEnabled(false);
+
   m_busyLabel = new QLabel("idle");
   m_busyLabel->setStyleSheet("color:#888;");
   measureRow->addWidget(m_measureBtn);
+  measureRow->addSpacing(16);
+  measureRow->addWidget(m_measureStatsBtn);
+  measureRow->addWidget(new QLabel("repeat"));
+  measureRow->addWidget(m_repeatSpin);
+  measureRow->addSpacing(16);
+  measureRow->addWidget(m_stopBtn);
   measureRow->addWidget(m_busyLabel, 1);
   root->addLayout(measureRow);
   connect(m_measureBtn, &QPushButton::clicked, this, &MoeScreeningWidget::onMeasureMoe);
+  connect(m_measureStatsBtn, &QPushButton::clicked, this,
+          &MoeScreeningWidget::onMeasureStats);
+  connect(m_stopBtn, &QPushButton::clicked, this, &MoeScreeningWidget::onStopScript);
 
   // --- Compact activity log ------------------------------------------------
   m_log = new QPlainTextEdit();
@@ -369,11 +400,15 @@ void MoeScreeningWidget::setupUI() {
 void MoeScreeningWidget::setBusy(bool busy, const QString& whatRunning) {
   m_busy = busy;
   QPushButton* gated[] = {
-    m_gantrySafeBtn, m_measureBtn, m_applyA1Btn, m_applyA2Btn,
+    m_gantrySafeBtn, m_measureBtn, m_measureStatsBtn, m_applyA1Btn, m_applyA2Btn,
     m_moveScreenerA1Btn, m_moveIrA1Btn, m_saveScreenerA1Btn, m_saveIrA1Btn,
     m_moveScreenerA2Btn, m_moveIrA2Btn, m_saveScreenerA2Btn, m_saveIrA2Btn,
   };
   for (QPushButton* b : gated) if (b) b->setEnabled(!busy);
+
+  // Stop is inversely gated: it stays disabled here and is enabled explicitly by
+  // launchScript once a ScriptWorker is running (so a bare move never arms it).
+  if (m_stopBtn && !busy) m_stopBtn->setEnabled(false);
 
   if (m_busyLabel) {
     if (busy) {
@@ -401,6 +436,16 @@ QString MoeScreeningWidget::resolveScriptPath(const QString& scriptFile) const {
 }
 
 void MoeScreeningWidget::onMeasureMoe() {
+  launchMoeMeasurement(1);
+}
+
+void MoeScreeningWidget::onMeasureStats() {
+  const int repeats = m_repeatSpin ? m_repeatSpin->value() : 1;
+  launchMoeMeasurement(repeats);
+}
+
+void MoeScreeningWidget::launchMoeMeasurement(int repeats) {
+  if (repeats < 1) repeats = 1;
   if (m_busy) {
     appendLog("[busy] another job is already running", "#ef5350");
     return;
@@ -414,9 +459,12 @@ void MoeScreeningWidget::onMeasureMoe() {
   }
   const QString product = QString::fromStdString(ppm->GetCurrentProductName());
 
+  const QString prompt = (repeats > 1)
+      ? QStringLiteral("Enter MOE ID for a %1x statistics run:").arg(repeats)
+      : QStringLiteral("Enter MOE ID (not a DUT id):");
   bool ok = false;
   const QString moeId = QInputDialog::getText(
-      this, "MOE ID", "Enter MOE ID (not a DUT id):",
+      this, "MOE ID", prompt,
       QLineEdit::Normal, QString(), &ok).trimmed();
   if (!ok) return;
   if (moeId.isEmpty()) {
@@ -445,9 +493,13 @@ void MoeScreeningWidget::onMeasureMoe() {
       "MOE_SCREEN_SLICES", std::to_string(m_scanSlices));
   m_context->scriptEngine->SetScriptGlobalString(
       "MOE_SCREEN_STEP_UM", std::to_string(m_scanStepUm));
+  m_context->scriptEngine->SetScriptGlobalString(
+      "MOE_SCREEN_REPEATS", std::to_string(repeats));
 
-  launchScript(QString::fromUtf8(kMoeScreenScript),
-               QStringLiteral("Measure MOE %1").arg(moeId));
+  const QString label = (repeats > 1)
+      ? QStringLiteral("Measure MOE %1 (%2x stats)").arg(moeId).arg(repeats)
+      : QStringLiteral("Measure MOE %1").arg(moeId);
+  launchScript(QString::fromUtf8(kMoeScreenScript), label);
 }
 
 bool MoeScreeningWidget::launchScript(const QString& scriptFile, const QString& busyLabel) {
@@ -514,7 +566,19 @@ bool MoeScreeningWidget::launchScript(const QString& scriptFile, const QString& 
   connect(m_scriptWorker, &ScriptWorker::scriptOutput,
           this, &MoeScreeningWidget::onScriptOutput, Qt::QueuedConnection);
   m_scriptWorker->start();
+  if (m_stopBtn) m_stopBtn->setEnabled(true);  // arm Stop for the duration of the run
   return true;
+}
+
+void MoeScreeningWidget::onStopScript() {
+  if (!m_scriptWorker) return;
+  appendLog("[stop] stop requested — aborting at the next script step...", "#fb8c00");
+  m_scriptWorker->requestStop();   // sets the engine stop flag; DebugHook aborts the Lua VM
+  if (m_stopBtn) m_stopBtn->setEnabled(false);
+  if (m_busyLabel) {
+    m_busyLabel->setText("BUSY: stopping...");
+    m_busyLabel->setStyleSheet("color:#e53935;font-weight:bold;");
+  }
 }
 
 void MoeScreeningWidget::onScriptStarted() {
@@ -522,8 +586,13 @@ void MoeScreeningWidget::onScriptStarted() {
 }
 
 void MoeScreeningWidget::onScriptCompleted(bool success, QString errorMessage) {
-  if (success) appendLog("[script] completed OK", "#4caf50");
-  else         appendLog(QStringLiteral("[script] FAILED: %1").arg(errorMessage), "#ef5350");
+  if (success) {
+    appendLog("[script] completed OK", "#4caf50");
+  } else if (errorMessage.contains("stopped by user", Qt::CaseInsensitive)) {
+    appendLog("[script] stopped by user", "#fb8c00");
+  } else {
+    appendLog(QStringLiteral("[script] FAILED: %1").arg(errorMessage), "#ef5350");
+  }
 
   if (m_scriptWorker) {
     m_scriptWorker->deleteLater();

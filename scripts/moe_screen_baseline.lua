@@ -5,11 +5,14 @@
 -- screen-A1-IR / screen-A2-IR (instead of MOE-A1 / MOE-A2).
 --
 -- Driven by the "MOE Screening" tab (MoeScreeningWidget). The widget sets
--- two Lua globals before launch:
---   MOE_SCREEN_ID   - the operator-entered MOE ID (fallback: timestamp)
---   MOE_SCREEN_DIR  - relative output dir "data/<product>/moe-screen"
--- One CSV row per location is appended to <MOE_SCREEN_DIR>/<MOE_ID>.csv;
--- the widget's read-back panel polls that folder and shows the newest file.
+-- these Lua globals before launch:
+--   MOE_SCREEN_ID       - the operator-entered MOE ID (fallback: timestamp)
+--   MOE_SCREEN_DIR      - relative output dir "data/<product>/moe-screen"
+--   MOE_SCREEN_REPEATS  - how many times to repeat the A1+A2 measurement
+--                         (statistics run; default 1 = single measurement)
+-- One CSV row per location PER RUN is appended to <MOE_SCREEN_DIR>/<MOE_ID>.csv
+-- (tagged with a 1-based run_index column); the widget's read-back panel polls
+-- that folder and shows the newest file.
 
 log.info("=== MOE Screening: baseline beam fit at screen-A1-IR + screen-A2-IR ===")
 
@@ -25,7 +28,16 @@ local outDir = (type(MOE_SCREEN_DIR) == "string" and MOE_SCREEN_DIR ~= "")
 local expA1 = tonumber(MOE_SCREEN_EXP_A1_US) or 10000
 local expA2 = tonumber(MOE_SCREEN_EXP_A2_US) or 10000
 
+-- Number of times the whole A1+A2 measurement is repeated (statistics run).
+-- Default 1 (single measurement) when unset. Each run appends its own rows,
+-- tagged with a 1-based run_index column, so stddev/mean can be computed later.
+local repeats = math.floor(tonumber(MOE_SCREEN_REPEATS) or 1)
+if repeats < 1 then repeats = 1 end
+
 local csvPath = string.format("%s/%s.csv", outDir, moeId)
+-- run_index is placed LAST so appending to a pre-existing CSV (whose header is
+-- not rewritten) keeps every earlier named column aligned; a single-measurement
+-- run just writes run_index = 1.
 local header  = file.csvRow({
     "moe_id", "timestamp", "location", "ir_exposure_us",
     "gantry_x_mm", "gantry_y_mm", "gantry_z_mm",
@@ -36,6 +48,7 @@ local header  = file.csvRow({
     "b1_loc_x_um", "b1_loc_y_um", "b1_z0_um",
     "b1_waist_x_um", "b1_waist_y_um", "b1_m2_x", "b1_m2_y",
     "tx_rx_dx_um", "tx_rx_dy_um", "tx_rx_dz_um", "tx_rx_mag_um",
+    "run_index",
 })
 log.info(string.format("MOE ID: %s  |  CSV: %s", moeId, csvPath))
 
@@ -157,7 +170,7 @@ local function runBeamDetect()
     end
 end
 
-local function measureAt(posName, aTag, expUs)
+local function measureAt(posName, aTag, expUs, runIndex)
     log.info(string.format("--> Moving gantry-main to %s (exposure %d us)",
                            posName, expUs))
     motion.moveToNamed("gantry-main", posName)
@@ -206,6 +219,7 @@ local function measureAt(posName, aTag, expUs)
         b1px, b1py, b1locx, b1locy, b1z0,
         b1waistx, b1waisty, b1m2x, b1m2y,
         dx, dy, dz, mag,
+        runIndex,
     }), header)
 
     log.info(string.format(
@@ -222,21 +236,31 @@ end
 -- assumes an open connection, which the shared recipe used to open itself).
 _dispatch("beamserver", "Connect", { host = BEAM_HOST, port = BEAM_PORT })
 
-local a1B0x, a1B0y, a1B1x, a1B1y = measureAt("screen-A1-IR", "A1", expA1)
-local a2B0x, a2B0y, a2B1x, a2B1y = measureAt("screen-A2-IR", "A2", expA2)
+if repeats > 1 then
+    log.info(string.format("Statistics run: %d repeats of A1 + A2", repeats))
+end
 
-log.info(string.format(
-    "--- MOE screen %s ---\n" ..
-    "|        |    A1      |    A2      |   A2 - A1   |\n" ..
-    "| B0.P.X |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
-    "| B0.P.Y |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
-    "| B1.P.X |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
-    "| B1.P.Y |  %+.4f  |  %+.4f  |   %+.4f   |",
-    moeId,
-    a1B0x, a2B0x, a2B0x - a1B0x,
-    a1B0y, a2B0y, a2B0y - a1B0y,
-    a1B1x, a2B1x, a2B1x - a1B1x,
-    a1B1y, a2B1y, a2B1y - a1B1y))
+for run = 1, repeats do
+    if repeats > 1 then
+        log.info(string.format("=== Run %d / %d ===", run, repeats))
+    end
+
+    local a1B0x, a1B0y, a1B1x, a1B1y = measureAt("screen-A1-IR", "A1", expA1, run)
+    local a2B0x, a2B0y, a2B1x, a2B1y = measureAt("screen-A2-IR", "A2", expA2, run)
+
+    log.info(string.format(
+        "--- MOE screen %s (run %d/%d) ---\n" ..
+        "|        |    A1      |    A2      |   A2 - A1   |\n" ..
+        "| B0.P.X |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
+        "| B0.P.Y |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
+        "| B1.P.X |  %+.4f  |  %+.4f  |   %+.4f   |\n" ..
+        "| B1.P.Y |  %+.4f  |  %+.4f  |   %+.4f   |",
+        moeId, run, repeats,
+        a1B0x, a2B0x, a2B0x - a1B0x,
+        a1B0y, a2B0y, a2B0y - a1B0y,
+        a1B1x, a2B1x, a2B1x - a1B1x,
+        a1B1y, a2B1y, a2B1y - a1B1y))
+end
 
 log.info("CSV: " .. csvPath)
-log.info("=== MOE Screening complete ===")
+log.info(string.format("=== MOE Screening complete (%d run(s)) ===", repeats))
