@@ -32,6 +32,7 @@
 class QLabel;
 class QPushButton;
 class QCheckBox;
+class QSpinBox;
 class QGroupBox;
 class QPlainTextEdit;
 class QProcess;
@@ -50,7 +51,7 @@ private slots:
   void onDutClose();
   void onAutomateV2();
   void onSingleMeasurement();
-  void onBeamCaptureAllChannels();  // run beam_capture_all_channels_v2.lua
+  void onBeamCaptureAllChannels();  // run beam_capture_all_channels_v2.lua (N iterations)
   void onGenerateReport();          // build/open HTML report via make_report_v3.py
   void onStop();
 
@@ -103,6 +104,9 @@ private:
   // Background absolute move on gantry-main to a saved named position.
   // No baseline chain. Used by Move to MOE-A1 / MOE-A2.
   void moveToNamedGantryPosition(const char* name);
+  // Launch one capture-all-channels iteration of the multi-run loop. Updates
+  // the busy label with the current iteration index / total.
+  void launchCaptureAllIteration();
   // Compute the per-run capture directory ("data/{product}/{serial}/{stamp}",
   // relative to the exe working dir) for a single measurement, or an empty
   // string if no product/DUT is available. Stamp is filesystem-safe UTC.
@@ -132,6 +136,7 @@ private:
   QPushButton* m_singleBtn    = nullptr;
   QPushButton* m_stopBtn      = nullptr;
   QPushButton* m_beamCaptureAllBtn = nullptr;  // "Capture all channels (ch1-6)"
+  QSpinBox*    m_captureAllIterSpin = nullptr;  // how many times to run capture-all
   QPushButton* m_generateReportBtn = nullptr;  // "Generate / open report"
   QProcess*    m_reportProcess     = nullptr;  // running make_report_v3.py (or null)
   QCheckBox*   m_captureImagesCheck = nullptr;  // capture+save images on single measure
@@ -182,6 +187,12 @@ private:
   // Capture directory for the in-flight single measurement (relative path);
   // shared with the script via POYNT_CAPTURE_DIR and reused for metadata.
   QString          m_captureRunDir;
+
+  // Capture-all-channels multi-run loop. When active, each completed capture
+  // triggers a report generation and, if iterations remain, the next capture.
+  bool             m_captureAllActive    = false;
+  int              m_captureAllTotal     = 0;   // requested iteration count
+  int              m_captureAllRemaining = 0;   // iterations still to run
 
   // Async-state: at most one script OR one move is in flight at any time.
   bool             m_busy = false;

@@ -25,6 +25,7 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QCheckBox>
+#include <QSpinBox>
 #include <QPlainTextEdit>
 #include <QFont>
 #include <QFileInfo>
@@ -340,11 +341,26 @@ void PoyntOptimizeWidget::setupUI() {
   m_beamCaptureAllBtn = new QPushButton("Capture all channels (ch1-6)");
   m_beamCaptureAllBtn->setToolTip(
     "Run beam_capture_all_channels_v2.lua in the background. Asks you to "
-    "confirm ch1-ch6 positions are set in the SWIR window first. "
-    "Stop button breaks it.");
+    "confirm ch1-ch6 positions are set in the SWIR window first. Repeats for "
+    "the number of iterations set beside it, generating + opening a report "
+    "after each one. Stop button breaks it.");
   m_beamCaptureAllBtn->setStyleSheet(kYellowStyle);
   m_beamCaptureAllBtn->setMinimumWidth(220);
   bottomRow->addWidget(m_beamCaptureAllBtn);
+
+  // Iteration count: how many times to run capture-all in a row. Each completed
+  // run auto-generates + opens its report before the next run starts.
+  auto* iterLabel = new QLabel("x");
+  bottomRow->addWidget(iterLabel);
+  m_captureAllIterSpin = new QSpinBox();
+  m_captureAllIterSpin->setRange(1, 99);
+  m_captureAllIterSpin->setValue(1);
+  m_captureAllIterSpin->setToolTip(
+    "How many times to run 'Capture all channels' in a row. After each run "
+    "completes, its report is generated and opened automatically before the "
+    "next run starts. Default 1.");
+  m_captureAllIterSpin->setMinimumWidth(56);
+  bottomRow->addWidget(m_captureAllIterSpin);
 
   m_generateReportBtn = new QPushButton("Generate / open report");
   m_generateReportBtn->setToolTip(
@@ -411,6 +427,7 @@ void PoyntOptimizeWidget::setBusy(bool busy, const QString& whatRunning) {
     m_saveMoeA1Btn, m_saveMoeA2Btn,
   };
   for (QPushButton* b : gated) if (b) b->setEnabled(!busy);
+  if (m_captureAllIterSpin) m_captureAllIterSpin->setEnabled(!busy);
   if (m_stopBtn) m_stopBtn->setEnabled(busy);
 
   if (m_busyLabel) {
@@ -538,18 +555,42 @@ void PoyntOptimizeWidget::onDutClose() {
   launchScript(QString::fromUtf8(kDutCloseScript), QStringLiteral("DUT Close"));
 }
 void PoyntOptimizeWidget::onBeamCaptureAllChannels() {
+  const int iterations =
+      m_captureAllIterSpin ? m_captureAllIterSpin->value() : 1;
+
   // Confirm ch1-ch6 positions are correctly set in the SWIR window before
   // launching, since the capture script measures each channel in turn.
   const auto answer = QMessageBox::question(
     this,
     QStringLiteral("Capture all channels"),
     QStringLiteral("Make sure the ch1-ch6 positions are correctly set in the "
-                   "SWIR window before continuing.\n\nProceed with capture?"),
+                   "SWIR window before continuing.\n\nRun capture %1 time(s), "
+                   "generating + opening a report after each run?\n\nProceed?")
+        .arg(iterations),
     QMessageBox::Ok | QMessageBox::Cancel,
     QMessageBox::Cancel);
   if (answer != QMessageBox::Ok) return;
-  launchScript(QString::fromUtf8(kBeamCaptureAllScript),
-               QStringLiteral("Capture all channels"));
+
+  // Arm the multi-run loop; onScriptCompleted drives report + next iteration.
+  m_captureAllActive    = true;
+  m_captureAllTotal     = iterations;
+  m_captureAllRemaining = iterations;
+  launchCaptureAllIteration();
+}
+
+void PoyntOptimizeWidget::launchCaptureAllIteration() {
+  const int index = m_captureAllTotal - m_captureAllRemaining + 1;
+  appendLog(QStringLiteral("[capture-all] iteration %1 of %2")
+                .arg(index).arg(m_captureAllTotal), "#60a5fa");
+  const QString label =
+      m_captureAllTotal > 1
+          ? QStringLiteral("Capture all channels (%1/%2)").arg(index).arg(m_captureAllTotal)
+          : QStringLiteral("Capture all channels");
+  if (!launchScript(QString::fromUtf8(kBeamCaptureAllScript), label)) {
+    // Launch failed (engine unavailable / script missing) — abandon the loop.
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+  }
 }
 
 void PoyntOptimizeWidget::onGenerateReport() {
@@ -689,6 +730,13 @@ void PoyntOptimizeWidget::onSingleMeasurement() {
 }
 
 void PoyntOptimizeWidget::onStop() {
+  // Break the capture-all loop so no further iterations launch after the
+  // in-flight script unwinds, regardless of how it reports completion.
+  if (m_captureAllActive) {
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+    appendLog("[capture-all] stop requested — no further iterations", "#fb8c00");
+  }
   if (!m_context || !m_context->scriptEngine) return;
   appendLog("[stop] requested", "#fb8c00");
   m_context->scriptEngine->RequestStop();
@@ -938,6 +986,30 @@ void PoyntOptimizeWidget::onScriptCompleted(bool success, QString errorMessage) 
     m_context->sequenceEngine->SetUserPromptCallback(nullptr);
     m_context->sequenceEngine->SetUserInputCallback(nullptr);
   }
+
+  // Capture-all multi-run loop: on a successful run, generate + open its report,
+  // then launch the next iteration if any remain. A failed / stopped run ends
+  // the loop. onStop() also clears m_captureAllActive so Stop breaks the chain.
+  if (m_captureAllActive) {
+    if (success) {
+      // The capture wrote a fresh run folder; onGenerateReport targets the
+      // newest one, so it builds/opens this iteration's report.
+      onGenerateReport();
+      --m_captureAllRemaining;
+      if (m_captureAllRemaining > 0) {
+        m_busy = false;  // launchScript() guards on m_busy; worker is cleared.
+        launchCaptureAllIteration();
+        return;          // stay busy for the next iteration
+      }
+      appendLog(QStringLiteral("[capture-all] all %1 iteration(s) complete")
+                    .arg(m_captureAllTotal), "#4caf50");
+    } else {
+      appendLog("[capture-all] run did not complete — loop stopped", "#fb8c00");
+    }
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+  }
+
   setBusy(false);
 }
 
