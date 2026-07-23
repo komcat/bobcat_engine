@@ -379,3 +379,6 @@ build_number.txt
 
 # Visual Studio IntelliSense encoded-name temp copies of source files
 enc_temp_folder/
+
+# VC++ redist binary staged for deployment packaging (24MB, do not commit)
+tools/deploy/vc_redist.x64.exe
