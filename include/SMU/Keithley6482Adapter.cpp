@@ -108,7 +108,11 @@ bool Keithley6482Adapter::Connect()
   WriteCommandInternal("*RST");                           // Reset to defaults
   WriteCommandInternal("*CLS");                           // Clear status
   WriteCommandInternal(":SYST:ZCH OFF");                 // Disable zero check
-  WriteCommandInternal(":FORM:ELEM READ");               // Set data format
+  // Dual-element format: ONE :READ? returns "ch1,ch2". Every read path in this
+  // adapter parses comma-separated values, so the format must be CURR1,CURR2
+  // here and in every measurement mode - ":FORM:ELEM READ" returns a single
+  // value and silently starves the second channel.
+  WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
 
   // Set default integration time
   if (m_config.MeasurementNPLC > 0) {
@@ -138,6 +142,10 @@ void Keithley6482Adapter::Disconnect()
 
   // Turn off zero check before closing (safety)
   WriteCommandInternal(":SYST:ZCH ON");
+
+  // Restore the front panel - FAST/ULTRA_FAST turn it off for speed, and a
+  // unit left with a blank display looks broken to the next operator.
+  WriteCommandInternal(":DISP:ENAB ON");
 
   // Close VISA sessions
   if (m_instrument != VI_NULL) {
@@ -681,8 +689,8 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       // Display ON
       WriteCommandInternal(":DISP:ENAB ON");
 
-      // Single channel reading (current channel)
-      WriteCommandInternal(":FORM:ELEM READ");
+      // Dual-element format - see the note in Connect()
+      WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
 
       break;
 
@@ -690,29 +698,36 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       modeName = "FAST (COARSE)";
       std::cout << "[Keithley6482] Configuring FAST mode (NPLC=0.1, ~80 Hz)..." << std::endl;
 
+      // This is the mode active alignment scans run on, so the three
+      // per-read costs that are NOT integration time are all switched off.
+      // NPLC alone governs the sample rate; a repeating filter, auto-zero and
+      // front-panel refresh each add latency on top of it for no benefit to a
+      // scan that is looking for a peak, not an absolute value.
+
       // ===== Channel 1 configuration =====
       // NPLC = 0.1 (10x faster than ACCURATE)
       WriteCommandInternal(":SENS1:CURR:NPLC 0.1");
-      // Auto-range ON (for wide dynamic range during alignment)
+      // Auto-range ON (for wide dynamic range during alignment). This is now
+      // the dominant per-read cost; SetMeasurementRange() with a known signal
+      // band removes the range-hunt jitter.
       WriteCommandInternal(":SENS1:CURR:RANG:AUTO ON");
-      // Averaging: 3 count, repeating filter (noise reduction)
-      WriteCommandInternal(":SENS1:CURR:AVER:STAT ON");
-      WriteCommandInternal(":SENS1:CURR:AVER:COUN 3");
-      WriteCommandInternal(":SENS1:CURR:AVER:TCON REP");
+      // No averaging - a repeating filter of N multiplies the effective
+      // integration time by N and smears the peak the scan is walking onto.
+      WriteCommandInternal(":SENS1:CURR:AVER:STAT OFF");
+      WriteCommandInternal(":SENS1:CURR:MED:STAT OFF");
 
       // ===== Channel 2 configuration =====
       WriteCommandInternal(":SENS2:CURR:NPLC 0.1");
       WriteCommandInternal(":SENS2:CURR:RANG:AUTO ON");
-      WriteCommandInternal(":SENS2:CURR:AVER:STAT ON");
-      WriteCommandInternal(":SENS2:CURR:AVER:COUN 3");
-      WriteCommandInternal(":SENS2:CURR:AVER:TCON REP");
+      WriteCommandInternal(":SENS2:CURR:AVER:STAT OFF");
+      WriteCommandInternal(":SENS2:CURR:MED:STAT OFF");
 
       // ===== System-wide settings =====
-      // Auto-zero ON (maintain accuracy)
-      WriteCommandInternal(":SYST:AZER ON");
+      // Auto-zero OFF - speed
+      WriteCommandInternal(":SYST:AZER OFF");
 
-      // Display ON
-      WriteCommandInternal(":DISP:ENAB ON");
+      // Front-panel refresh throttles reads; restored on disconnect
+      WriteCommandInternal(":DISP:ENAB OFF");
 
       // Read both channels simultaneously for faster dual-channel operation
       WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
@@ -745,16 +760,16 @@ bool Keithley6482Adapter::ConfigureMeasurementModeInternal(MeasurementMode mode)
       // Disable auto-zero for speed
       WriteCommandInternal(":SYST:AZER OFF");
 
-      // Display OFF for speed (if supported)
-      try {
-        WriteCommandInternal(":DISP:ENAB OFF");
-      }
-      catch (...) {
-        // Some units don't support this
-      }
+      // Display OFF for speed. WriteCommandInternal returns bool and does not
+      // throw - a unit that rejects this just logs and carries on.
+      WriteCommandInternal(":DISP:ENAB OFF");
 
-      // Continuous measurement mode
-      WriteCommandInternal(":INIT:CONT ON");
+      // NOTE: do NOT enable continuous initiation (":INIT:CONT ON") here.
+      // Every read path in this adapter uses :READ?, which is INIT+FETCh in
+      // one transaction. With continuous init already armed, the 6482 answers
+      // :READ? with error -213 "Init ignored" and the stream stalls at 0 Hz.
+      // :READ? per iteration is the proven path - the instrument paces itself
+      // through NPLC, so nothing is gained by arming it separately.
 
       // Read both channels simultaneously (set once here, not per-read)
       WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
@@ -785,8 +800,9 @@ std::pair<double, double> Keithley6482Adapter::ReadBothChannels()
     return { -999.0, -999.0 };
   }
 
-  // Ensure format is set to read both channels
-  WriteCommandInternal(":FORM:ELEM CURR1,CURR2");
+  // FORM:ELEM is CURR1,CURR2 in every mode (set in Connect and in
+  // ConfigureMeasurementModeInternal), so it is deliberately NOT re-sent per
+  // read - that write cost one extra VISA transaction on every sample.
 
   std::string response;
   if (!QueryCommandInternal(":READ?", response)) {

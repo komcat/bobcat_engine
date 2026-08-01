@@ -70,6 +70,12 @@ struct ScanParameters {
 
   // Termination criteria
   int consecutiveDecreasesLimit = 3;
+  // Hard break when the signal drops this much relative to the previous
+  // sample. TUNING NOTE: this must sit above the device's noise-dip depth or
+  // it kills productive walks. On the FireDog bench, noise dips reached ~6%
+  // while true post-peak drops were 50%+, so 5% ended good walks early and
+  // the value was raised to 0.15. Left at 0.05 here because the right value
+  // is a property of THIS machine's noise floor - measure it before changing.
   double significantDecreaseThreshold = 0.05;  // 5%
   double maxTotalDistance = 5.0;  // mm
 
@@ -81,6 +87,82 @@ struct ScanParameters {
   std::chrono::milliseconds measurementTimeout = std::chrono::seconds(5);
   double minValidValue = std::numeric_limits<double>::lowest();
   double maxValidValue = std::numeric_limits<double>::max();
+
+  // ==========================================================================
+  // CYCLE-TIME TRIMS
+  // ==========================================================================
+  // Set any of these to 0/false to restore the original blind-settle
+  // behaviour for that trim independently, which is what makes them A/B
+  // testable on hardware one at a time.
+
+  // --- Fresh-sample gate ----------------------------------------------------
+  // Motion is now settle-verified by the controller itself (PI qONT), so the
+  // mechanics need no settle delay after a move returns. The only thing left
+  // stale is the instrument sample that was integrating WHILE the stage was
+  // travelling - a physically mixed sample, not a measurement of the new
+  // position. That is a sample-COUNT problem, not a time problem.
+  //
+  // So instead of sleeping, wait for N new publishes on the data channel
+  // (DataStore::GetUpdateCount). Publish #1 may straddle the move; publish #2
+  // is guaranteed fully post-move. The wait self-scales with the instrument
+  // rate and is never shorter than one complete integration.
+  int freshSamples = 2;         // 0 = blind motionSettleTimeMs sleep instead
+
+  // Precautionary floor before the gate starts counting. The gate proves the
+  // instrument integration is post-move but cannot see the analogue chain in
+  // front of it (photodiode + TIA), where a real electrical time constant can
+  // outlive the mechanical settle. Production value on FireDog is 50 ms.
+  int settleMinMs = 0;
+
+  // Ceiling for the gate, NOT a delay. If the stream stalls, the wait
+  // degrades to "use the latest value" and warns once.
+  int freshSampleTimeoutMs = 300;
+
+  // --- Structural trims -----------------------------------------------------
+  // A first direction that walked uphill already BRACKETS the peak, so the
+  // opposite direction can only walk downhill - the axis is done.
+  bool skipOppositeDirection = true;
+
+  // Start each axis in the direction that last improved it.
+  bool directionMemory = true;
+
+  // Do not re-measure a point that was just measured (direction starts and
+  // the return-to-best verification sample).
+  bool reuseSample = true;
+
+  // --- Early exit -----------------------------------------------------------
+  // First sample >= this value ends the whole scan and STAYS on that point:
+  // no walk-back, no return to the global peak. 0 = disabled.
+  // NOTE: this latches on a single sample, so the value at the end of the
+  // scan can land a few percent below the value that tripped it.
+  double exitThreshold = 0.0;
+
+  // --- Adaptive step ladder -------------------------------------------------
+  // The signal level tells you roughly how far you are from the peak: for a
+  // Gaussian coupling profile, distance from peak is proportional to
+  // sqrt(log(peak/value)). So LOG signal zones map cleanly onto step sizes.
+  //
+  // [zoneLow, zoneHigh] is split into stepSizes.size() equal log sections.
+  // Zone i owns stepSizes[i], coarsest for the lowest zone. A pass whose step
+  // is coarser than the zone the current signal sits in is skipped, so a
+  // strong start (e.g. handed off from a raster scan) goes straight to fine
+  // steps instead of re-walking the coarse ladder.
+  bool adaptiveLadder = false;
+
+  // Feedback units (e.g. amps for a picoammeter channel).
+  //
+  // CRITICAL TUNING RULE: zoneLow must equal the level the scan is HANDED OFF
+  // at, never below it. Set it too low and the first zone boundary lands
+  // under the handoff level, the coarse pass is skipped, and the fine walk
+  // gets captured by a micro-lobe. The coarse pass IS the side-lobe immunity
+  // - adaptive must not gate it off below the handoff level.
+  double zoneLow = 1.0e-6;
+  double zoneHigh = 400.0e-6;
+
+  // --- Diagnostics ----------------------------------------------------------
+  // One CSV line per measured sample, tagged "xcan," so a whole walk can be
+  // replayed offline.
+  bool traceEnabled = false;
 
   // Safety limits
   double maxStepSize = 0.5;  // mm

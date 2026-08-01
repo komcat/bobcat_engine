@@ -206,8 +206,23 @@ ScanParameters ScanExecutor::createScanParameters(ScanMode mode) const
   }
 
   // Motion parameters
+  // motionSettleTimeMs is now only the FALLBACK settle used when the
+  // fresh-sample gate is disabled (freshSamples = 0) - it is not paid per
+  // move any more.
   params.motionSettleTimeMs = 400;
   params.velocityPercent = 50.0;
+
+  // Cycle-time trims. These are the knobs to A/B on hardware: set any one to
+  // 0/false to restore the original blind-settle behaviour for that trim
+  // alone. See ScanParameters in ScanTypes.h for what each one does.
+  params.freshSamples = 2;            // 0 = blind motionSettleTimeMs sleep
+  params.settleMinMs = 0;             // raise (~50) if the analogue chain is slow
+  params.freshSampleTimeoutMs = 300;  // ceiling, not a delay
+  params.skipOppositeDirection = true;
+  params.directionMemory = true;
+  params.reuseSample = true;
+  params.exitThreshold = 0.0;         // >0 = stop-and-stay target
+  params.traceEnabled = false;        // per-sample CSV, tagged "xcan,"
 
   // Termination criteria
   if (mode == ScanMode::UltraFine) {

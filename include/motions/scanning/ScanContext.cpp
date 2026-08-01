@@ -2,6 +2,9 @@
 #include "ScanContext.h"
 #include <thread>
 #include <cmath>
+#include <iostream>
+#include <sstream>
+#include <iomanip>
 
 ScanContext::ScanContext(
   UnifiedMotionManager& motionManager,
@@ -81,6 +84,114 @@ double ScanContext::GetMeasurement() {
 
   // Return 0.0 to indicate timeout - caller should check halt flags
   return 0.0;
+}
+
+double ScanContext::GetFreshMeasurement() {
+  const auto& params = m_parameters;
+
+  // Trim disabled - fall back to the original blind settle sleep.
+  if (params.freshSamples <= 0) {
+    if (!SleepInterruptible(std::chrono::milliseconds(params.motionSettleTimeMs))) {
+      return 0.0;
+    }
+    return GetMeasurement();
+  }
+
+  // Snapshot the publish counter BEFORE waiting. Value and counter come from
+  // the same lock, so the counter we compare against is exactly the one that
+  // produced the sample present at the moment the move finished.
+  float ignoredValue = 0.0f;
+  uint64_t startCount = 0;
+  m_dataStore.TryGetValue(m_dataChannel, ignoredValue, startCount);
+
+  // Precautionary floor for the analogue chain in front of the instrument
+  // (photodiode + TIA), which the publish counter cannot see.
+  if (params.settleMinMs > 0) {
+    if (!SleepInterruptible(std::chrono::milliseconds(params.settleMinMs))) {
+      return 0.0;
+    }
+  }
+
+  const uint64_t targetCount = startCount + static_cast<uint64_t>(params.freshSamples);
+  const int pollMs = 10;
+  const int timeoutMs = (params.freshSampleTimeoutMs > 0) ? params.freshSampleTimeoutMs : 300;
+  const int maxIterations = (timeoutMs / pollMs) + 2;  // bounded, never while(true)
+
+  auto gateStart = std::chrono::steady_clock::now();
+  bool gotFresh = false;
+
+  for (int iteration = 0; iteration < maxIterations; ++iteration) {
+    if (IsHaltRequested() || IsEmergencyStopRequested()) {
+      return 0.0;
+    }
+
+    float value = 0.0f;
+    uint64_t count = 0;
+    if (m_dataStore.TryGetValue(m_dataChannel, value, count) && count >= targetCount) {
+      gotFresh = true;
+      break;
+    }
+
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - gateStart).count();
+
+    if (elapsedMs >= timeoutMs) {
+      break;
+    }
+
+    if (!SleepInterruptible(std::chrono::milliseconds(pollMs))) {
+      return 0.0;
+    }
+  }
+
+  if (!gotFresh && !m_freshGateWarned) {
+    // Degrade to "use the latest value" - the same behaviour as before this
+    // gate existed. Warn once so a genuinely stalled stream is visible.
+    m_freshGateWarned = true;
+    std::cout << "[ScanContext] Fresh-sample gate timed out on channel '"
+      << m_dataChannel << "' after " << timeoutMs
+      << " ms - falling back to latest value. Is the instrument still polling?"
+      << std::endl;
+  }
+
+  return GetMeasurement();
+}
+
+void ScanContext::TraceSample(const std::string& phase,
+  const std::string& axis,
+  int direction,
+  double stepSize,
+  const PositionStruct& position,
+  double value,
+  const std::string& note) {
+
+  if (!m_parameters.traceEnabled) {
+    return;
+  }
+
+  const double elapsedSec = std::chrono::duration<double>(
+    std::chrono::steady_clock::now() - m_traceStart).count();
+
+  const double dv = m_haveLastTraceValue ? (value - m_lastTraceValue) : 0.0;
+
+  std::ostringstream oss;
+  oss << "xcan," << (++m_traceSeq)
+    << ',' << std::fixed << std::setprecision(3) << elapsedSec
+    << ',' << phase
+    << ',' << axis
+    << ',' << direction
+    << ',' << std::setprecision(3) << (stepSize * 1000.0)
+    << ",x=" << std::setprecision(6) << position.x
+    << ",y=" << position.y
+    << ",z=" << position.z
+    << ",v=" << std::scientific << std::setprecision(6) << value
+    << ",dv=" << dv
+    << ',' << note;
+
+  std::cout << oss.str() << std::endl;
+
+  m_lastTraceValue = value;
+  m_haveLastTraceValue = true;
 }
 
 double ScanContext::GetAveragedMeasurement(int numSamples) {
