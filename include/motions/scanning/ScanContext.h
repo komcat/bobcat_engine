@@ -7,6 +7,8 @@
 #include "ScanDataCollector.h"
 #include <functional>
 #include <atomic>
+#include <cstdint>
+#include <chrono>
 
 /**
  * @brief Context object passed to scan strategies
@@ -69,9 +71,35 @@ public:
   double GetMeasurement();
 
   /**
+   * @brief Get a measurement that is PROVEN to be post-move
+   *
+   * Replaces the "move, sleep a fixed settle time, read" pattern. Waits for
+   * ScanParameters::freshSamples new publishes on the data channel instead of
+   * sleeping, so the wait costs exactly what the instrument needs and no more.
+   *
+   * Call this after every move; do NOT add a settle sleep around it.
+   * With freshSamples = 0 it falls back to the old blind motionSettleTimeMs
+   * sleep, which is what makes the change A/B testable on hardware.
+   */
+  double GetFreshMeasurement();
+
+  /**
    * @brief Get averaged measurement
    */
   double GetAveragedMeasurement(int numSamples);
+
+  /**
+   * @brief Emit one CSV trace line for a sample (no-op unless traceEnabled)
+   *
+   * Format: xcan,seq,t_s,phase,axis,dir,step_um,x=,y=,z=,v=,dv=,note
+   */
+  void TraceSample(const std::string& phase,
+    const std::string& axis,
+    int direction,
+    double stepSize,
+    const PositionStruct& position,
+    double value,
+    const std::string& note);
 
   /**
    * @brief Wait for valid measurement within timeout
@@ -175,6 +203,13 @@ private:
   ProgressCallback m_progressCallback;
   DataPointCallback m_dataPointCallback;
   PeakFoundCallback m_peakFoundCallback;
+
+  // Fresh-sample gate state
+  bool m_freshGateWarned = false;   // one-shot "stream stalled" warning
+  uint64_t m_traceSeq = 0;
+  double m_lastTraceValue = 0.0;
+  bool m_haveLastTraceValue = false;
+  std::chrono::steady_clock::time_point m_traceStart = std::chrono::steady_clock::now();
 
   // Helper methods
   bool ValidateMeasurement(double value) const;

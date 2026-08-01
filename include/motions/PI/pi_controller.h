@@ -51,6 +51,18 @@ public:
 
   // Status methods
   bool IsMoving(const std::string& axis);
+
+  // On-target (PI_qONT): the controller's OWN settling logic - position inside
+  // the settling window for the settling time (SPA-tunable). This is a
+  // different signal from IsMoving(): PI_IsMoving going false only means the
+  // trajectory generator finished, which can lead mechanical settle while the
+  // platform is still ringing. Scans that measured on IsMoving alone picked up
+  // that ringing. Both signals are required - see WaitForMotionCompletion().
+  //
+  // Returns true if the query itself fails, so a driver that cannot answer
+  // never wedges a blocking caller.
+  bool IsOnTarget(const std::string& axis);
+  bool IsOnTarget(const std::vector<std::string>& axes);
   bool GetPosition(const std::string& axis, double& position);
   bool GetPositions(std::map<std::string, double>& positions);
   float GetAxisPositionFloat(const std::string& axis);
@@ -70,7 +82,17 @@ public:
   bool MoveToNamedPosition(const std::string& deviceName, const std::string& positionName);
 
   // Helper methods
+  //
+  // Two-stage wait. Stage 1 waits for PI_IsMoving to go false (profile done,
+  // bounded by timeoutSeconds). Stage 2 waits for PI_qONT to go true (settled,
+  // bounded by m_settleTimeoutMs). When this returns true the mechanics are
+  // settled, so callers must NOT add their own settle delay on top.
   bool WaitForMotionCompletion(const std::string& axis, double timeoutSeconds = 30.0);
+
+  // Stage-2 budget. 0 disables the on-target stage entirely (restores the
+  // pre-qONT profile-done-only behaviour).
+  void SetSettleTimeoutMs(int ms) { m_settleTimeoutMs = ms; }
+  int GetSettleTimeoutMs() const { return m_settleTimeoutMs; }
 
   // Multi-axis moves
   bool MoveToPositionAll(double x, double y, double z, double u, double v, double w, bool blocking = true);
@@ -176,6 +198,9 @@ private:
   int m_numAnalogChannels = 0;
   std::map<int, double> m_analogVoltages;
   std::vector<int> m_activeAnalogChannels = { 5, 6 };
+
+  // Stage-2 (PI_qONT) settle budget in ms; 0 disables the stage.
+  int m_settleTimeoutMs = 5000;
 
   // Performance optimization
   std::chrono::steady_clock::time_point m_lastStatusUpdate;

@@ -457,6 +457,38 @@ bool PIController::IsMoving(const std::string& axis) {
   return (it != m_axisMoving.end() && it->second);
 }
 
+bool PIController::IsOnTarget(const std::string& axis) {
+  return IsOnTarget(std::vector<std::string>{ axis });
+}
+
+bool PIController::IsOnTarget(const std::vector<std::string>& axes) {
+  if (!m_isConnected) return false;
+  if (axes.empty()) return true;
+
+  const std::string axesStr = AxesToString(axes);
+  std::vector<BOOL> onTarget(axes.size(), FALSE);
+
+  if (!PI_qONT(m_controllerId, axesStr.c_str(), onTarget.data())) {
+    // Query failed - report on-target so a blocking caller is never wedged by
+    // a driver that cannot answer. Arrival is still gated by stage 1.
+    if (m_debugVerbose) {
+      int error = 0;
+      PI_qERR(m_controllerId, &error);
+      LOG_DEBUG("qONT query failed for " + axesStr + ". Error: " + std::to_string(error));
+    }
+    return true;
+  }
+
+  // On target only when EVERY queried axis is inside its settling window.
+  for (size_t i = 0; i < axes.size(); ++i) {
+    if (onTarget[i] != TRUE) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 bool PIController::GetPositions(std::map<std::string, double>& positions) {
   if (!m_isConnected || m_availableAxes.empty()) return false;
 
@@ -577,7 +609,9 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
 
   auto startTime = std::chrono::steady_clock::now();
   int checkCount = 0;
+  bool profileDone = false;
 
+  // ---- Stage 1: trajectory generator finished (PI_IsMoving false) ----------
   constexpr int MAX_ITERATIONS = 1200; // Safety bound: 30s timeout / 50ms poll * 2x margin
   for (int iteration = 0; iteration < MAX_ITERATIONS; ++iteration) {
     checkCount++;
@@ -585,9 +619,10 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
 
     if (!stillMoving) {
       if (m_enableDebug) {
-        LOG_INFO("Motion completed on " + axis + " after " + std::to_string(checkCount) + " checks");
+        LOG_INFO("Motion profile completed on " + axis + " after " + std::to_string(checkCount) + " checks");
       }
-      return true;
+      profileDone = true;
+      break;
     }
 
     auto currentTime = std::chrono::steady_clock::now();
@@ -602,7 +637,43 @@ bool PIController::WaitForMotionCompletion(const std::string& axis, double timeo
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 
-  LOG_ERROR("Loop safety bound reached in WaitForMotionCompletion (PI)");
+  if (!profileDone) {
+    LOG_ERROR("Loop safety bound reached in WaitForMotionCompletion (PI)");
+    return false;
+  }
+
+  // ---- Stage 2: controller reports settled (PI_qONT true) -----------------
+  // Profile-done leads mechanical settle: the platform can still be ringing
+  // here. Waiting for qONT is what keeps a scan from measuring that ringing.
+  if (m_settleTimeoutMs <= 0) {
+    return true;  // stage explicitly disabled
+  }
+
+  const int settlePollMs = 50;
+  const int maxSettleIterations = (m_settleTimeoutMs / settlePollMs) + 1;
+  auto settleStart = std::chrono::steady_clock::now();
+
+  for (int iteration = 0; iteration < maxSettleIterations; ++iteration) {
+    if (IsOnTarget(axis)) {
+      if (m_enableDebug) {
+        auto settleMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now() - settleStart).count();
+        LOG_INFO("Axis " + axis + " on target after " + std::to_string(settleMs) + " ms settle");
+      }
+      return true;
+    }
+
+    auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - settleStart).count();
+
+    if (elapsedMs >= m_settleTimeoutMs) {
+      break;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(settlePollMs));
+  }
+
+  LOG_WARNING("Timeout waiting for motion settle (qONT) on " + axis);
   return false;
 }
 
@@ -1131,14 +1202,42 @@ bool PIController::SetSystemVelocity(double velocity) {
 
   LOG_DEBUG("Setting system velocity to " + std::to_string(velocity));
 
-  if (!PI_VLS(m_controllerId, velocity)) {
+  // The controller REJECTS a velocity change while it is still executing a
+  // motion profile, with error 1005 (CONTROLLER_BUSY). That is easy to hit
+  // right after a move, so retry on 1005 only - every other error fails
+  // immediately. Scans should still set velocity once up front rather than
+  // relying on this path per move.
+  constexpr int PI_ERR_CONTROLLER_BUSY = 1005;
+  constexpr int RETRY_INTERVAL_MS = 100;
+  constexpr int RETRY_BUDGET_MS = 2000;
+  constexpr int MAX_ATTEMPTS = (RETRY_BUDGET_MS / RETRY_INTERVAL_MS) + 1;
+
+  for (int attempt = 0; attempt < MAX_ATTEMPTS; ++attempt) {
+    if (PI_VLS(m_controllerId, velocity)) {
+      if (attempt > 0) {
+        LOG_INFO("System velocity set after " + std::to_string(attempt) + " busy retries");
+      }
+      return true;
+    }
+
     int error = 0;
     PI_qERR(m_controllerId, &error);
-    LOG_ERROR("Failed to set system velocity. Error: " + std::to_string(error));
-    return false;
+
+    if (error != PI_ERR_CONTROLLER_BUSY) {
+      LOG_ERROR("Failed to set system velocity. Error: " + std::to_string(error));
+      return false;
+    }
+
+    if (m_debugVerbose) {
+      LOG_DEBUG("PI_VLS busy (1005), retrying...");
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(RETRY_INTERVAL_MS));
   }
 
-  return true;
+  LOG_ERROR("Failed to set system velocity - controller busy for "
+    + std::to_string(RETRY_BUDGET_MS) + " ms");
+  return false;
 }
 
 bool PIController::GetSystemVelocity(double& velocity) {

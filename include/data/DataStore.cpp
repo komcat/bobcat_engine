@@ -45,6 +45,7 @@ void DataStore::SetValue(const std::string& channelId, float value)
 
     bool isNewChannel = (m_values.find(channelId) == m_values.end());
     m_values[channelId] = value;
+    ++m_updateCounts[channelId];
 
     if (m_debugMode && isNewChannel) {
       std::cout << "[DataStore] New channel: " << channelId
@@ -87,6 +88,33 @@ bool DataStore::TryGetValue(const std::string& channelId, float& outValue) const
   return false;
 }
 
+uint64_t DataStore::GetUpdateCount(const std::string& channelId) const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  auto it = m_updateCounts.find(channelId);
+  return (it != m_updateCounts.end()) ? it->second : 0u;
+}
+
+bool DataStore::TryGetValue(const std::string& channelId, float& outValue, uint64_t& outCount) const
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+
+  auto it = m_values.find(channelId);
+  if (it == m_values.end()) {
+    return false;
+  }
+
+  outValue = it->second;
+
+  // Value and counter are read under the same lock, so outCount is exactly
+  // the publish that produced outValue - never a later one.
+  auto cit = m_updateCounts.find(channelId);
+  outCount = (cit != m_updateCounts.end()) ? cit->second : 0u;
+
+  return true;
+}
+
 std::vector<std::string> DataStore::GetAvailableChannels() const
 {
   std::lock_guard<std::mutex> lock(m_mutex);
@@ -116,12 +144,15 @@ void DataStore::ClearChannel(const std::string& channelId)
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_values.erase(channelId);
+  // m_updateCounts is deliberately NOT erased - the publish counter must stay
+  // monotonic so a fresh-sample gate already waiting on it cannot be fooled.
 }
 
 void DataStore::ClearAll()
 {
   std::lock_guard<std::mutex> lock(m_mutex);
   m_values.clear();
+  // m_updateCounts deliberately kept - see ClearChannel().
 
   if (m_debugMode) {
     std::cout << "[DataStore] All channels cleared" << std::endl;

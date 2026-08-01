@@ -192,6 +192,10 @@ The five biggest handlers are split into a thin orchestrator + per-family helper
 - **Graph navigation** - `include/graph/MotionGraph*.cpp` provides graph-based pathfinding between positions
 - **6-axis support** - XYZUVW (position + rotation)
 - **Interlock enforcement** - `InterlockManager::CheckMove()` called inside the 5 move methods of `UnifiedMotionManager` itself (not the command handler); blocks moves when monitored device axis meets a condition. Anything that goes through `UnifiedMotionManager::Move*()` is automatically protected — split helper command files do not need their own interlock checks.
+- **Settle-verified blocking moves (PI)** - `PIController::WaitForMotionCompletion()` is two-stage: `PI_IsMoving` false, **then** `PI_qONT` true. When a blocking move returns, the mechanics are settled — callers must NOT add their own settle delay. See [docs/architecture/scan_cycle_time.md](docs/architecture/scan_cycle_time.md).
+
+### Scan Cycle Time
+Active-alignment scans replace blind settle delays with evidence: moves are settle-verified by the controller (`PI_qONT`) and measurements are gated on `DataStore`'s monotonic per-channel publish counter rather than a fixed sleep. Every trim is individually switchable via `ScanParameters` for hardware A/B. See [docs/architecture/scan_cycle_time.md](docs/architecture/scan_cycle_time.md) — including the two values deliberately left at bobcat's settings (`significantDecreaseThreshold`, `settleMinMs`) and the `:INIT:CONT ON` / `:READ?` trap on the Keithley 6482.
 
 ### Motion Interlock System
 `InterlockManager` (`include/motions/InterlockManager.h`) provides position-based motion safety rules:
