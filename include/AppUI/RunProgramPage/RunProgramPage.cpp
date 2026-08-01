@@ -781,6 +781,13 @@ void RunProgramPage::createExecutionWidget()
   m_scanDisplayTimer->setInterval(100);  // 10 Hz
   connect(m_scanDisplayTimer, &QTimer::timeout, this, [this]() {
     if (!m_scanWidget || !m_scanWidget->isVisible()) return;
+
+    // Data rate is computed BEFORE the dirty-flag early-return below.
+    // A stalled stream never sets the dirty flag, so if the rate were
+    // computed after it, the readout would freeze at the last good value -
+    // exactly when it most needs to show zero.
+    updateScanDataRate();
+
     if (!m_pendingScanDirty.exchange(false, std::memory_order_acquire)) return;
     const float v = m_pendingScanValue.load(std::memory_order_relaxed);
     const QString text = formatWithSIPrefix(static_cast<double>(v));
@@ -2132,6 +2139,11 @@ void RunProgramPage::onChannelChanged(QString channel)
   // Store new channel
   m_currentSubscribedChannel = channel;
 
+  // Drop the rate baseline: the new channel's counter is unrelated to the
+  // old one's, so the next delta would be meaningless.
+  m_rateBaselineValid = false;
+  m_scanWidget->setDataRate(-1.0);
+
   if (channel.isEmpty()) {
     m_scanWidget->updateChannelValue(0.0, "--");
     return;
@@ -2154,6 +2166,59 @@ void RunProgramPage::onChannelChanged(QString channel)
   // Show current value immediately
   float currentValue = m_dataStore->GetValue(channelStd);
   m_scanWidget->setDisplayText(formatWithSIPrefix(static_cast<double>(currentValue)));
+}
+
+void RunProgramPage::updateScanDataRate()
+{
+  if (!m_scanWidget) return;
+
+  if (!m_dataStore || m_currentSubscribedChannel.isEmpty()) {
+    m_rateBaselineValid = false;
+    m_scanWidget->setDataRate(-1.0);   // unknown
+    return;
+  }
+
+  const uint64_t count =
+    m_dataStore->GetUpdateCount(m_currentSubscribedChannel.toStdString());
+  const auto now = std::chrono::steady_clock::now();
+
+  // First sample after startup / channel change / tab becoming visible:
+  // establish a baseline, do not report a rate from it.
+  if (!m_rateBaselineValid) {
+    m_lastRateCount = count;
+    m_lastRateTime = now;
+    m_rateBaselineValid = true;
+    m_scanWidget->setDataRate(-1.0);
+    return;
+  }
+
+  const double elapsedSec = std::chrono::duration<double>(now - m_lastRateTime).count();
+
+  // Measure over ~500 ms rather than the 100 ms tick: at 10 Hz sampling a
+  // single-tick delta quantises badly (one extra publish swings the answer
+  // by 10 Hz) and the readout jitters unreadably.
+  if (elapsedSec < 0.5) {
+    return;
+  }
+
+  // The tab can be hidden for a long stretch, during which this timer does
+  // no work at all. Re-baseline instead of averaging the rate across the
+  // gap, which would report a meaninglessly smoothed number.
+  if (elapsedSec > 3.0) {
+    m_lastRateCount = count;
+    m_lastRateTime = now;
+    return;
+  }
+
+  // Counter is monotonic and never reset, so this subtraction is always
+  // well-defined - see DataStore::GetUpdateCount.
+  const uint64_t delta = count - m_lastRateCount;
+  const double hz = static_cast<double>(delta) / elapsedSec;
+
+  m_lastRateCount = count;
+  m_lastRateTime = now;
+
+  m_scanWidget->setDataRate(hz);
 }
 
 // ============================================================================

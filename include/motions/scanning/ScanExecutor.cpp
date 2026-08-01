@@ -216,7 +216,13 @@ ScanParameters ScanExecutor::createScanParameters(ScanMode mode) const
   // 0/false to restore the original blind-settle behaviour for that trim
   // alone. See ScanParameters in ScanTypes.h for what each one does.
   params.freshSamples = 2;            // 0 = blind motionSettleTimeMs sleep
-  params.settleMinMs = 0;             // raise (~50) if the analogue chain is slow
+  // Precautionary floor. The fresh-sample gate proves the Keithley
+  // integration is post-move, but it cannot see the analogue chain in front
+  // of it (photodiode + TIA), where a real electrical time constant can
+  // outlive the mechanical settle. 50 ms is FireDog's qualified production
+  // value: it buys 100 ms-grade signal quality for about +0.5 s on a full
+  // scan. Going above this bought nothing there - see scan_cycle_time.md.
+  params.settleMinMs = 50;
   params.freshSampleTimeoutMs = 300;  // ceiling, not a delay
   params.skipOppositeDirection = true;
   params.directionMemory = true;

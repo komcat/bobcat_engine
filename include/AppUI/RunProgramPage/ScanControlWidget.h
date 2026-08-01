@@ -40,6 +40,16 @@ public:
   void updateChannelValue(double value, const QString& unit = "");
   void setDisplayText(const QString& text);
 
+  /**
+   * @brief Show the selected channel's publish rate
+   * @param hz Measured rate; pass a negative value for "unknown"
+   *
+   * This is the DataStore publish rate, not the UI refresh rate. The scan's
+   * fresh-sample gate waits on new publishes, so this number sets the floor
+   * on how fast a scan can step.
+   */
+  void setDataRate(double hz);
+
   // Enable/disable controls
   void setEnabled(bool enabled);
   void setScanButtonsEnabled(bool enabled);
@@ -81,6 +91,7 @@ private:
   // UI Components - Translation Scanning
   QComboBox* m_channelCombo;
   QLabel* m_valueLabel;
+  QLabel* m_rateLabel;
   QPushButton* m_leftCoarseButton;
   QPushButton* m_leftFineButton;
   QPushButton* m_leftUltraFineButton;

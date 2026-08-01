@@ -9,6 +9,7 @@ ScanControlWidget::ScanControlWidget(QWidget* parent)
   : QWidget(parent)
   , m_channelCombo(nullptr)
   , m_valueLabel(nullptr)
+  , m_rateLabel(nullptr)
   , m_leftCoarseButton(nullptr)
   , m_leftFineButton(nullptr)
   , m_leftUltraFineButton(nullptr)
@@ -57,6 +58,24 @@ void ScanControlWidget::setupUI()
   m_valueLabel->setAlignment(Qt::AlignCenter);
   m_valueLabel->setFixedWidth(500);  // keep aligned across fixed-width button columns
   groupLayout->addWidget(m_valueLabel);
+
+  // === DATA RATE ===
+  // Publish rate of the selected channel, measured from DataStore's monotonic
+  // publish counter - NOT from this widget's repaint rate. This is the number
+  // the scan's fresh-sample gate depends on: if it falls off, the gate starts
+  // hitting its timeout ceiling and the scan silently reverts to using stale
+  // samples. Keep an eye on it before blaming the scan for being slow.
+  m_rateLabel = new QLabel("-- Hz");
+  m_rateLabel->setStyleSheet(
+    "QLabel { color: #9a9a9a; font-size: 9pt; padding: 0px 4px 4px 4px; }");
+  m_rateLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+  m_rateLabel->setFixedWidth(500);  // match the value label so it right-aligns under it
+  m_rateLabel->setToolTip(
+    "Publish rate of the selected data channel.\n"
+    "Measured from the DataStore publish counter, not the UI refresh rate.\n"
+    "The scan's fresh-sample gate waits for new publishes, so this rate\n"
+    "directly sets how fast a scan can step.");
+  groupLayout->addWidget(m_rateLabel);
 
   // === SCAN BUTTONS - TWO COLUMNS ===
   QHBoxLayout* buttonsLayout = new QHBoxLayout();
@@ -266,6 +285,32 @@ void ScanControlWidget::updateChannelValue(double value, const QString& unit)
 void ScanControlWidget::setDisplayText(const QString& text)
 {
   m_valueLabel->setText(text);
+}
+
+void ScanControlWidget::setDataRate(double hz)
+{
+  if (hz < 0.0) {
+    // Unknown - no channel selected, or not enough samples to measure yet.
+    m_rateLabel->setText("-- Hz");
+    m_rateLabel->setStyleSheet(
+      "QLabel { color: #9a9a9a; font-size: 9pt; padding: 0px 4px 4px 4px; }");
+    return;
+  }
+
+  // Colour is a health cue, not decoration: a stalled stream stops the scan
+  // dead (the fresh-sample gate falls back to stale values), so make zero
+  // impossible to miss.
+  const char* colour = "#9a9a9a";
+  if (hz <= 0.05) {
+    colour = "#e05561";        // stalled
+  }
+  else if (hz < 5.0) {
+    colour = "#d19a66";        // very slow - scan will crawl
+  }
+
+  m_rateLabel->setText(QString("%1 Hz").arg(hz, 0, 'f', 1));
+  m_rateLabel->setStyleSheet(
+    QString("QLabel { color: %1; font-size: 9pt; padding: 0px 4px 4px 4px; }").arg(colour));
 }
 
 void ScanControlWidget::setEnabled(bool enabled)

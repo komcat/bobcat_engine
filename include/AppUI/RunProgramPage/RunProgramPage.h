@@ -15,6 +15,8 @@
 #include <QLineEdit>
 #include <QTimer>  // For periodic channel refresh
 #include <atomic>
+#include <chrono>
+#include <cstdint>
 #include <QTabWidget>  // For tab layout
 #include <QGroupBox>  // For vision result group
 #include <vector>
@@ -130,6 +132,10 @@ private slots:
 
   // Scan tab — DataStore subscription glue (controller handles executor).
   void onChannelChanged(QString channel);
+
+  /// Refresh the Scanning tab's Hz readout from the DataStore publish
+  /// counter. Called from the scan display timer; self-throttles to ~500 ms.
+  void updateScanDataRate();
 
   // ✅ ADDED: Periodic channel list refresh
   void refreshDataStoreChannels();
@@ -319,6 +325,13 @@ private:
   std::atomic<float> m_pendingScanValue{0.0f};
   std::atomic<bool>  m_pendingScanDirty{false};
   QTimer*            m_scanDisplayTimer = nullptr;
+
+  // Data-rate readout for the Scanning tab. Measured from DataStore's
+  // monotonic publish counter over a ~500 ms window, so it reports the
+  // instrument's real publish rate rather than the UI repaint rate.
+  uint64_t m_lastRateCount = 0;
+  std::chrono::steady_clock::time_point m_lastRateTime{};
+  bool     m_rateBaselineValid = false;
 
   // Vision result image display + history navigation. The widget owns
   // its own QLabel/buttons/index label/history buffer; the page just
