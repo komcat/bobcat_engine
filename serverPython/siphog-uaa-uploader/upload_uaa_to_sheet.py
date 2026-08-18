@@ -128,9 +128,24 @@ def extract_uaa(json_path: Path):
 
 
 def parse_date(s: str):
+    """Parse a JSON entry timestamp (strict ISO-8601)."""
     try:
         return date_parser.isoparse(s).date()
     except (ValueError, TypeError):
+        return None
+
+
+def parse_sheet_date(s: str):
+    """Parse a date as displayed in the sheet.
+
+    The sheet holds US-style M/D/YYYY (that is what this script writes; see
+    new_vals below), which isoparse rejects - using it here would make every
+    existing date unreadable and re-flag every row as an update forever.
+    dayfirst=False keeps 8/4/2026 as August 4th.
+    """
+    try:
+        return date_parser.parse(s, dayfirst=False).date()
+    except (ValueError, TypeError, OverflowError):
         return None
 
 
@@ -268,7 +283,11 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
             return existing_row[i] if i < len(existing_row) else ""
 
         existing_date_str = _get("uaa_date").strip()
-        existing_date = parse_date(existing_date_str) if existing_date_str else None
+        existing_date = (parse_sheet_date(existing_date_str)
+                         if existing_date_str else None)
+        if existing_date_str and existing_date is None:
+            warnings.append(f"bench {stem} (row {row_num}): unparseable uaa_date "
+                            f"{existing_date_str!r}; treating as no date")
 
         new_vals = {
             "uaa_date": f"{new_date.month}/{new_date.day}/{new_date.year}",
