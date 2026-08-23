@@ -9,14 +9,17 @@ Run:
 
 from __future__ import annotations
 
+import getpass
 import json
+import re
 import sys
 import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PyQt6 import QtCore, QtGui, QtWidgets
+from PyQt6 import QtCore, QtGui, QtNetwork, QtWidgets
 
+import kumgit_api
 import upload_uaa_to_sheet as core
 import theme
 
@@ -29,6 +32,16 @@ DEFAULT_CONFIG = {
     "autostart": False,
     "tab_name": "test",
     "data_folder": "",  # empty string = fall back to script directory
+    "data_folder_2": "",  # optional second location (e.g. FireDog products dir)
+    # Backup database on kumgit.com. On by default: the sheet is the primary
+    # store, and a mirror is only useful if nobody has to remember to turn it
+    # on. machine_id says which UAA station this PC is - it must be unique
+    # across the stations that share the database.
+    "kumgit_enabled": True,
+    "kumgit_api_key": "",
+    "kumgit_machine_id": kumgit_api.DEFAULT_MACHINE_ID,
+    "kumgit_operator_id": "",
+    "kumgit_url": kumgit_api.DEFAULT_URL,
     "scope": {
         "bench_enabled": False,
         "bench_min": 1000,
@@ -43,6 +56,25 @@ DEFAULT_CONFIG = {
 SAFE_TAB = "test"
 REGISTRY_RUN_KEY = r"Software\Microsoft\Windows\CurrentVersion\Run"
 REGISTRY_VALUE_NAME = "SIPHOGUAAWatchdog"
+
+
+def _single_instance_key() -> str:
+    """Per-user name for the single-instance endpoint.
+
+    Windows named pipes live in a machine-wide namespace, so a bare name
+    would let one logged-in user block another from starting the app. Suffix
+    it with the account name, sanitised to alphanumerics (the pipe
+    namespace rejects the separator in DOMAIN-qualified names).
+    """
+    try:
+        user = getpass.getuser()
+    except (OSError, KeyError):
+        user = "unknown"
+    user = re.sub(r"[^A-Za-z0-9_-]", "_", user) or "unknown"
+    return f"SIPHOG-UAA-Watchdog-single-instance-{user}"
+
+
+SINGLE_INSTANCE_KEY = _single_instance_key()
 
 
 def load_config() -> dict:
@@ -60,8 +92,18 @@ def save_config(cfg: dict) -> None:
 
 
 def resolve_data_folder(cfg: dict) -> Path:
+    """Primary folder - what 'Open Data Folder' opens."""
     df = (cfg.get("data_folder") or "").strip()
     return Path(df) if df else core.DATA_DIR
+
+
+def resolve_data_folders(cfg: dict) -> list[Path]:
+    """Every folder a run scans: the primary plus the optional second one."""
+    folders = [resolve_data_folder(cfg)]
+    second = (cfg.get("data_folder_2") or "").strip()
+    if second and Path(second) not in folders:
+        folders.append(Path(second))
+    return folders
 
 
 def set_autostart(enabled: bool) -> None:
@@ -131,27 +173,68 @@ class UploadWorker(QtCore.QThread):
     finished_ok = QtCore.pyqtSignal(dict, list, list, list)
     failed = QtCore.pyqtSignal(str)
 
-    def __init__(self, apply_mode: bool, tab_name: str, data_folder: Path,
-                 scope: dict | None = None, parent=None):
+    def __init__(self, apply_mode: bool, tab_name: str,
+                 data_folders: list[Path], scope: dict | None = None,
+                 parent=None):
         super().__init__(parent)
         self.apply_mode = apply_mode
         self.tab_name = tab_name
-        self.data_folder = data_folder
+        self.data_folders = data_folders
         self.scope = scope
 
     def run(self):
         try:
-            if not self.data_folder.is_dir():
+            present = [d for d in self.data_folders if d.is_dir()]
+            if not present:
                 raise RuntimeError(
-                    f"Data folder does not exist: {self.data_folder}")
+                    "No data folder exists: "
+                    + ", ".join(str(d) for d in self.data_folders))
             gc = core.authorize()
             ws = gc.open_by_key(core.SHEET_ID).worksheet(self.tab_name)
             all_values, col_idx = core.fetch_sheet(ws)
             counts, rows, cells, warnings = core.compute_plan(
-                all_values, col_idx, self.data_folder, scope=self.scope)
+                all_values, col_idx, present, scope=self.scope)
+            # A configured-but-absent folder is a silent data loss otherwise:
+            # the run still "succeeds", just with fewer benches.
+            for d in self.data_folders:
+                if not d.is_dir():
+                    warnings.append(f"data folder not found, skipped: {d}")
             if self.apply_mode and cells:
                 core.apply_updates(ws, cells)
             self.finished_ok.emit(counts, rows, cells, warnings)
+        except Exception as e:
+            self.failed.emit(f"{e}\n\n{traceback.format_exc()}")
+
+
+class KumgitWorker(QtCore.QThread):
+    """Off-thread talker to the kumgit.com backup database.
+
+    Runs after the sheet upload has already been reported, so a slow or dead
+    backup server never delays the primary result. Failures are surfaced as
+    warnings, not run failures.
+    """
+
+    pushed = QtCore.pyqtSignal(dict)
+    pinged = QtCore.pyqtSignal(str)
+    failed = QtCore.pyqtSignal(str)
+
+    def __init__(self, cfg: dict, records: list | None = None,
+                 ping_only: bool = False, parent=None):
+        super().__init__(parent)
+        self.api_key = (cfg.get("kumgit_api_key") or "").strip()
+        self.url = (cfg.get("kumgit_url") or "").strip() or kumgit_api.DEFAULT_URL
+        self.records = records or []
+        self.ping_only = ping_only
+
+    def run(self):
+        try:
+            client = kumgit_api.KumgitClient(self.api_key, self.url)
+            if self.ping_only:
+                self.pinged.emit(client.ping())
+            else:
+                self.pushed.emit(client.push(self.records))
+        except kumgit_api.KumgitError as e:
+            self.failed.emit(str(e))
         except Exception as e:
             self.failed.emit(f"{e}\n\n{traceback.format_exc()}")
 
@@ -343,17 +426,77 @@ class SettingsDialog(QtWidgets.QDialog):
         self.data_folder_edit.setPlaceholderText(
             f"(empty = use script directory: {core.DATA_DIR})")
         browse_btn = QtWidgets.QPushButton("Browse\u2026")
-        browse_btn.clicked.connect(self._browse_folder)
+        browse_btn.clicked.connect(lambda: self._browse_folder(
+            self.data_folder_edit))
         folder_row.addWidget(self.data_folder_edit, 1)
         folder_row.addWidget(browse_btn)
         form.addRow("Data folder:", folder_row)
 
+        folder2_row = QtWidgets.QHBoxLayout()
+        self.data_folder2_edit = QtWidgets.QLineEdit()
+        self.data_folder2_edit.setText(cfg.get("data_folder_2") or "")
+        self.data_folder2_edit.setPlaceholderText("(optional - leave empty to skip)")
+        browse2_btn = QtWidgets.QPushButton("Browse\u2026")
+        browse2_btn.clicked.connect(lambda: self._browse_folder(
+            self.data_folder2_edit))
+        folder2_row.addWidget(self.data_folder2_edit, 1)
+        folder2_row.addWidget(browse2_btn)
+        form.addRow("Second folder:", folder2_row)
+
         hint = QtWidgets.QLabel(
-            "Folder containing the per-bench JSON files (filenames like "
-            "<i>1234.json</i>).")
+            "Folders holding the per-bench data. Both layouts are read: "
+            "<i>1234.json</i> (bobcat_engine) and <i>1234/dut.json</i> "
+            "(FireDog). If the same bench appears in both folders the newest "
+            "reading wins.")
         hint.setStyleSheet(f"color:{theme.FG_MUTED};")
         hint.setWordWrap(True)
         form.addRow("", hint)
+
+        section = QtWidgets.QLabel("Backup database (kumgit.com)")
+        section.setStyleSheet("font-weight:700;")
+        form.addRow(section)
+
+        self.kumgit_cb = QtWidgets.QCheckBox(
+            "Mirror every upload to kumgit.com")
+        self.kumgit_cb.setChecked(bool(cfg.get("kumgit_enabled", True)))
+        form.addRow("", self.kumgit_cb)
+
+        self.machine_edit = QtWidgets.QLineEdit(
+            cfg.get("kumgit_machine_id") or kumgit_api.DEFAULT_MACHINE_ID)
+        self.machine_edit.setMaxLength(50)
+        form.addRow("Machine ID:", self.machine_edit)
+
+        self.operator_edit = QtWidgets.QLineEdit(
+            cfg.get("kumgit_operator_id") or "")
+        self.operator_edit.setMaxLength(50)
+        self.operator_edit.setPlaceholderText("(optional)")
+        form.addRow("Operator ID:", self.operator_edit)
+
+        key_row = QtWidgets.QHBoxLayout()
+        self.apikey_edit = QtWidgets.QLineEdit(cfg.get("kumgit_api_key") or "")
+        self.apikey_edit.setEchoMode(QtWidgets.QLineEdit.EchoMode.Password)
+        self.apikey_edit.setPlaceholderText("X-API-Key with UAA scope")
+        show_key = QtWidgets.QCheckBox("show")
+        show_key.toggled.connect(lambda on: self.apikey_edit.setEchoMode(
+            QtWidgets.QLineEdit.EchoMode.Normal if on
+            else QtWidgets.QLineEdit.EchoMode.Password))
+        key_row.addWidget(self.apikey_edit, 1)
+        key_row.addWidget(show_key)
+        form.addRow("API key:", key_row)
+
+        self.kumgit_url_edit = QtWidgets.QLineEdit(cfg.get("kumgit_url") or "")
+        self.kumgit_url_edit.setPlaceholderText(kumgit_api.DEFAULT_URL)
+        form.addRow("Endpoint:", self.kumgit_url_edit)
+
+        kumgit_hint = QtWidgets.QLabel(
+            "<b>Machine ID</b> names this station in the shared database, so "
+            "every UAA PC needs its own (<i>UAA1</i>, <i>UAA2</i>, \u2026). "
+            "The backup runs in the background after the sheet is written; "
+            "records the server could not take are kept in "
+            "<i>kumgit_pending.json</i> and retried on the next run.")
+        kumgit_hint.setStyleSheet(f"color:{theme.FG_MUTED};")
+        kumgit_hint.setWordWrap(True)
+        form.addRow("", kumgit_hint)
 
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok |
@@ -365,18 +508,27 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(form)
         layout.addWidget(buttons)
 
-    def _browse_folder(self):
-        start = self.data_folder_edit.text().strip() or str(core.DATA_DIR)
+    def _browse_folder(self, edit: QtWidgets.QLineEdit):
+        start = (edit.text().strip()
+                 or self.data_folder_edit.text().strip()
+                 or str(core.DATA_DIR))
         chosen = QtWidgets.QFileDialog.getExistingDirectory(
             self, "Select SIPHOG data folder", start)
         if chosen:
-            self.data_folder_edit.setText(chosen)
+            edit.setText(chosen)
 
     def result_config(self) -> dict:
         return {
             "interval_minutes": self.interval_spin.value(),
             "autostart": self.autostart_cb.isChecked(),
             "data_folder": self.data_folder_edit.text().strip(),
+            "data_folder_2": self.data_folder2_edit.text().strip(),
+            "kumgit_enabled": self.kumgit_cb.isChecked(),
+            "kumgit_machine_id": (self.machine_edit.text().strip()
+                                  or kumgit_api.DEFAULT_MACHINE_ID),
+            "kumgit_operator_id": self.operator_edit.text().strip(),
+            "kumgit_api_key": self.apikey_edit.text().strip(),
+            "kumgit_url": self.kumgit_url_edit.text().strip(),
         }
 
 
@@ -387,6 +539,9 @@ class MainWindow(QtWidgets.QMainWindow):
     settings_requested = QtCore.pyqtSignal()
     open_folder_requested = QtCore.pyqtSignal()
     refresh_tabs_requested = QtCore.pyqtSignal()
+    toggle_kumgit_requested = QtCore.pyqtSignal(bool)
+    kumgit_test_requested = QtCore.pyqtSignal()
+    kumgit_flush_requested = QtCore.pyqtSignal()
     tab_changed = QtCore.pyqtSignal(str)
     quit_requested = QtCore.pyqtSignal()
 
@@ -403,10 +558,20 @@ class MainWindow(QtWidgets.QMainWindow):
         self.act_refresh_tabs = file_menu.addAction("Refresh Sheet Tabs")
         file_menu.addSeparator()
         self.act_quit = file_menu.addAction("Quit")
+        backup_menu = menubar.addMenu("&Backup")
+        self.act_kumgit = backup_menu.addAction("Mirror to kumgit.com")
+        self.act_kumgit.setCheckable(True)
+        backup_menu.addSeparator()
+        self.act_kumgit_test = backup_menu.addAction("Test Connection")
+        self.act_kumgit_flush = backup_menu.addAction("Send Pending Records Now")
+
         self.act_settings.triggered.connect(self.settings_requested)
         self.act_open_folder.triggered.connect(self.open_folder_requested)
         self.act_refresh_tabs.triggered.connect(self.refresh_tabs_requested)
         self.act_quit.triggered.connect(self.quit_requested)
+        self.act_kumgit.toggled.connect(self.toggle_kumgit_requested)
+        self.act_kumgit_test.triggered.connect(self.kumgit_test_requested)
+        self.act_kumgit_flush.triggered.connect(self.kumgit_flush_requested)
 
         central = QtWidgets.QWidget()
         self.setCentralWidget(central)
@@ -424,6 +589,14 @@ class MainWindow(QtWidgets.QMainWindow):
         self.next_run_label = QtWidgets.QLabel()
         self.next_run_label.setStyleSheet(f"color: {theme.FG_MUTED};")
         top.addWidget(self.next_run_label)
+
+        top.addSpacing(12)
+
+        # Several stations upload to the same backup database, so which one
+        # this PC claims to be has to be visible without opening Settings.
+        self.machine_label = QtWidgets.QLabel()
+        self.machine_label.setFont(theme.mono_font(10))
+        top.addWidget(self.machine_label)
 
         top.addSpacing(12)
 
@@ -494,6 +667,27 @@ class MainWindow(QtWidgets.QMainWindow):
             self.tab_combo.setCurrentIndex(0)
         self._suppress_tab_signal = False
         self._update_tab_badge(self.tab_combo.currentText())
+
+    def set_backup_display(self, machine_id: str, enabled: bool) -> None:
+        self.act_kumgit.blockSignals(True)
+        self.act_kumgit.setChecked(enabled)
+        self.act_kumgit.blockSignals(False)
+        self.act_kumgit_test.setEnabled(enabled)
+        self.act_kumgit_flush.setEnabled(enabled)
+        if enabled:
+            self.machine_label.setText(
+                f'<span style="color:{theme.FG_MUTED}">backup </span>'
+                f'<span style="color:{theme.SUCCESS};font-weight:700">'
+                f'{machine_id}</span>'
+                f'<span style="color:{theme.FG_MUTED}"> \u2192 kumgit</span>')
+            self.machine_label.setToolTip(
+                f"Uploads are mirrored to kumgit.com as machine {machine_id}")
+        else:
+            self.machine_label.setText(
+                f'<span style="color:{theme.FG_MUTED}">backup </span>'
+                f'<span style="color:{theme.WARN};font-weight:700">off</span>')
+            self.machine_label.setToolTip(
+                "kumgit.com backup is disabled (Backup menu)")
 
     def _on_tab_changed(self, name: str) -> None:
         if self._suppress_tab_signal:
@@ -603,6 +797,11 @@ class AppState(QtCore.QObject):
         self.worker: UploadWorker | None = None
         self.tab_worker: TabListWorker | None = None
         self.lot_worker: LotIDWorker | None = None
+        self.kumgit_worker: KumgitWorker | None = None
+        # Records that arrived while a backup push was already in flight.
+        # Queued in memory rather than written to the spool, which the worker
+        # owns for the duration of a push.
+        self.kumgit_queue: list[dict] = []
         self.last_mode = "dry-run"
 
         self.window = MainWindow()
@@ -615,6 +814,9 @@ class AppState(QtCore.QObject):
         self.window.settings_requested.connect(self.open_settings)
         self.window.open_folder_requested.connect(self.open_folder)
         self.window.refresh_tabs_requested.connect(self.refresh_tabs)
+        self.window.toggle_kumgit_requested.connect(self.set_kumgit_enabled)
+        self.window.kumgit_test_requested.connect(self.test_kumgit)
+        self.window.kumgit_flush_requested.connect(self.flush_kumgit)
         self.window.tab_changed.connect(self.on_tab_changed)
         self.window.quit_requested.connect(self.quit)
 
@@ -627,6 +829,9 @@ class AppState(QtCore.QObject):
         self.act_dry = self.menu.addAction("Dry Run")
         self.act_run = self.menu.addAction("Upload Now")
         self.menu.addSeparator()
+        self.act_kumgit = self.menu.addAction("Mirror to kumgit.com")
+        self.act_kumgit.setCheckable(True)
+        self.menu.addSeparator()
         self.act_folder = self.menu.addAction("Open Data Folder")
         self.act_settings = self.menu.addAction("Settings\u2026")
         self.menu.addSeparator()
@@ -637,6 +842,7 @@ class AppState(QtCore.QObject):
         self.act_toggle.triggered.connect(self.toggle_watchdog)
         self.act_dry.triggered.connect(lambda: self.start_run(False))
         self.act_run.triggered.connect(lambda: self.start_run(True))
+        self.act_kumgit.toggled.connect(self.set_kumgit_enabled)
         self.act_folder.triggered.connect(self.open_folder)
         self.act_settings.triggered.connect(self.open_settings)
         self.act_quit.triggered.connect(self.quit)
@@ -652,15 +858,17 @@ class AppState(QtCore.QObject):
 
         self.refresh_ui()
         self.tray.show()
-        resolved = resolve_data_folder(self.cfg)
-        self.window.log_line(f"Data folder: {resolved}",
-                             "OK" if resolved.is_dir() else "WARN")
-        if not resolved.is_dir():
+        folders = resolve_data_folders(self.cfg)
+        for f in folders:
+            self.window.log_line(f"Data folder: {f}",
+                                 "OK" if f.is_dir() else "WARN")
+        if not any(f.is_dir() for f in folders):
             self.window.log_line(
                 "Data folder not found; set it in File \u2192 Settings\u2026",
                 "WARN")
         self.window.log_line("Ready.", "OK")
         self.refresh_tabs()
+        self.report_kumgit_state()
 
     def color_for_status(self) -> str:
         return {"idle_off": theme.FG_MUTED,
@@ -682,6 +890,11 @@ class AppState(QtCore.QObject):
         busy = self.status == "running"
         self.act_dry.setEnabled(not busy)
         self.act_run.setEnabled(not busy)
+        backup_on = bool(self.cfg.get("kumgit_enabled", True))
+        self.act_kumgit.blockSignals(True)
+        self.act_kumgit.setChecked(backup_on)
+        self.act_kumgit.blockSignals(False)
+        self.window.set_backup_display(self.machine_id(), backup_on)
         self.window.set_state_display(
             self.status_text(), self.color_for_status(),
             self.cfg["watchdog_enabled"], busy,
@@ -799,7 +1012,11 @@ class AppState(QtCore.QObject):
             return
         new = dlg.result_config()
         old_autostart = self.cfg["autostart"]
-        old_folder = (self.cfg.get("data_folder") or "").strip()
+        old_folders = [(self.cfg.get("data_folder") or "").strip(),
+                       (self.cfg.get("data_folder_2") or "").strip()]
+        old_machine = self.machine_id()
+        old_key = (self.cfg.get("kumgit_api_key") or "").strip()
+        old_url = (self.cfg.get("kumgit_url") or "").strip()
         self.cfg.update(new)
         save_config(self.cfg)
         if new["autostart"] != old_autostart:
@@ -811,16 +1028,159 @@ class AppState(QtCore.QObject):
             except Exception as e:
                 QtWidgets.QMessageBox.warning(
                     self.window, "Autostart failed", str(e))
-        if new["data_folder"] != old_folder:
-            resolved = resolve_data_folder(self.cfg)
-            lvl = "OK" if resolved.is_dir() else "WARN"
-            self.window.log_line(f"Data folder set to: {resolved}", lvl)
-            if not resolved.is_dir():
-                self.window.log_line(
-                    "Warning: data folder does not exist", "WARN")
+        if [new["data_folder"], new["data_folder_2"]] != old_folders:
+            for resolved in resolve_data_folders(self.cfg):
+                lvl = "OK" if resolved.is_dir() else "WARN"
+                self.window.log_line(f"Data folder set to: {resolved}", lvl)
+                if not resolved.is_dir():
+                    self.window.log_line(
+                        f"Warning: {resolved} does not exist", "WARN")
+        if new["kumgit_machine_id"] != old_machine:
+            self.window.log_line(
+                f"Backup machine ID set to {new['kumgit_machine_id']}", "OK")
         self.window.log_line(
             f"Settings saved (interval={new['interval_minutes']} min)", "OK")
         self.refresh_ui()
+        if (new["kumgit_enabled"]
+                and (new["kumgit_api_key"] or "").strip()
+                and (new["kumgit_api_key"] != old_key
+                     or new["kumgit_url"] != old_url)):
+            # A key arriving for the first time usually has a backlog waiting
+            # behind it. Sending that backlog proves the key works, so do it
+            # instead of a bare ping.
+            if kumgit_api.load_pending():
+                self.flush_kumgit()
+            else:
+                self.test_kumgit()
+
+    # -- kumgit.com backup database ---------------------------------------
+
+    def machine_id(self) -> str:
+        return (self.cfg.get("kumgit_machine_id") or "").strip() \
+            or kumgit_api.DEFAULT_MACHINE_ID
+
+    def report_kumgit_state(self) -> None:
+        """Log what the backup will do, and prove the key works if it can."""
+        if not self.cfg.get("kumgit_enabled", True):
+            self.window.log_line("kumgit.com backup: disabled", "INFO")
+            return
+        pending = len(kumgit_api.load_pending())
+        tail = f", {pending} record(s) waiting to send" if pending else ""
+        self.window.log_line(
+            f"kumgit.com backup: on as machine {self.machine_id()}{tail}", "OK")
+        if not (self.cfg.get("kumgit_api_key") or "").strip():
+            self.window.log_line(
+                "kumgit.com backup: no API key set \u2014 uploads will be held "
+                "until one is entered in File \u2192 Settings\u2026", "WARN")
+            return
+        self.start_kumgit(ping_only=True)
+
+    def set_kumgit_enabled(self, enabled: bool) -> None:
+        if bool(self.cfg.get("kumgit_enabled", True)) == bool(enabled):
+            return
+        self.cfg["kumgit_enabled"] = bool(enabled)
+        save_config(self.cfg)
+        self.window.log_line(
+            f"kumgit.com backup {'enabled' if enabled else 'disabled'}",
+            "OK" if enabled else "WARN")
+        self.refresh_ui()
+
+    def start_kumgit(self, records: list | None = None,
+                     ping_only: bool = False) -> bool:
+        """Start a backup thread unless one is already running."""
+        if self.kumgit_worker is not None and self.kumgit_worker.isRunning():
+            if records:
+                self.kumgit_queue.extend(records)
+            return False
+        self.kumgit_worker = KumgitWorker(
+            self.cfg, records=records, ping_only=ping_only)
+        self.kumgit_worker.pushed.connect(self.on_kumgit_pushed)
+        self.kumgit_worker.pinged.connect(self.on_kumgit_pinged)
+        self.kumgit_worker.failed.connect(self.on_kumgit_failed)
+        self.kumgit_worker.start()
+        return True
+
+    def backup_to_kumgit(self, rows: list) -> None:
+        """Mirror an applied upload to the backup database."""
+        if self.last_mode != "upload" or not self.cfg.get("kumgit_enabled", True):
+            return
+        records = kumgit_api.build_records(
+            rows, self.machine_id(),
+            self.cfg.get("kumgit_operator_id") or "")
+        if not (self.cfg.get("kumgit_api_key") or "").strip():
+            if records:
+                # Spool rather than drop: once the sheet row is written this
+                # bench never shows up as an update again.
+                kumgit_api.save_pending(kumgit_api.merge_pending(
+                    kumgit_api.load_pending(), records))
+                self.window.log_line(
+                    f"kumgit.com backup: {len(records)} record(s) held, "
+                    f"no API key set", "WARN")
+            return
+        if not records and not kumgit_api.load_pending():
+            return
+        self.window.log_line(
+            f"kumgit.com backup: sending {len(records)} record(s) as "
+            f"{self.machine_id()}\u2026", "INFO")
+        self.start_kumgit(records)
+
+    def flush_kumgit(self) -> None:
+        """Backup menu: retry whatever the spool still owes."""
+        pending = len(kumgit_api.load_pending())
+        if not pending:
+            self.window.log_line("kumgit.com backup: nothing pending", "INFO")
+            return
+        self.window.log_line(
+            f"kumgit.com backup: retrying {pending} pending record(s)\u2026",
+            "INFO")
+        if not self.start_kumgit([]):
+            self.window.log_line("kumgit.com backup: already running", "INFO")
+
+    def test_kumgit(self) -> None:
+        if not (self.cfg.get("kumgit_api_key") or "").strip():
+            self.window.log_line(
+                "kumgit.com backup: no API key set (File \u2192 Settings\u2026)",
+                "WARN")
+            return
+        self.window.log_line("kumgit.com backup: testing connection\u2026", "INFO")
+        if not self.start_kumgit(ping_only=True):
+            self.window.log_line("kumgit.com backup: already running", "INFO")
+
+    def on_kumgit_pinged(self, message: str) -> None:
+        self.window.log_line(f"kumgit.com backup: {message}", "OK")
+        self._drain_kumgit_queue()
+
+    def on_kumgit_pushed(self, summary: dict) -> None:
+        saved = summary.get("saved", 0)
+        pending = summary.get("pending", 0)
+        dropped = summary.get("dropped", 0)
+        errors = summary.get("errors") or []
+        level = "OK" if not (pending or dropped or errors) else "WARN"
+        self.window.log_line(
+            f"kumgit.com backup: {saved} saved, {pending} pending, "
+            f"{dropped} rejected", level)
+        for err in errors[:5]:
+            self.window.log_line(f"kumgit.com backup: {err}", "WARN")
+        if len(errors) > 5:
+            self.window.log_line(
+                f"kumgit.com backup: {len(errors) - 5} more error(s) suppressed",
+                "WARN")
+        self._drain_kumgit_queue()
+
+    def on_kumgit_failed(self, err: str) -> None:
+        first = err.splitlines()[0] if err else "unknown error"
+        self.window.log_line(
+            f"kumgit.com backup failed: {first} (data kept for retry)", "WARN")
+        for line in err.splitlines()[1:]:
+            if line.strip():
+                self.window.log_line(line, "DEBUG")
+        self._drain_kumgit_queue()
+
+    def _drain_kumgit_queue(self) -> None:
+        if not self.kumgit_queue:
+            return
+        queued, self.kumgit_queue = self.kumgit_queue, []
+        self.start_kumgit(queued)
 
     def scheduled_run(self) -> None:
         if self.status == "running":
@@ -842,7 +1202,7 @@ class AppState(QtCore.QObject):
             "INFO")
         self.refresh_ui()
         self.worker = UploadWorker(
-            apply_mode, tab, resolve_data_folder(self.cfg),
+            apply_mode, tab, resolve_data_folders(self.cfg),
             scope=scope or None)
         self.worker.finished_ok.connect(self.on_ok)
         self.worker.failed.connect(self.on_fail)
@@ -869,6 +1229,7 @@ class AppState(QtCore.QObject):
                   else f"{counts['updated']} rows pending")
         self.window.log_line(f"{self.last_mode} complete: {suffix}", "OK")
         self.window.show_results(counts, rows, cells, warnings, self.last_mode)
+        self.backup_to_kumgit(rows)
         self.tray.setToolTip(
             f"{APP_NAME}\nTab: {self.cfg['tab_name']}\n"
             f"Last {self.last_mode}: {suffix}\n"
@@ -888,11 +1249,65 @@ class AppState(QtCore.QObject):
         self.refresh_ui()
 
     def quit(self) -> None:
-        for w in (self.worker, self.tab_worker, self.lot_worker):
+        for w in (self.worker, self.tab_worker, self.lot_worker,
+                  self.kumgit_worker):
             if w and w.isRunning():
                 w.wait(5000)
         self.tray.hide()
         self.app.quit()
+
+
+class SingleInstanceGuard(QtCore.QObject):
+    """Allow only one running copy; a second launch wakes the first one.
+
+    Uses a named local socket (a named pipe on Windows). The first process
+    listens on SINGLE_INSTANCE_KEY; later processes connect to it, send a
+    wake-up byte and exit, which makes the already-running tray app pop its
+    window to the front instead of starting a duplicate watchdog.
+    """
+
+    activated = QtCore.pyqtSignal()
+
+    def __init__(self, key: str = SINGLE_INSTANCE_KEY,
+                 parent: QtCore.QObject | None = None):
+        super().__init__(parent)
+        self.key = key
+        self.server: QtNetwork.QLocalServer | None = None
+
+    def try_acquire(self) -> bool:
+        """True if this process owns the single-instance slot."""
+        probe = QtNetwork.QLocalSocket()
+        probe.connectToServer(self.key)
+        if probe.waitForConnected(500):
+            probe.write(b"SHOW")
+            probe.waitForBytesWritten(500)
+            probe.disconnectFromServer()
+            return False
+
+        # No live owner. Clear any stale endpoint left by a crashed process
+        # (matters on Unix sockets; harmless on Windows named pipes).
+        QtNetwork.QLocalServer.removeServer(self.key)
+        self.server = QtNetwork.QLocalServer(self)
+        self.server.newConnection.connect(self._on_new_connection)
+        if not self.server.listen(self.key):
+            # Cannot claim the name - fail open rather than blocking startup.
+            self.server = None
+        return True
+
+    def _on_new_connection(self) -> None:
+        if self.server is None:
+            return
+        conn = self.server.nextPendingConnection()
+        if conn is None:
+            return
+        conn.readyRead.connect(conn.readAll)
+        conn.disconnected.connect(conn.deleteLater)
+        self.activated.emit()
+
+    def release(self) -> None:
+        if self.server is not None:
+            self.server.close()
+            self.server = None
 
 
 def main() -> int:
@@ -900,13 +1315,22 @@ def main() -> int:
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName(APP_NAME)
     theme.apply(app, base_pt=10)
+
+    guard = SingleInstanceGuard()
+    if not guard.try_acquire():
+        # Another copy is already running; it has been told to show itself.
+        return 0
+
     if not QtWidgets.QSystemTrayIcon.isSystemTrayAvailable():
         QtWidgets.QMessageBox.critical(
             None, APP_NAME, "System tray is not available on this system.")
         return 1
     state = AppState(app)
+    guard.activated.connect(state.show_window)
     state.show_window()
-    return app.exec()
+    rc = app.exec()
+    guard.release()
+    return rc
 
 
 if __name__ == "__main__":
