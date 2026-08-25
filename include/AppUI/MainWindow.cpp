@@ -46,18 +46,10 @@ MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   , m_pageStack(nullptr)
   , m_topBar(nullptr)
   , m_logStatusBar(nullptr)
-  , m_logViewerPage(nullptr)
   , m_previousPage(nullptr)
-  , m_mainMenuPage(nullptr)
-  , m_hardwarePage(nullptr)
-  , m_configEditorPage(nullptr)
-  , m_motionPage(nullptr)
-  , m_recipePage(nullptr)        // ✅ ADD THIS
-  , m_runProgramPage(nullptr)
-  , m_visionManagerPage(nullptr) // Vision Manager page
-  , m_settingsContainerPage(nullptr)   // Settings container (App Settings + IO Watch)
-  , m_trainerContainerPage(nullptr)    // Trainer container page
-  , m_dataBackupPage(nullptr)
+  // Page pointers are default-initialized to nullptr in MainWindow.h - they
+  // are filled in lazily by ensurePageBuilt(), so every one of them must start
+  // null (m_scriptRunnerPage previously had no initializer at all).
   , m_jogPanel(nullptr)
   , m_jogKeyHandler(nullptr)
   , m_matrixLoader(nullptr)
@@ -217,7 +209,22 @@ void MainWindow::setupUI()
   // setMaximumSize(1920, 1080); // Prevent too large (uncomment if needed)
 }
 
-// MainWindow.cpp - Update createPages()
+// ---------------------------------------------------------------------------
+// Page construction
+//
+// Only MainMenuPage is built here. Building all twelve pages up front cost
+// ~18s of startup - the bulk of the app's boot time - for pages an operator
+// may never open in a session. Everything else is built by ensurePageBuilt()
+// on first navigation.
+//
+// MainMenuPage must stay eager for two reasons: it is the page shown on
+// startup, and it owns the productChanged signal that the lazily-built pages
+// connect to when they are created.
+//
+// Pages that need the current product read it in their own constructor, so a
+// page built after a product change comes up with the right product; the
+// connection made at build time covers every change after that.
+// ---------------------------------------------------------------------------
 void MainWindow::createPages()
 {
   std::cout << "[MainWindow] Creating pages..." << std::endl;
@@ -246,139 +253,209 @@ void MainWindow::createPages()
     this, &MainWindow::updateProductInfo);
   m_pageStack->addWidget(m_mainMenuPage);
 
-  // Hardware & Instrument page
-  m_hardwarePage = new HardwareInstrumentPage(m_context, this);
-  connect(m_hardwarePage, &HardwareInstrumentPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_hardwarePage);
-
-  // Config Editor page
-  m_configEditorPage = new ConfigEditorPage(m_context, this);
-  connect(m_configEditorPage, &ConfigEditorPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_configEditorPage);
-
-  // Log Viewer Page
-  m_logViewerPage = new LogViewerPage(m_context->logManager, this);
-  connect(m_logViewerPage, &LogViewerPage::backRequested,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_logViewerPage);
-
-  // Motion page
-  m_motionPage = new MotionPage(
-    m_context->motionManager,
-    m_context->productPositionManager,
-    m_matrixLoader,
-    m_context->dataStore,
-    m_context->coordinateSystemManager,
-    m_context->sequenceEngine,
-    m_context->interlockManager,
-    this
-  );
-  connect(m_motionPage, &MotionPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  // Connect product change notifications from MainMenu to MotionPage
-  connect(m_mainMenuPage, &MainMenuPage::productChanged,
-    m_motionPage, &MotionPage::onProductChanged);
-  m_pageStack->addWidget(m_motionPage);
-
-  //  Recipe page
-  m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
-  connect(m_recipePage, &RecipePage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  // Connect product change notifications from MainMenu to RecipePage
-  connect(m_mainMenuPage, &MainMenuPage::productChanged,
-    m_recipePage, &RecipePage::onProductChanged);
-  m_pageStack->addWidget(m_recipePage);
-
-
-  //  Run Program page
-  m_runProgramPage = new RunProgramPage(m_context, m_matrixLoader, this);
-  connect(m_runProgramPage, &RunProgramPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  // Connect product change notifications from MainMenu to RunProgramPage
-  connect(m_mainMenuPage, &MainMenuPage::productChanged,
-    m_runProgramPage, &RunProgramPage::onProductChanged);
-  m_pageStack->addWidget(m_runProgramPage);
-
-  // Connect "Edit in Recipe Page" from RunProgramPage to RecipePage
-  connect(m_runProgramPage, &RunProgramPage::requestEditRecipe,
-    this, [this](const QString& filePath) {
-      m_recipePage->loadRecipeFromFile(filePath);
-      m_pageStack->setCurrentWidget(m_recipePage);
-    });
-
-  // Vision Manager page
-  m_visionManagerPage = new VisionManagerPage(m_context, this);
-  connect(m_visionManagerPage, &VisionManagerPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_visionManagerPage);
-
-  // Settings container page (sidebar: App Settings + IO Watch)
-  m_settingsContainerPage = new SettingsContainerPage(m_context, this);
-  connect(m_settingsContainerPage, &SettingsContainerPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-
-  ApplicationSettingsPage* appSettings = m_settingsContainerPage->appSettingsPage();
-
-  // Connect settings changes to GDI camera window managers
-  if (m_context && m_context->gdiCameraWindowManager) {
-    connect(appSettings, &ApplicationSettingsPage::settingsChanged,
-      m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
-  }
-  if (m_context && m_context->gdiCameraWindowManager2) {
-    connect(appSettings, &ApplicationSettingsPage::settingsChanged,
-      m_context->gdiCameraWindowManager2, &GdiCameraWindowManager::applyApplicationSettings);
-  }
-  m_pageStack->addWidget(m_settingsContainerPage);
-
-  // Theme live reload: when settings are saved, re-apply the active theme.
-  connect(appSettings, &ApplicationSettingsPage::settingsChanged,
-    this, [this]() {
-      QSettings s("Fabrinet", "BobcatEngine");
-      QString t = s.value("UI/Theme", "Default").toString();
-      ThemeManager::instance().setTheme(
-        t == "CC29" ? Theme::ThemeId::CC29 : Theme::ThemeId::Default);
-    });
-
-  // Trainer container page (wraps AccuracyTrainerPage + future trainer tools)
-  m_trainerContainerPage = new TrainerContainerPage(m_context, this);
-  connect(m_trainerContainerPage, &TrainerContainerPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  m_pageStack->addWidget(m_trainerContainerPage);
-
-  // Data Backup page
-  m_dataBackupPage = new DataBackupPage(m_context, this);
-  connect(m_dataBackupPage, &DataBackupPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  connect(m_mainMenuPage, &MainMenuPage::productChanged,
-    m_dataBackupPage, &DataBackupPage::onProductChanged);
-  m_pageStack->addWidget(m_dataBackupPage);
-
-  // Script Runner page
-  m_scriptRunnerPage = new ScriptRunnerPage(m_context, this);
-  connect(m_scriptRunnerPage, &ScriptRunnerPage::backToMainMenu,
-    this, &MainWindow::onBackToMainMenu);
-  connect(m_mainMenuPage, &MainMenuPage::productChanged,
-    m_scriptRunnerPage, &ScriptRunnerPage::onProductChanged);
-  // Track script-running state so we can block page navigation while a script runs
-  connect(m_scriptRunnerPage, &ScriptRunnerPage::scriptRunningChanged,
-    this, [this](bool running) { m_scriptRunning = running; });
-  m_pageStack->addWidget(m_scriptRunnerPage);
-
-  // ✅ Wire themeChanged to every widget that has local stylesheets.
-  // When ThemeManager flips the palette, these slots re-apply their
-  // bezel buttons, status badges, product labels, etc.
+  // ✅ Wire themeChanged for the always-present widgets. Lazily-built pages
+  // that carry their own stylesheets (RunProgramPage, RecipePage) connect
+  // themselves in ensurePageBuilt(); they pick up the active theme from the
+  // global stylesheet when they are constructed.
   auto& tm = ThemeManager::instance();
   connect(&tm, &ThemeManager::themeChanged, m_topBar, &TopBar::applyTheme);
-  connect(&tm, &ThemeManager::themeChanged, m_runProgramPage, &RunProgramPage::applyTheme);
-  connect(&tm, &ThemeManager::themeChanged, m_recipePage, &RecipePage::applyTheme);
   // Also re-apply MainWindow's own stylesheet
   connect(&tm, &ThemeManager::themeChanged, this, [this]() {
     setStyleSheet(DarkTheme::getStyleSheet());
   });
 
-  std::cout << "[MainWindow] Pages created successfully" << std::endl;
+  std::cout << "[MainWindow] Main menu ready (other pages built on first use)" << std::endl;
+}
+
+QWidget* MainWindow::ensurePageBuilt(PageId id)
+{
+  switch (id) {
+  case PageId::MainMenu:
+    // Always built by createPages().
+    return m_mainMenuPage;
+
+  case PageId::Hardware:
+    if (!m_hardwarePage) {
+      m_hardwarePage = new HardwareInstrumentPage(m_context, this);
+      connect(m_hardwarePage, &HardwareInstrumentPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      m_pageStack->addWidget(m_hardwarePage);
+    }
+    return m_hardwarePage;
+
+  case PageId::ConfigEditor:
+    // Note: nothing currently navigates here - F5 and the main-menu "Edit
+    // Config" button both go to PageId::Settings. The page was built at boot
+    // and never shown; leaving the case in place keeps it one nav call away
+    // if it is wired up again.
+    if (!m_configEditorPage) {
+      m_configEditorPage = new ConfigEditorPage(m_context, this);
+      connect(m_configEditorPage, &ConfigEditorPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      m_pageStack->addWidget(m_configEditorPage);
+    }
+    return m_configEditorPage;
+
+  case PageId::LogViewer:
+    if (!m_logViewerPage) {
+      m_logViewerPage = new LogViewerPage(m_context->logManager, this);
+      connect(m_logViewerPage, &LogViewerPage::backRequested,
+        this, &MainWindow::onBackToMainMenu);
+      m_pageStack->addWidget(m_logViewerPage);
+    }
+    return m_logViewerPage;
+
+  case PageId::Motion:
+    if (!m_motionPage) {
+      m_motionPage = new MotionPage(
+        m_context->motionManager,
+        m_context->productPositionManager,
+        m_matrixLoader,
+        m_context->dataStore,
+        m_context->coordinateSystemManager,
+        m_context->sequenceEngine,
+        m_context->interlockManager,
+        this
+      );
+      connect(m_motionPage, &MotionPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      // Connect product change notifications from MainMenu to MotionPage
+      connect(m_mainMenuPage, &MainMenuPage::productChanged,
+        m_motionPage, &MotionPage::onProductChanged);
+      m_pageStack->addWidget(m_motionPage);
+    }
+    return m_motionPage;
+
+  case PageId::Recipe:
+    if (!m_recipePage) {
+      m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
+      connect(m_recipePage, &RecipePage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      // Connect product change notifications from MainMenu to RecipePage
+      connect(m_mainMenuPage, &MainMenuPage::productChanged,
+        m_recipePage, &RecipePage::onProductChanged);
+      connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+        m_recipePage, &RecipePage::applyTheme);
+      m_pageStack->addWidget(m_recipePage);
+    }
+    return m_recipePage;
+
+  case PageId::RunProgram:
+    if (!m_runProgramPage) {
+      m_runProgramPage = new RunProgramPage(m_context, m_matrixLoader, this);
+      connect(m_runProgramPage, &RunProgramPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      // Connect product change notifications from MainMenu to RunProgramPage
+      connect(m_mainMenuPage, &MainMenuPage::productChanged,
+        m_runProgramPage, &RunProgramPage::onProductChanged);
+      connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
+        m_runProgramPage, &RunProgramPage::applyTheme);
+
+      // Connect "Edit in Recipe Page" from RunProgramPage to RecipePage.
+      // RecipePage is built inside the lambda, not here - opening the process
+      // page should not drag the recipe editor in with it.
+      connect(m_runProgramPage, &RunProgramPage::requestEditRecipe,
+        this, [this](const QString& filePath) {
+          auto* recipePage = static_cast<RecipePage*>(ensurePageBuilt(PageId::Recipe));
+          if (!recipePage) return;
+          recipePage->loadRecipeFromFile(filePath);
+          m_pageStack->setCurrentWidget(recipePage);
+        });
+
+      m_pageStack->addWidget(m_runProgramPage);
+    }
+    return m_runProgramPage;
+
+  case PageId::VisionManager:
+    if (!m_visionManagerPage) {
+      m_visionManagerPage = new VisionManagerPage(m_context, this);
+      connect(m_visionManagerPage, &VisionManagerPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      m_pageStack->addWidget(m_visionManagerPage);
+    }
+    return m_visionManagerPage;
+
+  case PageId::Settings:
+    if (!m_settingsContainerPage) {
+      m_settingsContainerPage = new SettingsContainerPage(m_context, this);
+      connect(m_settingsContainerPage, &SettingsContainerPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+
+      ApplicationSettingsPage* appSettings = m_settingsContainerPage->appSettingsPage();
+
+      // Connect settings changes to GDI camera window managers
+      if (m_context && m_context->gdiCameraWindowManager) {
+        connect(appSettings, &ApplicationSettingsPage::settingsChanged,
+          m_context->gdiCameraWindowManager, &GdiCameraWindowManager::applyApplicationSettings);
+      }
+      if (m_context && m_context->gdiCameraWindowManager2) {
+        connect(appSettings, &ApplicationSettingsPage::settingsChanged,
+          m_context->gdiCameraWindowManager2, &GdiCameraWindowManager::applyApplicationSettings);
+      }
+
+      // Theme live reload: when settings are saved, re-apply the active theme.
+      // Only reachable once this page exists, since it is what emits the signal.
+      connect(appSettings, &ApplicationSettingsPage::settingsChanged,
+        this, [this]() {
+          QSettings s("Fabrinet", "BobcatEngine");
+          QString t = s.value("UI/Theme", "Default").toString();
+          ThemeManager::instance().setTheme(
+            t == "CC29" ? Theme::ThemeId::CC29 : Theme::ThemeId::Default);
+        });
+
+      m_pageStack->addWidget(m_settingsContainerPage);
+    }
+    return m_settingsContainerPage;
+
+  case PageId::Trainer:
+    if (!m_trainerContainerPage) {
+      // Note: TrainerContainerPage is itself lazy internally - it builds each
+      // of its seven trainer tabs on first selection.
+      m_trainerContainerPage = new TrainerContainerPage(m_context, this);
+      connect(m_trainerContainerPage, &TrainerContainerPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      m_pageStack->addWidget(m_trainerContainerPage);
+    }
+    return m_trainerContainerPage;
+
+  case PageId::DataBackup:
+    if (!m_dataBackupPage) {
+      m_dataBackupPage = new DataBackupPage(m_context, this);
+      connect(m_dataBackupPage, &DataBackupPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      connect(m_mainMenuPage, &MainMenuPage::productChanged,
+        m_dataBackupPage, &DataBackupPage::onProductChanged);
+      m_pageStack->addWidget(m_dataBackupPage);
+    }
+    return m_dataBackupPage;
+
+  case PageId::ScriptRunner:
+    if (!m_scriptRunnerPage) {
+      m_scriptRunnerPage = new ScriptRunnerPage(m_context, this);
+      connect(m_scriptRunnerPage, &ScriptRunnerPage::backToMainMenu,
+        this, &MainWindow::onBackToMainMenu);
+      connect(m_mainMenuPage, &MainMenuPage::productChanged,
+        m_scriptRunnerPage, &ScriptRunnerPage::onProductChanged);
+      // Track script-running state so we can block page navigation while a
+      // script runs. Until this page exists no script can be running, so
+      // m_scriptRunning correctly stays false.
+      connect(m_scriptRunnerPage, &ScriptRunnerPage::scriptRunningChanged,
+        this, [this](bool running) { m_scriptRunning = running; });
+      m_pageStack->addWidget(m_scriptRunnerPage);
+    }
+    return m_scriptRunnerPage;
+  }
+
+  return nullptr;
+}
+
+void MainWindow::navigateTo(PageId id)
+{
+  if (QWidget* page = ensurePageBuilt(id)) {
+    m_pageStack->setCurrentWidget(page);
+  } else {
+    std::cerr << "[MainWindow] Failed to build requested page!" << std::endl;
+  }
 }
 
 
@@ -565,20 +642,25 @@ bool MainWindow::canNavigateAwayFromCurrentPage()
   return true;
 }
 
+bool MainWindow::confirmLeaveRecipePage()
+{
+  // m_recipePage is null until the recipe editor has been opened at least
+  // once. currentWidget() is never null once the stack has a page, so an
+  // unbuilt recipe page can never compare equal here.
+  if (m_pageStack->currentWidget() != m_recipePage) {
+    return true;
+  }
+  return m_recipePage->canLeavePage();  // false if the user cancelled
+}
+
 void MainWindow::onMainMenuProcess()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Process clicked" << std::endl;
   m_context->logManager->Info("Navigating to Run Program page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_runProgramPage);
+  navigateTo(PageId::RunProgram);
 }
 
 void MainWindow::onMainMenuRecipe()
@@ -587,117 +669,78 @@ void MainWindow::onMainMenuRecipe()
 
   std::cout << "[MainWindow] Recipe clicked" << std::endl;
   m_context->logManager->Info("Navigating to Recipe page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_recipePage);
+  navigateTo(PageId::Recipe);
 }
 
 void MainWindow::onMainMenuMotion()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Motion clicked" << std::endl;
   m_context->logManager->Info("Navigating to Motion page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_motionPage);
+  navigateTo(PageId::Motion);
 }
 
 void MainWindow::onMainMenuHardware()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Hardware clicked" << std::endl;
   m_context->logManager->Info("Navigating to Hardware & Instrument page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_hardwarePage);
+  navigateTo(PageId::Hardware);
 }
 
 void MainWindow::onMainMenuEditConfig()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Application Settings clicked" << std::endl;
   m_context->logManager->Info("Navigating to Application Settings page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_settingsContainerPage);
+  navigateTo(PageId::Settings);
 }
 
 void MainWindow::onMainMenuFutureUpdate()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Vision Manager clicked" << std::endl;
   m_context->logManager->Info("Navigating to Vision Manager page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_visionManagerPage);
+  navigateTo(PageId::VisionManager);
 }
 
 void MainWindow::onMainMenuAccuracyTrainer()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  // Check for unsaved changes if leaving RecipePage
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;  // User cancelled navigation
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Accuracy Trainer clicked" << std::endl;
   m_context->logManager->Info("Navigating to Accuracy Trainer page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_trainerContainerPage);
+  navigateTo(PageId::Trainer);
 }
 
 void MainWindow::onMainMenuDataBackup()
 {
   if (!canNavigateAwayFromCurrentPage()) return;
-
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Data Backup clicked" << std::endl;
   m_context->logManager->Info("Navigating to Data Backup page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_dataBackupPage);
+  navigateTo(PageId::DataBackup);
 }
 
 void MainWindow::onMainMenuScriptRunner()
 {
   // No canNavigateAwayFromCurrentPage() guard: F9 should always land on the
   // script runner (never navigates *away* from it).
-  if (m_pageStack->currentWidget() == m_recipePage) {
-    if (!m_recipePage->canLeavePage()) {
-      return;
-    }
-  }
+  if (!confirmLeaveRecipePage()) return;
 
   std::cout << "[MainWindow] Script Runner clicked" << std::endl;
   m_context->logManager->Info("Navigating to Script Runner page", "MainWindow");
-  m_pageStack->setCurrentWidget(m_scriptRunnerPage);
+  navigateTo(PageId::ScriptRunner);
 }
 
 void MainWindow::onBackToMainMenu()
@@ -715,8 +758,9 @@ void MainWindow::onBackToMainMenu()
 
 void MainWindow::onOpenLogViewer()
 {
-  // Check if we're already on the log viewer page
-  if (m_pageStack->currentWidget() == m_logViewerPage) {
+  // Check if we're already on the log viewer page (null until first opened,
+  // which never matches currentWidget())
+  if (m_logViewerPage && m_pageStack->currentWidget() == m_logViewerPage) {
     // Toggle back to previous page
     std::cout << "[MainWindow] Closing log viewer, returning to previous page" << std::endl;
     m_context->logManager->Debug("Closing log viewer", "MainWindow");
@@ -730,19 +774,22 @@ void MainWindow::onOpenLogViewer()
     m_previousPage = nullptr;
   } else {
     // Check for unsaved changes if leaving RecipePage
-    if (m_pageStack->currentWidget() == m_recipePage) {
-      if (!m_recipePage->canLeavePage()) {
-        return;  // User cancelled navigation
-      }
-    }
+    if (!confirmLeaveRecipePage()) return;
 
     // Open log viewer and save current page
     std::cout << "[MainWindow] Opening log viewer" << std::endl;
     m_context->logManager->Info("Opening full log viewer", "MainWindow");
 
-    m_previousPage = m_pageStack->currentWidget();
-    m_logViewerPage->RefreshLogs();
-    m_pageStack->setCurrentWidget(m_logViewerPage);
+    // Capture the outgoing page BEFORE building the log viewer, so the
+    // "previous page" is where the user actually was.
+    QWidget* outgoing = m_pageStack->currentWidget();
+
+    auto* logViewer = static_cast<LogViewerPage*>(ensurePageBuilt(PageId::LogViewer));
+    if (!logViewer) return;
+
+    m_previousPage = outgoing;
+    logViewer->RefreshLogs();
+    m_pageStack->setCurrentWidget(logViewer);
   }
 }
 
