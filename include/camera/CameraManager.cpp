@@ -260,6 +260,16 @@ bool CameraManager::ConnectCamera(const std::string& cameraId) {
   }
 
   if (camera) {
+    std::lock_guard<std::mutex> connectLock(m_connectMutex);
+
+    // Already open: do NOT re-Connect(). The Pylon adapter's Connect() stops
+    // and joins the grab thread, closes the device and re-opens it (~1s), and
+    // every live subscriber loses frames across the gap. Since startup now
+    // connects hardware in parallel with UI construction, a page that selects
+    // a camera can land here after the connection worker already opened it.
+    if (camera->IsConnected()) {
+      return true;
+    }
     return camera->Initialize() && camera->Connect();
   }
   return false;
@@ -277,6 +287,7 @@ bool CameraManager::DisconnectCamera(const std::string& cameraId) {
   }
 
   if (camera) {
+    std::lock_guard<std::mutex> connectLock(m_connectMutex);
     return camera->Disconnect();
   }
   return false;
@@ -293,7 +304,8 @@ bool CameraManager::ConnectAllCameras() {
   }
 
   bool allSuccess = true;
-  for (const auto& cameraId : cameraIds) {
+  for (size_t i = 0; i < cameraIds.size(); ++i) {
+    const std::string& cameraId = cameraIds[i];
     LOG_INFO("Connecting camera: " + cameraId);
 
     if (!ConnectCamera(cameraId)) {
@@ -304,8 +316,11 @@ bool CameraManager::ConnectAllCameras() {
       LOG_INFO("Successfully connected camera: " + cameraId);
     }
 
-    // Add 500ms delay between camera connections
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // 500ms settle delay BETWEEN camera connections only - trailing sleep
+    // after the last camera was pure startup latency.
+    if (i + 1 < cameraIds.size()) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
   }
 
   return allSuccess;

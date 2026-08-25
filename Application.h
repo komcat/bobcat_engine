@@ -88,8 +88,14 @@ private:
   void initializeGdiCameraWindow();   // GDI camera monitor window
   void initializeGdiCameraWindow2();  // Second GDI camera monitor window
 #ifdef USE_QT_CAMERA_WINDOW
+  // Register the lazy builder in ApplicationContext; restores the window only
+  // if it was visible last session (posted to the event loop, off the boot path).
   void initializeQtCameraWindow();   // Qt-based camera monitor
   void initializeQtCameraWindow2();  // Second Qt-based camera monitor
+  // Construct + initialize on demand. Idempotent; returns nullptr if the
+  // window failed to initialize. Called via ApplicationContext::ensureQtCameraWindow*.
+  QtCameraWindow* buildQtCameraWindow();
+  QtCameraWindow* buildQtCameraWindow2();
 #endif
   void initializeSwirBeamWindow();   // SWIR beam processing window
   void initializePowerSupplySystem();

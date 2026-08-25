@@ -31,7 +31,10 @@ public:
   explicit AuxWindowManager(QObject* parent = nullptr);
   ~AuxWindowManager();
 
-  // Initialize and show the auxiliary window
+  // Build the auxiliary window. Idempotent. Called lazily by show() and
+  // ensureWindow() - startup no longer calls this, because constructing
+  // AuxViewWindow (camera widget + live chart + world overlay) costs ~0.9s
+  // and most sessions never open the window.
   void initialize();
 
   // Shutdown and cleanup
@@ -49,8 +52,14 @@ public:
   void hide();
   bool isVisible() const;
 
-  // Get window pointer (for advanced control if needed)
+  // Get window pointer WITHOUT building it (nullptr if never opened).
+  // Use this for teardown/observation paths - notably MainWindow::closeEvent,
+  // which must not resurrect a window while the app is shutting down.
   AuxViewWindow* getWindow() const { return m_window.get(); }
+
+  // Get window pointer, building it on first use. Use this from any path that
+  // needs to act on the window (recipe auxwindow commands, show()).
+  AuxViewWindow* ensureWindow();
 
 private:
   CameraConfigManager* m_cameraConfigManager = nullptr;

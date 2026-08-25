@@ -32,7 +32,9 @@ bool AuxWindowCommandHandler::ExecuteCommand(
     return false;
   }
 
-  auto* window = m_auxWindowManager->getWindow();
+  // ensureWindow(), not getWindow(): the aux window is built lazily at
+  // startup, so a recipe may be the first thing to touch it.
+  auto* window = m_auxWindowManager->ensureWindow();
   if (!window) {
     errorMessage = "Auxiliary window is not initialized";
     return false;

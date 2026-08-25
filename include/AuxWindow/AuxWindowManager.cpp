@@ -107,8 +107,16 @@ void AuxWindowManager::setCameraConfigManager(CameraConfigManager* configMgr)
   std::cout << "[AuxWindowManager] CameraConfigManager set" << std::endl;
 }
 
+AuxViewWindow* AuxWindowManager::ensureWindow()
+{
+  initialize();  // no-op when already built
+  return m_window.get();
+}
+
 void AuxWindowManager::show()
 {
+  ensureWindow();
+
   if (m_window) {
     m_window->show();
     m_window->raise();

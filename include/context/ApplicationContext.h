@@ -1,6 +1,8 @@
 ﻿// ApplicationContext.h
 #pragma once
 
+#include <functional>
+
 class CameraManager;
 class LogManager;
 class DataStore;
@@ -67,8 +69,17 @@ struct ApplicationContext
   InterlockManager* interlockManager = nullptr;    // Motion interlock rules
   GdiCameraWindowManager* gdiCameraWindowManager = nullptr;  // GDI camera monitor window
   GdiCameraWindowManager* gdiCameraWindowManager2 = nullptr; // Second GDI camera monitor window
-  QtCameraWindow* qtCameraWindow = nullptr;                  // Qt camera monitor window
-  QtCameraWindow* qtCameraWindow2 = nullptr;                 // Second Qt camera monitor window
+  QtCameraWindow* qtCameraWindow = nullptr;                  // Qt camera monitor window (null until built)
+  QtCameraWindow* qtCameraWindow2 = nullptr;                 // Second Qt camera monitor window (null until built)
+  // Lazy builders for the two Qt camera monitors. Constructing a
+  // QtCameraWindow (side panel, viewport, vision controller, quick-move
+  // panel) costs ~0.5s each, so they are built on first use instead of at
+  // boot. Call these before reading qtCameraWindow / qtCameraWindow2 from
+  // any path that intends to SHOW the window; read the raw pointers only
+  // when a null (never-opened) window is an acceptable answer.
+  // Set by Application; may be empty in tools that build a partial context.
+  std::function<QtCameraWindow*()> ensureQtCameraWindow;
+  std::function<QtCameraWindow*()> ensureQtCameraWindow2;
   SwirBeamWindowManager* swirBeamWindowManager = nullptr;    // SWIR beam processing window
   ApplicationSettings* applicationSettings = nullptr;  // Application-wide settings from INI
   SafetyEventLog* safetyEventLog = nullptr;            // Structured safety event logging
