@@ -46,13 +46,15 @@ RecipeWorker::~RecipeWorker()
     m_engine->SetUserInputCallback(nullptr);
     m_engine->SetPlacementRetraceCallback(nullptr);
     m_engine->SetEdgeTransferRetraceCallback(nullptr);
-
-    // ✅ CRITICAL FIX: Also clear LogManager callback to prevent memory leak
-    LogManager* logger = m_engine->GetLogger();
-    if (logger) {
-      logger->ClearUICallback();
-    }
   }
+
+  // ✅ Restore (not clear) the LogManager UI callback. Our forwarding lambda
+  // captures 'this' and must not outlive the worker, but clearing it outright
+  // used to leave the application with NO UI callback at all - killing
+  // MainWindow's log status bar for the rest of the session, since nothing
+  // ever reinstalls it.
+  restoreLogUICallback();
+
   // ✅ CRITICAL: The wait-progress callback registered in run() captures 'this'
   // and is stored on the SequenceContext.  If an EXTERNAL context was passed
   // (e.g. from a Lua script calling recipe.run()), that context outlives the
@@ -62,6 +64,34 @@ RecipeWorker::~RecipeWorker()
     m_externalContext->SetWaitProgressCallback(nullptr);
   }
   std::cout << "[RecipeWorker] Destroyed - callbacks cleared" << std::endl;
+}
+
+void RecipeWorker::restoreLogUICallback()
+{
+  // Claim the restore. exchange() makes this idempotent AND race-free: run()
+  // restores on its way out (worker thread) and the destructor calls us again
+  // (owner thread), and only the first caller may proceed. A second restore
+  // would overwrite whatever owner installed a callback in the meantime.
+  // Returns false if we never installed ours - the run failed before Step 3.5,
+  // or this worker was destroyed without running.
+  if (!m_logUICallbackSaved.exchange(false)) {
+    return;
+  }
+
+  if (!m_engine) {
+    return;
+  }
+
+  LogManager* logger = m_engine->GetLogger();
+  if (!logger) {
+    return;
+  }
+
+  // Put the previous owner back. If there was none, this clears the callback -
+  // which matches the old behaviour for that case, and is still correct
+  // because our lambda captures 'this' and must not survive the worker.
+  logger->SetUICallback(m_previousLogUICallback);
+  m_previousLogUICallback = nullptr;
 }
 
 void RecipeWorker::requestStop()
@@ -181,7 +211,10 @@ void RecipeWorker::run()
     // ✅ Step 3.5: Set up LogManager callback to forward command logs to execution log
     LogManager* logger = m_engine->GetLogger();
     if (logger) {
-      logger->SetUICallback([this](const LogManager::LogEntry& entry) {
+      // Exchange, not Set: remember whoever owned the UI callback (normally
+      // MainWindow's log status bar) so restoreLogUICallback() can hand it
+      // back when this run finishes.
+      m_previousLogUICallback = logger->ExchangeUICallback([this](const LogManager::LogEntry& entry) {
         // Forward log messages to execution log via signal
         // Format: [Source] Message
         QString logText;
@@ -197,6 +230,7 @@ void RecipeWorker::run()
         QMetaObject::invokeMethod(this, "logMessage", Qt::QueuedConnection,
           Q_ARG(QString, logText));
       });
+      m_logUICallbackSaved = true;
       if (!m_loopMode) emit logMessage("Log forwarding enabled for execution log");
     }
 
@@ -484,11 +518,9 @@ void RecipeWorker::run()
           .arg(m_retracePositionsVisited).arg(m_retracePositionsSaved));
       }
 
-      // ✅ Clear LogManager callback before exiting
-      LogManager* logMgr = m_engine->GetLogger();
-      if (logMgr) {
-        logMgr->ClearUICallback();
-      }
+      // ✅ Hand the LogManager UI callback back to its previous owner before
+      // exiting (was ClearUICallback(), which killed the log status bar).
+      restoreLogUICallback();
 
       std::cout << "[RecipeWorker] Emitting executionCompleted signal: " << resultMsg.toStdString() << std::endl;
       emit executionCompleted(success, resultMsg);
@@ -502,11 +534,8 @@ void RecipeWorker::run()
     }
   }
   catch (const std::exception& e) {
-    // ✅ Clear LogManager callback on error too
-    LogManager* logger = m_engine->GetLogger();
-    if (logger) {
-      logger->ClearUICallback();
-    }
+    // ✅ Restore the LogManager UI callback on the error path too
+    restoreLogUICallback();
 
     emit executionCompleted(false, QString("Exception: %1").arg(e.what()));
   }

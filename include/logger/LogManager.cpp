@@ -309,6 +309,14 @@ void LogManager::ClearUICallback()
   m_uiCallback = nullptr;
 }
 
+LogManager::LogCallback LogManager::ExchangeUICallback(LogCallback callback)
+{
+  std::lock_guard<std::mutex> lock(m_mutex);
+  LogCallback previous = m_uiCallback;
+  m_uiCallback = callback;
+  return previous;
+}
+
 std::vector<LogManager::LogEntry> LogManager::GetRecentEntries(size_t count) const
 {
   std::lock_guard<std::mutex> lock(m_mutex);

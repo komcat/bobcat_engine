@@ -17,6 +17,7 @@ class UnifiedMotionManager;
 class SequenceContext;  // ✅ Forward declaration for external context
 struct PlacementRetraceParams;  // Defined in SystemCommandHandler.h
 #include "../sequence/EdgeTransferRetrace.h"
+#include "../logger/LogManager.h"  // LogManager::LogCallback (saved UI callback)
 
 /**
  * @brief Worker thread for recipe execution (Self-contained)
@@ -168,6 +169,12 @@ protected:
 private:
   bool buildSequenceFromRecipe(SequenceBuilder* sequence, RecipeManager* recipeManager);
 
+  // Put back the LogManager UI callback this worker displaced when it started
+  // forwarding log lines into the execution log. Idempotent - run() calls it on
+  // both the success and the exception path, and the destructor calls it again
+  // in case the worker was destroyed without run() completing.
+  void restoreLogUICallback();
+
   SequenceEngine* m_engine;
   ProcessSequenceFactory* m_factory;
   ProductPositionManager* m_positionManager;
@@ -182,6 +189,14 @@ private:
   SequenceContext* m_externalContext = nullptr;  // ✅ NEW: External context from ProgramWorker
   std::vector<bool> m_breakpoints;               // Breakpoints for each enabled step
   bool m_loopMode = false;                       // ✅ NEW: Loop mode (reduces logging)
+
+  // The application-wide LogManager UI callback (MainWindow's log status bar
+  // feed) that this worker displaced while it forwards log lines into the
+  // execution log. Restored on every exit path - see restoreLogUICallback().
+  // m_logUICallbackSaved distinguishes "saved a null callback" from
+  // "never installed ours", so restore is a no-op in the latter case.
+  LogManager::LogCallback m_previousLogUICallback;
+  std::atomic<bool> m_logUICallbackSaved{false};
 
   // ✅ Retrace edit mode
   bool m_retraceEditMode = false;
