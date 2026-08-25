@@ -15,22 +15,16 @@
 #include <QVBoxLayout>
 #include <QLabel>
 #include <iostream>
+#include <chrono>
 
 HardwareInstrumentPage::HardwareInstrumentPage(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
   , m_sidebar(nullptr)
   , m_contentStack(nullptr)
-  , m_cameraLightingPage(nullptr)
-  , m_tcpClientWidget(nullptr)
-  , m_tecControlPage(nullptr)
-  , m_dataStoreWidget(nullptr)
-  , m_piControllerPage(nullptr)
-  , m_acsControllerPage(nullptr)
-  , m_ioControllerPage(nullptr)
-  , m_pneumaticControlPage(nullptr)
   , m_currentButton(nullptr)
 {
+  // Content panel pointers are default-initialized to nullptr in the header.
   setupUI();
 }
 
@@ -43,9 +37,11 @@ void HardwareInstrumentPage::setupUI()
   createSidebar();
   mainLayout->addWidget(m_sidebar);
 
-  createContentArea();
+  // Empty stack - panels are added by ensurePanelBuilt() as they are selected.
+  m_contentStack = new QStackedWidget();
   mainLayout->addWidget(m_contentStack, 9);
 
+  // Builds the camera panel only; the other nine wait for their button.
   showCamera();
 }
 
@@ -138,49 +134,127 @@ void HardwareInstrumentPage::createSidebar()
   sidebarLayout->addStretch();
 }
 
-void HardwareInstrumentPage::createContentArea()
+// ---------------------------------------------------------------------------
+// Panel construction
+//
+// All ten panels used to be built together with this page. None of them
+// connects hardware - every connect here is behind a Connect button - but they
+// are large widget trees (the PI and SMU pages alone run well over a thousand
+// lines each) and each starts one or two worker threads that the page's own
+// hideEvent then immediately stops. Building all ten cost several seconds for
+// panels the operator may never select.
+//
+// Each panel is now built on first selection. The build time is logged because
+// the relative cost of these panels is not obvious from reading them - if one
+// of them dominates, that is where to look next.
+// ---------------------------------------------------------------------------
+QWidget* HardwareInstrumentPage::ensurePanelBuilt(Panel panel)
 {
-  m_contentStack = new QStackedWidget();
+  // Implicit derived-to-base conversion, NOT a reinterpret_cast: QWidget
+  // itself inherits from both QObject and QPaintDevice, so these upcasts can
+  // involve a pointer adjustment. All panel types are complete in this TU.
+  QWidget* existing = nullptr;
+  switch (panel) {
+  case Panel::Camera:      existing = m_cameraLightingPage; break;
+  case Panel::PIHexapod:   existing = m_piControllerPage; break;
+  case Panel::ACS:         existing = m_acsControllerPage; break;
+  case Panel::IO:          existing = m_ioControllerPage; break;
+  case Panel::Pneumatic:   existing = m_pneumaticControlPage; break;
+  case Panel::DataView:    existing = m_dataStoreWidget; break;
+  case Panel::TCPClient:   existing = m_tcpClientWidget; break;
+  case Panel::LaserTEC:    existing = m_tecControlPage; break;
+  case Panel::PowerSupply: existing = m_powerSupplyPage; break;
+  case Panel::SMU:         existing = m_smuControlPage; break;
+  }
+  if (existing) {
+    return existing;
+  }
 
-  // Index 0: Camera + Lighting (tabbed page)
-  m_cameraLightingPage = new CameraLightingPage(m_context);
-  m_contentStack->addWidget(m_cameraLightingPage);
+  const auto buildStart = std::chrono::steady_clock::now();
 
-  // Index 1: PI Hexapod
-  m_piControllerPage = new PIControllerPage(m_context);
-  m_contentStack->addWidget(m_piControllerPage);
+  QWidget* built = nullptr;
+  const char* name = "";
 
-  // Index 2: ACS
-  m_acsControllerPage = new ACSControllerPage(m_context);
-  m_contentStack->addWidget(m_acsControllerPage);
+  switch (panel) {
+  case Panel::Camera:
+    m_cameraLightingPage = new CameraLightingPage(m_context);
+    built = m_cameraLightingPage;
+    name = "Camera+Lighting";
+    break;
+  case Panel::PIHexapod:
+    m_piControllerPage = new PIControllerPage(m_context);
+    built = m_piControllerPage;
+    name = "PI Hexapod";
+    break;
+  case Panel::ACS:
+    m_acsControllerPage = new ACSControllerPage(m_context);
+    built = m_acsControllerPage;
+    name = "ACS";
+    break;
+  case Panel::IO:
+    m_ioControllerPage = new IOControllerPage(m_context);
+    built = m_ioControllerPage;
+    name = "IO";
+    break;
+  case Panel::Pneumatic:
+    m_pneumaticControlPage = new PneumaticControlPage(m_context);
+    built = m_pneumaticControlPage;
+    name = "Pneumatic";
+    break;
+  case Panel::DataView:
+    m_dataStoreWidget = new DataStoreWidget(m_context);
+    built = m_dataStoreWidget;
+    name = "Data View";
+    break;
+  case Panel::TCPClient:
+    m_tcpClientWidget = new TcpClientWidget(m_context);
+    built = m_tcpClientWidget;
+    name = "TCP Client";
+    break;
+  case Panel::LaserTEC:
+    m_tecControlPage = new TECControlPage(m_context);
+    built = m_tecControlPage;
+    name = "Laser/TEC";
+    break;
+  case Panel::PowerSupply:
+    m_powerSupplyPage = new PowerSupplyControlPage(m_context);
+    built = m_powerSupplyPage;
+    name = "Power Supply";
+    break;
+  case Panel::SMU:
+    m_smuControlPage = new SMUControlPage(m_context);
+    built = m_smuControlPage;
+    name = "SMU";
+    break;
+  }
 
-  // Index 3: IO
-  m_ioControllerPage = new IOControllerPage(m_context);
-  m_contentStack->addWidget(m_ioControllerPage);
+  if (!built) {
+    return nullptr;
+  }
 
-  // Index 4: Pneumatic
-  m_pneumaticControlPage = new PneumaticControlPage(m_context);
-  m_contentStack->addWidget(m_pneumaticControlPage);
+  m_contentStack->addWidget(built);
 
-  // Index 5: Data View
-  m_dataStoreWidget = new DataStoreWidget(m_context);
-  m_contentStack->addWidget(m_dataStoreWidget);
+  const auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now() - buildStart).count();
+  std::cout << "[HardwareInstrumentPage] Built panel '" << name << "' in "
+            << elapsedMs << " ms" << std::endl;
 
-  // Index 6: TCP Client
-  m_tcpClientWidget = new TcpClientWidget(m_context);
-  m_contentStack->addWidget(m_tcpClientWidget);
+  return built;
+}
 
-  // Index 7: Laser/TEC
-  m_tecControlPage = new TECControlPage(m_context);
-  m_contentStack->addWidget(m_tecControlPage);
+void HardwareInstrumentPage::showPanel(Panel panel, QPushButton* button, const char* logName)
+{
+  QWidget* page = ensurePanelBuilt(panel);
+  if (!page) {
+    std::cerr << "[HardwareInstrumentPage] Failed to build panel: " << logName << std::endl;
+    return;
+  }
 
-  // Index 8: Power Supply - ✅ UPDATED TO USE ACTUAL PAGE
-  PowerSupplyControlPage* powerSupplyPage = new PowerSupplyControlPage(m_context);
-  m_contentStack->addWidget(powerSupplyPage);
-
-  // Index 9: SMU - ✅ UPDATED TO USE ACTUAL PAGE
-  m_smuControlPage = new SMUControlPage(m_context);
-  m_contentStack->addWidget(m_smuControlPage);
+  m_contentStack->setCurrentWidget(page);
+  if (m_currentButton) m_currentButton->setChecked(false);
+  button->setChecked(true);
+  m_currentButton = button;
+  std::cout << "[HardwareInstrumentPage] Showing " << logName << std::endl;
 }
 
 QPushButton* HardwareInstrumentPage::createSidebarButton(const QString& text)
@@ -225,90 +299,50 @@ QPushButton* HardwareInstrumentPage::createSidebarButton(const QString& text)
 
 void HardwareInstrumentPage::showCamera()
 {
-  m_contentStack->setCurrentIndex(0);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_cameraButton->setChecked(true);
-  m_currentButton = m_cameraButton;
-  std::cout << "[HardwareInstrumentPage] Showing camera view" << std::endl;
+  showPanel(Panel::Camera, m_cameraButton, "camera view");
 }
 
 void HardwareInstrumentPage::showPIHexapod()
 {
-  m_contentStack->setCurrentIndex(1);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_piButton->setChecked(true);
-  m_currentButton = m_piButton;
-  std::cout << "[HardwareInstrumentPage] Showing PI Hexapod page" << std::endl;
+  showPanel(Panel::PIHexapod, m_piButton, "PI Hexapod page");
 }
 
 void HardwareInstrumentPage::showACS()
 {
-  m_contentStack->setCurrentIndex(2);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_acsButton->setChecked(true);
-  m_currentButton = m_acsButton;
-  std::cout << "[HardwareInstrumentPage] Showing ACS page" << std::endl;
+  showPanel(Panel::ACS, m_acsButton, "ACS page");
 }
 
 void HardwareInstrumentPage::showIO()
 {
-  m_contentStack->setCurrentIndex(3);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_ioButton->setChecked(true);
-  m_currentButton = m_ioButton;
-  std::cout << "[HardwareInstrumentPage] Showing IO page" << std::endl;
+  showPanel(Panel::IO, m_ioButton, "IO page");
 }
 
 void HardwareInstrumentPage::showPneumatic()
 {
-  m_contentStack->setCurrentIndex(4);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_pneumaticButton->setChecked(true);
-  m_currentButton = m_pneumaticButton;
-  std::cout << "[HardwareInstrumentPage] Showing Pneumatic page" << std::endl;
+  showPanel(Panel::Pneumatic, m_pneumaticButton, "Pneumatic page");
 }
 
 void HardwareInstrumentPage::showDataView()
 {
-  m_contentStack->setCurrentIndex(5);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_dataViewButton->setChecked(true);
-  m_currentButton = m_dataViewButton;
-  std::cout << "[HardwareInstrumentPage] Showing Data View" << std::endl;
+  showPanel(Panel::DataView, m_dataViewButton, "Data View");
 }
 
 void HardwareInstrumentPage::showTCPClient()
 {
-  m_contentStack->setCurrentIndex(6);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_tcpClientButton->setChecked(true);
-  m_currentButton = m_tcpClientButton;
-  std::cout << "[HardwareInstrumentPage] Showing TCP Client" << std::endl;
+  showPanel(Panel::TCPClient, m_tcpClientButton, "TCP Client");
 }
 
 void HardwareInstrumentPage::showLaserTEC()
 {
-  m_contentStack->setCurrentIndex(7);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_laserTECButton->setChecked(true);
-  m_currentButton = m_laserTECButton;
-  std::cout << "[HardwareInstrumentPage] Showing Laser/TEC" << std::endl;
+  showPanel(Panel::LaserTEC, m_laserTECButton, "Laser/TEC");
 }
 
 void HardwareInstrumentPage::showPowerSupply()
 {
-  m_contentStack->setCurrentIndex(8);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_powerSupplyButton->setChecked(true);
-  m_currentButton = m_powerSupplyButton;
-  std::cout << "[HardwareInstrumentPage] Showing Power Supply page" << std::endl;
+  showPanel(Panel::PowerSupply, m_powerSupplyButton, "Power Supply page");
 }
 
 void HardwareInstrumentPage::showSMU()
 {
-  m_contentStack->setCurrentIndex(9);
-  if (m_currentButton) m_currentButton->setChecked(false);
-  m_smuButton->setChecked(true);
-  m_currentButton = m_smuButton;
-  std::cout << "[HardwareInstrumentPage] Showing SMU page" << std::endl;
+  showPanel(Panel::SMU, m_smuButton, "SMU page");
 }
