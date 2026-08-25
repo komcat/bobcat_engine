@@ -152,6 +152,36 @@ QString recipeFileLabelNeutralQss()
           QLatin1String(Theme::Color::borderSubtle));
 }
 
+// Scoped stopwatch for constructor phases. RecipePage takes seconds to build
+// and nobody has established which part is responsible - this reports it per
+// phase instead of guessing. Prints on scope exit.
+//
+// NOTE: measure in a RELEASE build. Qt widget construction under MSVC debug is
+// several times slower, so debug numbers will mislead you about the ranking.
+class PhaseTimer
+{
+public:
+  explicit PhaseTimer(const char* label)
+    : m_label(label)
+    , m_start(std::chrono::steady_clock::now())
+  {
+  }
+
+  ~PhaseTimer()
+  {
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - m_start).count();
+    std::cout << "[RecipePage][timing] " << m_label << ": " << ms << " ms" << std::endl;
+  }
+
+  PhaseTimer(const PhaseTimer&) = delete;
+  PhaseTimer& operator=(const PhaseTimer&) = delete;
+
+private:
+  const char* m_label;
+  std::chrono::steady_clock::time_point m_start;
+};
+
 }  // namespace
 
 RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* matrixLoader, QWidget* parent)
@@ -185,8 +215,17 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
   , m_pageState(PageState::Editing)  // Start in editing mode
   , m_middleTabWidget(nullptr)       // Middle panel tab widget
 {
-  setupUI();
-  setupSequenceEngine();
+  // Total for the constructor BODY. MainWindow's page-build timer reports the
+  // total including the member-init list (RecipeManager, ProcessSequenceFactory
+  // and its 30 builder registrations, RecipeClipboard); the difference between
+  // the two is what the init list cost.
+  PhaseTimer ctorTimer("ctor body TOTAL");
+
+  { PhaseTimer t("setupUI"); setupUI(); }
+  { PhaseTimer t("setupSequenceEngine"); setupSequenceEngine(); }
+
+  {
+  PhaseTimer wiringTimer("execution controller + signal wiring");
 
   // Owns RecipeWorker lifetime + forwards its signals so we connect once
   // (here) instead of re-wiring on every execution.
@@ -213,7 +252,10 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
           this, &RecipePage::onStepExecutionCompleted);
   connect(m_executionController, &RecipeExecutionController::executionPaused,
           this, &RecipePage::onExecutionPaused);
+  }
 
+  {
+  PhaseTimer t("QuickAddController");
   // Quick add (Ctrl+B) controller. Forwards a chosen process type back
   // to the page for insertion + UI refresh.
   m_quickAddController = new QuickAddController(this, m_recipeManager, m_processCatalog, this);
@@ -227,7 +269,10 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
             std::cout << "[RecipePage] Quick Add: Added '"
                       << processType.toStdString() << "'" << std::endl;
           });
+  }
 
+  {
+  PhaseTimer t("RecipeTreeItemFactory");
   // Initialize tree item factory after m_recipeTree is created in setupUI
   m_treeItemFactory = std::make_unique<RecipeTreeItemFactory>(
     m_recipeTree,
@@ -242,15 +287,24 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
       }
     }
   );
+  }
 
+  {
+  PhaseTimer t("ContextViewerWindow");
   // Create context viewer window (but don't show it yet)
   m_contextViewer = new ContextViewerWindow(this);
   connect(m_contextViewer, &ContextViewerWindow::refreshRequested,
           this, &RecipePage::onContextRefreshRequested);
+  }
 
+  {
+  PhaseTimer t("loadLastRecipeFromSettings (disk)");
   // ✅ Auto-load last recipe from settings
   loadLastRecipeFromSettings();
+  }
 
+  {
+  PhaseTimer t("product check + recipe browser refresh (disk)");
   // Check if product already loaded
   if (m_context->productPositionManager &&
     m_context->productPositionManager->HasLoadedProduct()) {
@@ -261,6 +315,7 @@ RecipePage::RecipePage(ApplicationContext* context, TransformationMatrixLoader* 
 
     // Populate recipe list for loaded product
     if (m_recipeBrowser) m_recipeBrowser->refresh();
+  }
   }
 
   std::cout << "[RecipePage] Initialized" << std::endl;
@@ -336,17 +391,26 @@ void RecipePage::setupUI()
   m_mainSplitter->setHandleWidth(1);          // Hairline handles (visually unobtrusive)
   m_mainSplitter->setChildrenCollapsible(false);
 
-  m_processCatalog = new ProcessCatalogWidget();
-  connect(m_processCatalog, &ProcessCatalogWidget::addProcessRequested,
-          this, &RecipePage::onAddProcessRequested);
-  m_mainSplitter->addWidget(m_processCatalog);
+  {
+    PhaseTimer t("  setupUI: ProcessCatalogWidget (left panel)");
+    m_processCatalog = new ProcessCatalogWidget();
+    connect(m_processCatalog, &ProcessCatalogWidget::addProcessRequested,
+            this, &RecipePage::onAddProcessRequested);
+    m_mainSplitter->addWidget(m_processCatalog);
+  }
 
   QWidget* middlePanel = new QWidget();
-  createMiddlePanel(middlePanel);
+  {
+    PhaseTimer t("  setupUI: createMiddlePanel");
+    createMiddlePanel(middlePanel);
+  }
   m_mainSplitter->addWidget(middlePanel);
 
   QWidget* rightPanel = new QWidget();
-  createRightPanel(rightPanel);
+  {
+    PhaseTimer t("  setupUI: createRightPanel");
+    createRightPanel(rightPanel);
+  }
   m_mainSplitter->addWidget(rightPanel);
 
   // Lock the splitter handles so the user cannot drag the panels.
@@ -354,10 +418,18 @@ void RecipePage::setupUI()
   if (auto* h1 = m_mainSplitter->handle(1)) h1->setEnabled(false);
   if (auto* h2 = m_mainSplitter->handle(2)) h2->setEnabled(false);
 
-  mainLayout->addWidget(m_mainSplitter, 1);
+  {
+    // setupUI totals ~665ms but the three panels only account for ~500ms.
+    // These two cover the rest.
+    PhaseTimer t("  setupUI: addWidget(splitter)");
+    mainLayout->addWidget(m_mainSplitter, 1);
+  }
 
-  // Apply initial 20% / 30% / 50% sizing.  resizeEvent keeps it pinned on resize.
-  applyPanelSizes();
+  {
+    PhaseTimer t("  setupUI: applyPanelSizes");
+    // Apply initial 20% / 30% / 50% sizing.  resizeEvent keeps it pinned on resize.
+    applyPanelSizes();
+  }
 }
 
 void RecipePage::applyPanelSizes()
@@ -1675,7 +1747,12 @@ void RecipePage::refreshRecipeList()
   // Stack to track parent nodes for nesting
   std::vector<QTreeWidgetItem*> parentStack;
 
+  // Times the item-building loop specifically. createStepItem() calls
+  // setItemWidget() five times per row, each with a freshly constructed
+  // widget - if this loop owns the cost, that is why.
   int stepIndex = 0;
+  {
+  PhaseTimer refreshTimer("    refreshRecipeList: item loop (5 setItemWidget per row)");
   for (const auto& step : m_recipeManager->getAllSteps()) {
     QTreeWidgetItem* currentParent = parentStack.empty() ? nullptr : parentStack.back();
 
@@ -1706,16 +1783,20 @@ void RecipePage::refreshRecipeList()
 
     stepIndex++;
   }
+  }
 
   // Restore selection
-  selectStepByIndex(previousSelection);
+  { PhaseTimer t("    refreshRecipeList: selectStepByIndex"); selectStepByIndex(previousSelection); }
 
   // Re-enable updates and signals
+  {
+  PhaseTimer t("    refreshRecipeList: setUpdatesEnabled(true) (layout/repaint)");
   m_recipeTree->setUpdatesEnabled(true);
   m_recipeTree->blockSignals(false);
+  }
 
   // Update context variable preview
-  updateContextVariablePreview();
+  { PhaseTimer t("    refreshRecipeList: updateContextVariablePreview"); updateContextVariablePreview(); }
 }
 
 void RecipePage::updateContextVariablePreview()
@@ -1938,9 +2019,18 @@ void RecipePage::setupSequenceEngine()
 {
   std::cout << "[RecipePage] Setting up SequenceEngine..." << std::endl;
 
-  m_sequenceEngine = new SequenceEngine(m_context);
+  {
+    // Split from BuildDeviceRegistry() below: the constructor creates ~20
+    // command handlers, the registry walks every configured device. They fail
+    // for different reasons and are worth telling apart.
+    PhaseTimer t("  SequenceEngine ctor (~20 command handlers)");
+    m_sequenceEngine = new SequenceEngine(m_context);
+  }
   m_sequenceEngine->SetLogger(m_context->logManager);
-  m_sequenceEngine->BuildDeviceRegistry();
+  {
+    PhaseTimer t("  BuildDeviceRegistry");
+    m_sequenceEngine->BuildDeviceRegistry();
+  }
   m_sequenceEngine->SetScriptEngine(m_context->scriptEngine);
   m_sequenceEngine->SetStateSnapshotManager(m_context->stateSnapshotManager);
 
@@ -3104,14 +3194,20 @@ void RecipePage::loadLastRecipeFromSettings()
     return; // File was deleted
   }
 
-  if (!m_recipeManager->loadRecipe(lastRecipePath.toStdString())) {
-    return; // Failed to load
+  {
+    // Splits the file parse from the UI population that follows. This whole
+    // function did NOT get faster on a warm file cache, so the cost is not
+    // disk - these timers say which half owns it.
+    PhaseTimer t("  loadLast: RecipeManager::loadRecipe (parse)");
+    if (!m_recipeManager->loadRecipe(lastRecipePath.toStdString())) {
+      return; // Failed to load
+    }
   }
 
   m_recipeNameEdit->setText(QString::fromStdString(m_recipeManager->getRecipeName()));
-  refreshRecipeList();
-  clearConfigurationForm();
-  updateRecipeFileNameDisplay();  // ✅ NEW: Update recipe file name label
+  { PhaseTimer t("  loadLast: refreshRecipeList (tree)"); refreshRecipeList(); }
+  { PhaseTimer t("  loadLast: clearConfigurationForm"); clearConfigurationForm(); }
+  { PhaseTimer t("  loadLast: updateRecipeFileNameDisplay"); updateRecipeFileNameDisplay(); }
 
   std::cout << "[RecipePage] Successfully auto-loaded recipe: "
             << m_recipeManager->getRecipeName() << std::endl;
@@ -3498,8 +3594,6 @@ void RecipePage::showEvent(QShowEvent* event)
   // the available-processes tree.
   if (m_processCatalog) m_processCatalog->refresh();
 
-  std::cout << "[RecipePage] Page activated - hot reloading position data..." << std::endl;
-
   // Reload product position data from disk to pick up any changes from Motion page
   if (m_context && m_context->productPositionManager &&
       m_context->productPositionManager->HasLoadedProduct()) {
@@ -3507,8 +3601,32 @@ void RecipePage::showEvent(QShowEvent* event)
     std::string productPath = m_context->productPositionManager->GetCurrentProductPath();
     std::string productName = m_context->productPositionManager->GetCurrentProductName();
 
+    // The point of this reload is to pick up edits made on the Motion page, so
+    // it only needs to run when the file has actually changed. Every activation
+    // used to re-read and re-parse the whole positions file (61 positions here)
+    // and re-export them to the motion manager, even when nothing had touched
+    // it. Compare the modification time and skip when it matches.
+    const QFileInfo productInfo(QString::fromStdString(productPath));
+    const QDateTime productMtime = productInfo.lastModified();
+    const bool unchanged = productInfo.exists()
+                        && m_lastProductReloadMtime.isValid()
+                        && m_lastProductReloadPath == productPath
+                        && m_lastProductReloadMtime == productMtime;
+
+    if (unchanged) {
+      // Nothing to do. Deliberately silent - this is the common case and the
+      // whole point is to stop this path generating noise and work.
+      // QWidget::showEvent() already ran at the top of this function.
+      return;
+    }
+
+    std::cout << "[RecipePage] Page activated - hot reloading position data..." << std::endl;
+
     // Reload product data from disk
     if (m_context->productPositionManager->LoadProduct(productPath)) {
+      m_lastProductReloadPath = productPath;
+      m_lastProductReloadMtime = productMtime;
+
       // Re-export to motion manager so named positions are updated
       if (m_context->motionManager) {
         m_context->productPositionManager->ExportToMotionManager(*m_context->motionManager);
