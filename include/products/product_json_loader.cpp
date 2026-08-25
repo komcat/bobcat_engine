@@ -1,5 +1,6 @@
 // product_json_loader.cpp
 #include "product_json_loader.h"
+#include "product_log.h"
 #include "product_position_manager.h"
 #include "MotionTypes.h"
 #include <iostream>
@@ -421,9 +422,11 @@ static int loadDevicePositions(ProductPositionManager& manager,
     manager.AddPosition(deviceName, posName, pos);
     count++;
 
-    std::cout << "[DEBUG] ProductJsonLoader: Loaded " << deviceName
-      << "." << posName << " -> ("
-      << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
+    if constexpr (ProductLog::kVerbosePositions) {
+      std::cout << "[DEBUG] ProductJsonLoader: Loaded " << deviceName
+        << "." << posName << " -> ("
+        << pos.x << ", " << pos.y << ", " << pos.z << ")" << std::endl;
+    }
   }
 
   return count;
