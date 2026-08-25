@@ -76,9 +76,20 @@ public:
   // isn't enough).
   void SetMinimumLevel(Level level);
 
-  // UI callback for real-time updates
+  // UI callback for real-time updates.
+  //
+  // There is exactly ONE UI callback for the whole application, and MainWindow
+  // owns it for the life of the session (it drives the log status bar). Any
+  // code that needs to redirect log output temporarily must put the previous
+  // callback back afterwards - use ExchangeUICallback() and restore, never
+  // ClearUICallback(), or the status bar goes dead for the rest of the run.
   void SetUICallback(LogCallback callback);
   void ClearUICallback();
+
+  // Install `callback` and return the callback it replaced, atomically.
+  // A separate get-then-set would leave a window where a concurrent installer
+  // could be lost.
+  [[nodiscard]] LogCallback ExchangeUICallback(LogCallback callback);
 
   // History access
   std::vector<LogEntry> GetRecentEntries(size_t count = 100) const;
