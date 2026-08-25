@@ -1,5 +1,6 @@
 ﻿// product_position_manager.cpp
 #include "product_position_manager.h"
+#include "product_log.h"
 #include "product_json_loader.h"
 #include "unified_motion_manager.h"
 #include <iostream>
@@ -163,8 +164,10 @@ std::string ProductPositionManager::ExtractProductName(const std::string& filePa
     size_t end = filename.find(".json");
     if (end > start) {
       std::string productName = filename.substr(start, end - start);
-      std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
-        << productName << "' from filename: " << filename << std::endl;
+      if constexpr (ProductLog::kVerbosePositions) {
+        std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
+          << productName << "' from filename: " << filename << std::endl;
+      }
       return productName;
     }
   }
@@ -177,8 +180,10 @@ std::string ProductPositionManager::ExtractProductName(const std::string& filePa
 
   std::string productName = filePath.substr(secondLastSlash + 1, lastSlash - secondLastSlash - 1);
 
-  std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
-    << productName << "' from directory path: " << filePath << std::endl;
+  if constexpr (ProductLog::kVerbosePositions) {
+    std::cout << "[DEBUG] ProductPositionManager: Extracted product name '"
+      << productName << "' from directory path: " << filePath << std::endl;
+  }
 
   return productName;
 }
@@ -192,10 +197,14 @@ void ProductPositionManager::AddPosition(const std::string& deviceName,
   const PositionStruct& position) {
   m_positions[deviceName][positionName] = position;
 
-  std::cout << "[INFO] ProductPositionManager: Added/Updated position '"
-    << positionName << "' for device " << deviceName
-    << " -> (" << position.x << ", " << position.y << ", "
-    << position.z << ")" << std::endl;
+  // Demoted from INFO to gated DEBUG: this fires once per position, so a
+  // routine product load logged 61 INFO lines. The caller reports the total.
+  if constexpr (ProductLog::kVerbosePositions) {
+    std::cout << "[DEBUG] ProductPositionManager: Added/Updated position '"
+      << positionName << "' for device " << deviceName
+      << " -> (" << position.x << ", " << position.y << ", "
+      << position.z << ")" << std::endl;
+  }
 }
 
 void ProductPositionManager::AddPosition(const std::string& deviceName,
