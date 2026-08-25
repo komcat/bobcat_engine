@@ -15,6 +15,7 @@ class ACSControllerPage;
 class IOControllerPage;
 class PneumaticControlPage;  // ✅ ADD
 class TECControlPage;  // Add forward declaration
+class PowerSupplyControlPage;
 class SMUControlPage;  // Add forward declaration for SMU
 
 /**
@@ -45,10 +46,32 @@ private slots:
   void showSMU();
 
 private:
+  // One entry per sidebar button. Panels are built on first selection - see
+  // ensurePanelBuilt().
+  enum class Panel {
+    Camera,
+    PIHexapod,
+    ACS,
+    IO,
+    Pneumatic,
+    DataView,
+    TCPClient,
+    LaserTEC,
+    PowerSupply,
+    SMU
+  };
+
   void setupUI();
   void createSidebar();
-  void createContentArea();
   QPushButton* createSidebarButton(const QString& text);
+
+  // Build `panel` if it does not exist yet and add it to the content stack.
+  // Idempotent. Logs how long the build took - these panels are large and
+  // their relative cost is not obvious from reading them.
+  QWidget* ensurePanelBuilt(Panel panel);
+
+  // ensurePanelBuilt() + show it + update the sidebar button state.
+  void showPanel(Panel panel, QPushButton* button, const char* logName);
 
   ApplicationContext* m_context;
 
@@ -69,16 +92,17 @@ private:
   QPushButton* m_powerSupplyButton;
   QPushButton* m_smuButton;
 
-  // Content pages
-  CameraLightingPage* m_cameraLightingPage;  // Contains Camera + Lighting tabs
-  TcpClientWidget* m_tcpClientWidget;
-  DataStoreWidget* m_dataStoreWidget;
-  PIControllerPage* m_piControllerPage;
-  ACSControllerPage* m_acsControllerPage;
-  IOControllerPage* m_ioControllerPage;
-  PneumaticControlPage* m_pneumaticControlPage;  // ✅ ADD
-  TECControlPage* m_tecControlPage;  // Add member variable
-  SMUControlPage* m_smuControlPage;  // Add SMU page
+  // Content pages - all null until ensurePanelBuilt() creates them.
+  CameraLightingPage* m_cameraLightingPage = nullptr;  // Contains Camera + Lighting tabs
+  TcpClientWidget* m_tcpClientWidget = nullptr;
+  DataStoreWidget* m_dataStoreWidget = nullptr;
+  PIControllerPage* m_piControllerPage = nullptr;
+  ACSControllerPage* m_acsControllerPage = nullptr;
+  IOControllerPage* m_ioControllerPage = nullptr;
+  PneumaticControlPage* m_pneumaticControlPage = nullptr;
+  TECControlPage* m_tecControlPage = nullptr;
+  PowerSupplyControlPage* m_powerSupplyPage = nullptr;  // was a local - now needed for lazy build
+  SMUControlPage* m_smuControlPage = nullptr;
 
   // Track current selection
   QPushButton* m_currentButton;
