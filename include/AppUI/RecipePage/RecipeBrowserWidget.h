@@ -29,6 +29,8 @@ class QLineEdit;
 class QLabel;
 class QPushButton;
 class QEvent;
+class QFileInfo;
+class QSettings;
 struct ApplicationContext;
 class RecipeManager;
 
@@ -75,6 +77,29 @@ private:
   bool confirmRecipeMove(const QString& recipeName, const QString& targetFolder);
   QStringList findRecipeUsageInPrograms(const QString& recipeFilePath) const;
   QStringList findRecipeUsageAsSubRecipe(const QString& recipeFilePath) const;
+
+  // Display name for a recipe file, i.e. its "recipe_name" field, falling
+  // back to the file's base name.
+  //
+  // refresh() needs one short string per recipe, and used to get it by
+  // opening every file, reading it whole and running QJsonDocument::fromJson
+  // over it. With 59 recipes that measured 258ms on a release build with a
+  // cold file cache (~800ms fully cold) - two thirds of the entire Recipe
+  // page build - to obtain 59 strings.
+  //
+  // This caches the answer against the file's modification time and size, so
+  // an unchanged recipe is never opened at all on later runs. The cache is
+  // persisted in QSettings, because the expensive case is the first refresh
+  // after the application starts.
+  // `cache` must already be positioned in the RecipeNameCache group; refresh()
+  // opens one for the whole listing rather than one per file.
+  QString recipeDisplayName(const QFileInfo& fileInfo, QSettings& cache) const;
+
+  // Reads "recipe_name" out of the first kHeadBytes of the file. Recipe JSON
+  // is written with sorted keys, so "recipe_name" always precedes the large
+  // "steps" array - in practice it lands around byte 56. Returns an empty
+  // string if it is not in the head, in which case the caller parses fully.
+  static QString readRecipeNameFromHead(const QString& absoluteFilePath);
 
   ApplicationContext* m_context;
   RecipeManager* m_recipeManager;
