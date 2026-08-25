@@ -100,6 +100,9 @@ private:
   // directly, because a null member means "not built yet", not "unavailable".
   QWidget* ensurePageBuilt(PageId id);
 
+  // Human-readable name for a PageId, used in the build-time log line.
+  static const char* pageName(PageId id);
+
   // ensurePageBuilt() + switch the stack to it.
   void navigateTo(PageId id);
 

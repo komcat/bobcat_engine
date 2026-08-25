@@ -5,10 +5,14 @@
 #include "SequenceBuilder.h"
 #include "SequenceEngine.h"
 #include <iostream>
+#include <chrono>
 
 ProcessSequenceFactory::ProcessSequenceFactory()
 {
-  std::cout << "[ProcessSequenceFactory] Initializing..." << std::endl;
+  // RecipePage's member-init list costs ~255ms, stable across warm and cold
+  // runs, and constructing this factory is the bulk of that list. All it does
+  // is 30 map inserts, so this timer is here to confirm where the time goes.
+  const auto initStart = std::chrono::steady_clock::now();
 
   // ============================================================================
   // REGISTER PICK PROCESS BUILDER
@@ -719,8 +723,10 @@ ProcessSequenceFactory::ProcessSequenceFactory()
     std::cout << "[ProcessSequenceFactory] Built Conditional End" << std::endl;
   });
 
+  const auto initUs = std::chrono::duration_cast<std::chrono::microseconds>(
+    std::chrono::steady_clock::now() - initStart).count();
   std::cout << "[ProcessSequenceFactory] Registered " << m_builders.size()
-    << " process builders" << std::endl;
+    << " process builders in " << (initUs / 1000.0) << " ms" << std::endl;
 }
 
 void ProcessSequenceFactory::RegisterProcessBuilder(
@@ -728,7 +734,8 @@ void ProcessSequenceFactory::RegisterProcessBuilder(
   SequenceBuilderFunc builder)
 {
   m_builders[processType] = builder;
-  std::cout << "[ProcessSequenceFactory] Registered builder: " << processType << std::endl;
+  // Per-builder line removed: 30 flushed console lines naming a fixed set of
+  // builders that never changes. The summary line above reports the count.
 }
 
 bool ProcessSequenceFactory::BuildStep(

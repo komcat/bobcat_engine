@@ -39,6 +39,7 @@
 #include <QScreen>
 #include <QInputDialog>
 #include <iostream>
+#include <chrono>
 
 MainWindow::MainWindow(ApplicationContext* context, QWidget* parent)
   : QMainWindow(parent)
@@ -267,8 +268,53 @@ void MainWindow::createPages()
   std::cout << "[MainWindow] Main menu ready (other pages built on first use)" << std::endl;
 }
 
+const char* MainWindow::pageName(PageId id)
+{
+  switch (id) {
+  case PageId::MainMenu:      return "MainMenu";
+  case PageId::Hardware:      return "Hardware";
+  case PageId::ConfigEditor:  return "ConfigEditor";
+  case PageId::LogViewer:     return "LogViewer";
+  case PageId::Motion:        return "Motion";
+  case PageId::Recipe:        return "Recipe";
+  case PageId::RunProgram:    return "RunProgram";
+  case PageId::VisionManager: return "VisionManager";
+  case PageId::Settings:      return "Settings";
+  case PageId::Trainer:       return "Trainer";
+  case PageId::DataBackup:    return "DataBackup";
+  case PageId::ScriptRunner:  return "ScriptRunner";
+  }
+  return "Unknown";
+}
+
 QWidget* MainWindow::ensurePageBuilt(PageId id)
 {
+  // Report how long each page takes to build the first time it is opened.
+  // These pages are seconds-scale and that cost is now paid on a keypress, so
+  // it needs to be visible. Measure in a RELEASE build - MSVC debug inflates
+  // Qt widget construction and will mislead you about the ranking.
+  //
+  // Detects "a build happened" by watching the page stack grow rather than by
+  // flagging each case: every builder below ends in addWidget(), and this
+  // function has a return in every branch, so an RAII check in one place beats
+  // eleven copies of a flag.
+  struct BuildTimer {
+    const QStackedWidget* stack;
+    const char* name;
+    int countBefore;
+    std::chrono::steady_clock::time_point start;
+
+    ~BuildTimer()
+    {
+      if (stack->count() == countBefore) return;  // page already existed
+      const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - start).count();
+      std::cout << "[MainWindow][timing] Built page '" << name << "' in "
+                << ms << " ms" << std::endl;
+    }
+  } buildTimer{m_pageStack, pageName(id), m_pageStack->count(),
+               std::chrono::steady_clock::now()};
+
   switch (id) {
   case PageId::MainMenu:
     // Always built by createPages().
@@ -328,7 +374,19 @@ QWidget* MainWindow::ensurePageBuilt(PageId id)
 
   case PageId::Recipe:
     if (!m_recipePage) {
-      m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
+      // The gap between this page's total build time and RecipePage's own
+      // "ctor body TOTAL" is ~243ms. That gap is NOT the member-init list as
+      // first assumed (ProcessSequenceFactory measures 0.1ms) - it is the
+      // QWidget base construction plus, most likely, addWidget() forcing a
+      // layout pass over the finished page. These two timers separate them.
+      {
+        const auto t0 = std::chrono::steady_clock::now();
+        m_recipePage = new RecipePage(m_context, m_matrixLoader, this);
+        std::cout << "[MainWindow][timing]   new RecipePage (ctor incl. init list): "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - t0).count()
+                  << " ms" << std::endl;
+      }
       connect(m_recipePage, &RecipePage::backToMainMenu,
         this, &MainWindow::onBackToMainMenu);
       // Connect product change notifications from MainMenu to RecipePage
@@ -336,7 +394,14 @@ QWidget* MainWindow::ensurePageBuilt(PageId id)
         m_recipePage, &RecipePage::onProductChanged);
       connect(&ThemeManager::instance(), &ThemeManager::themeChanged,
         m_recipePage, &RecipePage::applyTheme);
-      m_pageStack->addWidget(m_recipePage);
+      {
+        const auto t0 = std::chrono::steady_clock::now();
+        m_pageStack->addWidget(m_recipePage);
+        std::cout << "[MainWindow][timing]   addWidget(RecipePage): "
+                  << std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - t0).count()
+                  << " ms" << std::endl;
+      }
     }
     return m_recipePage;
 

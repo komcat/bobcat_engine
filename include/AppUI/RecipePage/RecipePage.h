@@ -2,6 +2,7 @@
 #pragma once
 
 #include <QWidget>
+#include <QDateTime>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QFormLayout>
@@ -306,6 +307,13 @@ private:
   // Page state management
   PageState m_pageState;                  // Current page state (Editing/Executing)
   void setPageState(PageState state);     // Switch between editing and executing modes
+
+  // Last product file that showEvent()'s hot reload actually loaded, and its
+  // modification time at that moment. Used to skip the reload when the file
+  // has not changed since - see showEvent(). An invalid QDateTime means "never
+  // reloaded", which forces the first activation to load.
+  std::string m_lastProductReloadPath;
+  QDateTime m_lastProductReloadMtime;
 
 protected:
   void keyPressEvent(QKeyEvent* event) override;
