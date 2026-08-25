@@ -249,6 +249,14 @@ private:
   mutable std::mutex m_camerasMutex;
   std::unordered_map<std::string, std::unique_ptr<ManagedCamera>> m_cameras;
 
+  // Serializes Connect/Disconnect on the hardware adapters. Separate from
+  // m_camerasMutex so the (slow, blocking) device I/O never holds the map
+  // lock. Startup connects hardware on a worker thread while the UI thread
+  // builds pages that may also select a camera, so the IsConnected() check
+  // and the Connect() that follows it must be atomic with respect to each
+  // other or the device can be opened twice.
+  std::mutex m_connectMutex;
+
   mutable std::mutex m_subscribersMutex;
   std::unordered_map<std::string, SubscriberInfo> m_subscribers;
   std::atomic<bool> m_broadcastSystemRunning;

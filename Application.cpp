@@ -250,9 +250,26 @@ bool Application::initialize()
     }
 
     initializeManagers();
-    createMainWindow();
 
-    // ✅ Start hardware connection phase
+    // ✅ Hardware connection starts BEFORE the UI is built, not after.
+    //
+    // Building the ~12 pages of MainWindow takes far longer than opening the
+    // hardware sockets, and the two have no dependency on each other:
+    // connectHardwareAsync() touches only the managers created above plus the
+    // splash screen - never m_mainWindow. Running it after createMainWindow()
+    // simply added the connection time to the boot time.
+    //
+    // Ordering guarantees this relies on:
+    //  - ConnectionWorkerPool::executeAllAsync() runs on a std::thread, so it
+    //    needs no Qt event loop to start. A QTimer::singleShot here would NOT
+    //    work: exec() has not been called yet, so the timer could not fire
+    //    until after createMainWindow() had already finished.
+    //  - taskStarted/taskCompleted/allTasksCompleted are emitted from that
+    //    worker thread and delivered as QUEUED signals, so their slots still
+    //    run on the UI thread only once exec() starts - i.e. after MainWindow
+    //    exists and has connected its safety-alert handler. Safety-watch
+    //    startup (onConnectionTaskCompleted) therefore keeps its existing
+    //    ordering relative to the UI, and no E-stop alert can be missed.
     if (!m_context.simulationMode) {
       // Switch to connecting phase
       m_splashScreen->startPhase(
@@ -261,14 +278,13 @@ bool Application::initialize()
         5  // TCP, Cameras, Motion, I/O, TEC
       );
 
-      // Use QTimer to defer hardware connection until after event loop starts
-      QTimer::singleShot(100, [this]() {
-        connectHardwareAsync();
-      });
-      m_logManager->Info("Hardware connections scheduled for background (with splash screen)", "Application");
+      connectHardwareAsync();
+      m_logManager->Info("Hardware connections started in background (UI building in parallel)", "Application");
     } else {
       m_logManager->Info("Simulation mode: Hardware connections skipped", "Application");
     }
+
+    createMainWindow();
 
     m_initialized = true;
     m_logManager->Info("Initialization complete (UI shown, hardware connecting in background)", "Application");
@@ -2066,13 +2082,18 @@ void Application::initializeAuxWindowManager()
     m_auxWindowManager->setCameraConfigManager(m_cameraConfigManager.get());
   }
 
-  // Initialize and show the window
-  m_auxWindowManager->initialize();
+  // ✅ The AuxViewWindow itself is NOT built here. Constructing it (camera
+  // click-to-move widget + live chart + world overlay + a camera subscriber)
+  // costs ~0.9s of boot for a window most sessions never open. It is now
+  // built on first use by AuxWindowManager::show() / ensureWindow(), i.e. on
+  // Ctrl+K or the first recipe "auxwindow" command.
+  // The manager itself must still exist eagerly - SequenceEngine captures
+  // this pointer when it builds AuxWindowCommandHandler.
 
   // Add to context
   m_context.auxWindowManager = m_auxWindowManager.get();
 
-  m_logManager->Info("AuxWindowManager initialized", "Application");
+  m_logManager->Info("AuxWindowManager initialized (window deferred to first use)", "Application");
 }
 
 void Application::initializeGdiCameraWindow()
@@ -2158,9 +2179,28 @@ void Application::initializeGdiCameraWindow2()
 }
 
 #ifdef USE_QT_CAMERA_WINDOW
-void Application::initializeQtCameraWindow()
+// ---------------------------------------------------------------------------
+// Qt camera monitors - built on demand, never during boot.
+//
+// Each QtCameraWindow costs ~0.5s to construct (side panel, viewport, vision
+// controller with a 21-profile filesystem scan, quick-move panel with a
+// transformation-matrix load). Both used to be built unconditionally even
+// when the saved state said "hidden", which is the common case.
+//
+// initializeQtCameraWindow*() now only REGISTERS the builder in the context.
+// Anything that wants to show the window calls ctx->ensureQtCameraWindow().
+// If the window was visible in the previous session, the build is posted to
+// the event loop so it happens right after the main window is up, off the
+// boot critical path.
+// ---------------------------------------------------------------------------
+
+QtCameraWindow* Application::buildQtCameraWindow()
 {
-  m_logManager->Debug("Initializing QtCameraWindow...", "Application");
+  if (m_qtCameraWindow) {
+    return m_context.qtCameraWindow;  // already built (null if init failed)
+  }
+
+  m_logManager->Debug("Building QtCameraWindow...", "Application");
 
   m_qtCameraWindow = std::make_unique<QtCameraWindow>();
 
@@ -2175,22 +2215,21 @@ void Application::initializeQtCameraWindow()
 
   if (m_qtCameraWindow->initialize()) {
     m_context.qtCameraWindow = m_qtCameraWindow.get();
-
-    // Respect saved visibility — show only if previously visible (default: true for first run)
-    QSettings settings("Fabrinet", "BobcatEngine");
-    const bool wasVisible = settings.value("GdiCameraWindow/visible", true).toBool();
-    if (wasVisible) {
-      m_qtCameraWindow->show();
-    }
-    m_logManager->Info("QtCameraWindow initialized", "Application");
+    m_logManager->Info("QtCameraWindow built", "Application");
   } else {
     m_logManager->Warning("QtCameraWindow failed to initialize", "Application");
   }
+
+  return m_context.qtCameraWindow;
 }
 
-void Application::initializeQtCameraWindow2()
+QtCameraWindow* Application::buildQtCameraWindow2()
 {
-  m_logManager->Debug("Initializing QtCameraWindow2...", "Application");
+  if (m_qtCameraWindow2) {
+    return m_context.qtCameraWindow2;  // already built (null if init failed)
+  }
+
+  m_logManager->Debug("Building QtCameraWindow2...", "Application");
 
   m_qtCameraWindow2 = std::make_unique<QtCameraWindow>("2");
 
@@ -2205,19 +2244,55 @@ void Application::initializeQtCameraWindow2()
 
   if (m_qtCameraWindow2->initialize()) {
     m_context.qtCameraWindow2 = m_qtCameraWindow2.get();
-
-    // Respect saved visibility — hidden by default for second window
-    QSettings settings("Fabrinet", "BobcatEngine");
-    const bool wasVisible = settings.value("GdiCameraWindow2/visible", false).toBool();
-    if (wasVisible) {
-      m_qtCameraWindow2->show();
-    }
-    m_logManager->Info("QtCameraWindow2 initialized", "Application");
+    m_logManager->Info("QtCameraWindow2 built", "Application");
   } else {
     m_logManager->Warning("QtCameraWindow2 failed to initialize", "Application");
   }
+
+  return m_context.qtCameraWindow2;
 }
-#endif
+
+void Application::initializeQtCameraWindow()
+{
+  m_context.ensureQtCameraWindow = [this]() { return buildQtCameraWindow(); };
+
+  // Respect saved visibility — restore only if previously visible
+  // (default: true for first run). Posted to the event loop so the build
+  // happens after the main window is on screen, not before it.
+  QSettings settings("Fabrinet", "BobcatEngine");
+  const bool wasVisible = settings.value("GdiCameraWindow/visible", true).toBool();
+  if (wasVisible) {
+    QTimer::singleShot(0, [this]() {
+      if (QtCameraWindow* win = buildQtCameraWindow()) {
+        win->show();
+      }
+    });
+    m_logManager->Info("QtCameraWindow restore scheduled (was visible last session)", "Application");
+  } else {
+    m_logManager->Info("QtCameraWindow deferred to first use (hidden last session)", "Application");
+  }
+}
+
+void Application::initializeQtCameraWindow2()
+{
+  m_context.ensureQtCameraWindow2 = [this]() { return buildQtCameraWindow2(); };
+
+  // Respect saved visibility — hidden by default for second window
+  QSettings settings("Fabrinet", "BobcatEngine");
+  const bool wasVisible = settings.value("GdiCameraWindow2/visible", false).toBool();
+  if (wasVisible) {
+    QTimer::singleShot(0, [this]() {
+      if (QtCameraWindow* win = buildQtCameraWindow2()) {
+        win->show();
+      }
+    });
+    m_logManager->Info("QtCameraWindow2 restore scheduled (was visible last session)", "Application");
+  } else {
+    m_logManager->Info("QtCameraWindow2 deferred to first use (hidden last session)", "Application");
+  }
+}
+
+#endif  // USE_QT_CAMERA_WINDOW
 
 void Application::initializeSwirBeamWindow()
 {

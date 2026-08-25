@@ -789,13 +789,22 @@ void MainWindow::onToggleAuxWindow()
 
 void MainWindow::onToggleRtlmWindow()
 {
-  // Try Qt camera window first, fall back to GDI
-  if (m_context && m_context->qtCameraWindow) {
-    if (m_context->qtCameraWindow->isVisible()) {
-      m_context->qtCameraWindow->hide();
+  // Try Qt camera window first, fall back to GDI.
+  // The Qt window is built lazily, so ask the context to build it rather than
+  // testing qtCameraWindow for null - a null pointer here means "not built
+  // yet", not "not available", and falling through to GDI would silently
+  // toggle the wrong window.
+  QtCameraWindow* qtWindow = m_context ? m_context->qtCameraWindow : nullptr;
+  if (!qtWindow && m_context && m_context->ensureQtCameraWindow) {
+    qtWindow = m_context->ensureQtCameraWindow();
+  }
+
+  if (qtWindow) {
+    if (qtWindow->isVisible()) {
+      qtWindow->hide();
       std::cout << "[MainWindow] Qt camera monitor hidden (Ctrl+R)" << std::endl;
     } else {
-      m_context->qtCameraWindow->show();
+      qtWindow->show();
       std::cout << "[MainWindow] Qt camera monitor shown (Ctrl+R)" << std::endl;
     }
     return;
@@ -817,13 +826,19 @@ void MainWindow::onToggleRtlmWindow()
 
 void MainWindow::onToggleRtlmWindow2()
 {
-  // Try Qt camera window 2 first, fall back to GDI
-  if (m_context && m_context->qtCameraWindow2) {
-    if (m_context->qtCameraWindow2->isVisible()) {
-      m_context->qtCameraWindow2->hide();
+  // Try Qt camera window 2 first, fall back to GDI (built lazily - see
+  // onToggleRtlmWindow() for why the null check alone is not enough).
+  QtCameraWindow* qtWindow2 = m_context ? m_context->qtCameraWindow2 : nullptr;
+  if (!qtWindow2 && m_context && m_context->ensureQtCameraWindow2) {
+    qtWindow2 = m_context->ensureQtCameraWindow2();
+  }
+
+  if (qtWindow2) {
+    if (qtWindow2->isVisible()) {
+      qtWindow2->hide();
       std::cout << "[MainWindow] Qt camera monitor 2 hidden (Ctrl+T)" << std::endl;
     } else {
-      m_context->qtCameraWindow2->show();
+      qtWindow2->show();
       std::cout << "[MainWindow] Qt camera monitor 2 shown (Ctrl+T)" << std::endl;
     }
     return;
