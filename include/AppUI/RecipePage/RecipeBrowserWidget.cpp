@@ -8,6 +8,7 @@
 #include "product_position_manager.h"
 
 #include <QAction>
+#include <QDateTime>
 #include <QDir>
 #include <QDirIterator>
 #include <QDropEvent>
@@ -25,7 +26,9 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QMenu>
+#include <QCryptographicHash>
 #include <QMessageBox>
+#include <QSettings>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QTreeWidget>
@@ -341,18 +344,13 @@ void RecipeBrowserWidget::refresh()
     return;
   }
 
-  auto readRecipeName = [](const QFileInfo& fi) -> QString {
-    QFile f(fi.absoluteFilePath());
-    if (f.open(QIODevice::ReadOnly)) {
-      QByteArray data = f.readAll();
-      f.close();
-      QJsonDocument doc = QJsonDocument::fromJson(data);
-      if (doc.isObject()) {
-        QString jsonName = doc.object().value("recipe_name").toString();
-        if (!jsonName.isEmpty()) return jsonName;
-      }
-    }
-    return fi.baseName();
+  // One QSettings for the whole refresh, positioned in the cache group, so
+  // recipeDisplayName() does not construct one per recipe file.
+  QSettings nameCache("Fabrinet", "BobcatEngine");
+  nameCache.beginGroup("RecipeNameCache");
+
+  auto readRecipeName = [this, &nameCache](const QFileInfo& fi) -> QString {
+    return recipeDisplayName(fi, nameCache);
   };
 
   auto makeRecipeItem = [&](const QFileInfo& fi) -> QTreeWidgetItem* {
@@ -1016,4 +1014,113 @@ bool RecipeBrowserWidget::eventFilter(QObject* watched, QEvent* event)
     return true;
   }
   return QWidget::eventFilter(watched, event);
+}
+
+// ===========================================================================
+// Recipe display-name lookup (cached)
+// ===========================================================================
+
+QString RecipeBrowserWidget::readRecipeNameFromHead(const QString& absoluteFilePath)
+{
+  // Only the first chunk is read. Recipe JSON is serialised with sorted keys,
+  // so "recipe_name" sits ahead of the large "steps" array (byte ~56 in
+  // practice). Reading 1 KB instead of up to 17 KB keeps the cache-miss path
+  // cheap without needing to parse the whole document.
+  constexpr qint64 kHeadBytes = 1024;
+
+  QFile file(absoluteFilePath);
+  if (!file.open(QIODevice::ReadOnly)) {
+    return QString();
+  }
+  const QByteArray head = file.read(kHeadBytes);
+  file.close();
+
+  // Wrapping the head in braces would not produce valid JSON (the object is
+  // cut mid-way), so extract the value directly rather than parsing.
+  const QByteArray key = "\"recipe_name\"";
+  const int keyPos = head.indexOf(key);
+  if (keyPos < 0) {
+    return QString();
+  }
+
+  const int colon = head.indexOf(':', keyPos + key.size());
+  if (colon < 0) {
+    return QString();
+  }
+
+  const int openQuote = head.indexOf('"', colon + 1);
+  if (openQuote < 0) {
+    return QString();
+  }
+
+  // Find the closing quote, honouring backslash escapes.
+  int i = openQuote + 1;
+  QByteArray raw;
+  for (; i < head.size(); ++i) {
+    const char c = head.at(i);
+    if (c == '\') {
+      if (i + 1 >= head.size()) return QString();  // escape truncated by head
+      raw.append(head.at(i + 1));
+      ++i;
+      continue;
+    }
+    if (c == '"') {
+      break;
+    }
+    raw.append(c);
+  }
+  if (i >= head.size()) {
+    return QString();  // string ran past the head - fall back to a full parse
+  }
+
+  return QString::fromUtf8(raw);
+}
+
+QString RecipeBrowserWidget::recipeDisplayName(const QFileInfo& fileInfo,
+                                              QSettings& cache) const
+{
+  const QString absolutePath = fileInfo.absoluteFilePath();
+
+  // Identity of the file contents as far as this cache is concerned. Size is
+  // included alongside the timestamp because some filesystems have coarse
+  // modification-time resolution.
+  const QString stamp = QString::number(fileInfo.lastModified().toMSecsSinceEpoch())
+                      + "/" + QString::number(fileInfo.size());
+
+  // QSettings keys cannot contain '/' (it denotes a group), so the path is
+  // hashed rather than used directly. `cache` is already positioned in the
+  // RecipeNameCache group by the caller - one QSettings for the whole refresh
+  // rather than one per file.
+  const QString cacheKey = QString::fromLatin1(
+    QCryptographicHash::hash(absolutePath.toUtf8(), QCryptographicHash::Md5).toHex());
+
+  const QStringList cached = cache.value(cacheKey).toString().split('\x1f');
+  if (cached.size() == 2 && cached.at(0) == stamp) {
+    return cached.at(1);  // hit: the file was never opened
+  }
+
+  // Miss: read the name, preferring the cheap head-only path.
+  QString name = readRecipeNameFromHead(absolutePath);
+
+  if (name.isEmpty()) {
+    // Head did not contain it (unusual key order, or a very long name):
+    // fall back to the original full read + parse.
+    QFile file(absolutePath);
+    if (file.open(QIODevice::ReadOnly)) {
+      const QByteArray data = file.readAll();
+      file.close();
+      const QJsonDocument doc = QJsonDocument::fromJson(data);
+      if (doc.isObject()) {
+        name = doc.object().value("recipe_name").toString();
+      }
+    }
+  }
+
+  if (name.isEmpty()) {
+    name = fileInfo.baseName();
+  }
+
+  cache.setValue(cacheKey, stamp + '\x1f' + name);
+
+  return name;
 }
