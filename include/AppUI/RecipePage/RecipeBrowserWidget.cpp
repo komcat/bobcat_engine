@@ -1058,7 +1058,7 @@ QString RecipeBrowserWidget::readRecipeNameFromHead(const QString& absoluteFileP
   QByteArray raw;
   for (; i < head.size(); ++i) {
     const char c = head.at(i);
-    if (c == '\') {
+    if (c == '\\') {
       if (i + 1 >= head.size()) return QString();  // escape truncated by head
       raw.append(head.at(i + 1));
       ++i;
