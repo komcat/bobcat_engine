@@ -3,6 +3,7 @@
 
 #include "ISMUDevice.h"
 #include <QObject>
+#include <chrono>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -12,6 +13,8 @@
 #include <vector>
 #include <tuple>
 
+class DataStore;
+
 /**
  * @brief Centralized manager for SMU device polling
  *
@@ -19,10 +22,18 @@
  * Provides thread-safe interface for starting/stopping polling from
  * recipes, UI, or any other component.
  *
- * Architecture:
+ * Architecture (ported from FireDog's Keithley6482 poll loop):
  *   - Uses std::thread workers (not Qt timers)
  *   - Thread-safe command interface
- *   - Emits Qt signals for data distribution
+ *   - **Samples are published straight to DataStore from the poll thread.**
+ *     The Qt signal is a UI convenience only and is throttled to
+ *     kUiEmitIntervalMs; it is NOT on the data path. Routing every sample
+ *     through a queued signal put the scan's fresh-sample gate behind a main
+ *     event-loop turn, so a busy UI thread inflated the scan cycle time.
+ *   - intervalMs <= 0 means continuous: the instrument paces the loop through
+ *     NPLC + GPIB latency, with a 1 ms yield so a UI command can take the
+ *     device mutex between reads. intervalMs > 0 is a *rate cap*, measured
+ *     from the start of each read (no accumulated catch-up bursts).
  *   - Manages polling state for all devices
  */
 class SMUPollingManager : public QObject
@@ -35,8 +46,25 @@ public:
     VOLTAGE
   };
 
+  /// UI emit period. The DataStore publish is never throttled - only the
+  /// Qt signal that feeds the labels/chart, which repaint on a slow tick anyway.
+  static constexpr int kUiEmitIntervalMs = 100;
+
   explicit SMUPollingManager(QObject* parent = nullptr);
   ~SMUPollingManager();
+
+  /**
+   * @brief Give the manager the DataStore that poll threads publish into.
+   *
+   * Must be called before any StartPolling(). Publishing here rather than in a
+   * slot on the main thread is what keeps ScanContext's fresh-sample gate
+   * (DataStore::GetUpdateCount) tied to the instrument's cadence instead of
+   * the Qt event loop's.
+   */
+  void SetDataStore(DataStore* dataStore);
+
+  /// DataStore channel id a device/channel publishes into ("SMU_<dev>_Ch<n>").
+  static std::string MakeDataStoreKey(const std::string& deviceName, int channel);
 
   // ========== Polling Control (Thread-Safe) ==========
 
@@ -45,14 +73,14 @@ public:
    * @param deviceName Name of the SMU device
    * @param device Shared pointer to the SMU device
    * @param channel Channel to poll (1-4)
-   * @param intervalMs Polling interval in milliseconds
+   * @param intervalMs Rate cap in milliseconds; <= 0 polls continuously
    * @param measurementType Type of measurement (CURRENT or VOLTAGE)
    * @return true if polling started successfully
    */
   bool StartPolling(const std::string& deviceName,
                     SMUDevicePtr device,
                     int channel,
-                    int intervalMs,
+                    int intervalMs,   // <= 0 : continuous (instrument-paced)
                     MeasurementType measurementType = MeasurementType::CURRENT);
 
   /**
@@ -146,6 +174,7 @@ private:
     int channel;
     MeasurementType measurementType;
     std::atomic<uint64_t> sampleCount{0};
+    std::string dataStoreKey;   // precomputed - the poll loop must not allocate
   };
 
   struct PollingWorker
@@ -162,6 +191,9 @@ private:
 
   std::map<std::string, std::unique_ptr<PollingWorker>> m_workers;  // Key = deviceName
   mutable std::mutex m_workersMutex;
+
+  // Set once during startup, read by every poll thread.
+  std::atomic<DataStore*> m_dataStore{nullptr};
 
   void PollingThreadFunction(PollingWorker* worker);
 

@@ -93,10 +93,12 @@ public:
     // Measurement mode dropdown
     widget->addParameterField("mode", "Mode (ACCURATE/FAST/ULTRA_FAST)", params.at("mode"));
 
-    // Polling interval
-    widget->addNumericParameter("intervalMs", "Polling Interval (ms)",
+    // Polling interval. 0 = continuous: the instrument paces the loop through
+    // NPLC + GPIB latency (fastest possible publish rate). Anything > 0 is a
+    // rate cap, not a target - see SMUPollingManager.
+    widget->addNumericParameter("intervalMs", "Poll Interval (ms, 0=continuous)",
       params.at("intervalMs"),
-      10,      // min
+      0,       // min - 0 means continuous
       1000,    // max
       10,      // step
       0,       // decimals (integer)
