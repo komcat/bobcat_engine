@@ -82,8 +82,19 @@ protected:
   // ✅ NEW: Override showEvent to refresh device list when page is shown
   void showEvent(QShowEvent* event) override;
 
+private slots:
+  // Builds the contents of whichever tab was just revealed, once.
+  void onTabChanged(int index);
+
 private:
   void setupUI();
+
+  // Lazy tab contents - only the Motion Control tab is built with the page.
+  void buildCoordinateSystemTab();
+  void buildInterlockTab();
+  void ensureGraphWidget();
+  void ensureScanPanel();
+
   void loadDevices();
   void loadPositionsForDevice(const QString& deviceName);
   void refreshPositionDisplay();
@@ -123,6 +134,15 @@ private:
   ScanControlPanel* m_scanPanel;
   GraphWidget* m_graphWidget;
   QPushButton* m_backButton;
+
+  // Lazily populated tab pages (the QWidget shells exist from setupUI, their
+  // contents do not until the tab is first shown)
+  QWidget* m_coordinateSystemTab;
+  bool m_coordinateSystemBuilt;
+  QWidget* m_interlockTab;
+  bool m_interlockBuilt;
+  QWidget* m_graphTab;
+  bool m_graphWidgetStale;
 
   // Product control buttons
   QPushButton* m_loadProductBtn;
