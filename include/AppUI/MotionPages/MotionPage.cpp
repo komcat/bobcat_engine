@@ -14,6 +14,7 @@
 #include "graph/MotionGraph.h"
 #include "graph/MotionGraphManager.h"
 #include "products/product_position_manager.h"
+#include <chrono>
 #include <iostream>
 #include <QHBoxLayout>
 #include <QVBoxLayout>
@@ -28,6 +29,39 @@
 #include <QJsonArray>
 #include <QFile>
 #include <QFileInfo>
+
+namespace {
+
+// Scoped stopwatch for constructor phases, same pattern RecipePage uses. F3
+// first-open is the cost this reports; prints on scope exit.
+//
+// NOTE: measure in a RELEASE build. Qt widget construction under MSVC debug is
+// several times slower and ranks these phases wrong.
+class PhaseTimer
+{
+public:
+	explicit PhaseTimer(const char* label)
+		: m_label(label)
+		, m_start(std::chrono::steady_clock::now())
+	{
+	}
+
+	~PhaseTimer()
+	{
+		const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+			std::chrono::steady_clock::now() - m_start).count();
+		std::cout << "[MotionPage][timing] " << m_label << ": " << ms << " ms" << std::endl;
+	}
+
+	PhaseTimer(const PhaseTimer&) = delete;
+	PhaseTimer& operator=(const PhaseTimer&) = delete;
+
+private:
+	const char* m_label;
+	std::chrono::steady_clock::time_point m_start;
+};
+
+}  // namespace
 
 MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	ProductPositionManager* productManager,
@@ -52,6 +86,12 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 	, m_graphicsView(nullptr)
 	, m_scanPanel(nullptr)
 	, m_graphWidget(nullptr)
+	, m_coordinateSystemTab(nullptr)
+	, m_coordinateSystemBuilt(false)
+	, m_interlockTab(nullptr)
+	, m_interlockBuilt(false)
+	, m_graphTab(nullptr)
+	, m_graphWidgetStale(false)
 	, m_scanController(nullptr)
 	, m_livePositionTimer(nullptr)
 	, m_motionUpdateTimer(nullptr)
@@ -73,8 +113,13 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 		}
 	}
 
-	setupUI();
-	loadDevices();
+	PhaseTimer ctorTimer("ctor body TOTAL");
+
+	{ PhaseTimer t("setupUI"); setupUI(); }
+	{ PhaseTimer t("loadDevices"); loadDevices(); }
+
+	{
+	PhaseTimer productTimer("product export + label");
 	// Product is already loaded at application level - just update UI
 	if (m_productManager && m_productManager->HasLoadedProduct()) {
 		// Export positions to motion manager
@@ -95,6 +140,7 @@ MotionPage::MotionPage(UnifiedMotionManager* motionManager,
 		if (!m_currentDevice.isEmpty()) {
 			refreshPositionDisplay();
 		}
+	}
 	}
 
 	// Setup live position polling timer
@@ -296,9 +342,12 @@ void MotionPage::setupUI()
 	contentLayout->setSpacing(0);
 
 	// Far Left - Device Selection Buttons (controls all tabs)
-	m_deviceButtonStack = new DeviceButtonStack();
-	m_deviceButtonStack->setMotionManager(m_motionManager);  // ✅ NEW: Pass motion manager for connection status
-	contentLayout->addWidget(m_deviceButtonStack);
+	{
+		PhaseTimer t("  setupUI: DeviceButtonStack");
+		m_deviceButtonStack = new DeviceButtonStack();
+		m_deviceButtonStack->setMotionManager(m_motionManager);  // ✅ NEW: Pass motion manager for connection status
+		contentLayout->addWidget(m_deviceButtonStack);
+	}
 
 	// ============================================================================
 	// ✅ TAB WIDGET - Motion Control | Coordinate Systems | Graph
@@ -346,116 +395,62 @@ void MotionPage::setupUI()
 	motionContentLayout->setSpacing(0);
 
 	// Left Panel - Motion Control (20%)
-	m_controlPanel = new MotionControlPanel();
-	m_controlPanel->setMinimumWidth(250);
-	m_controlPanel->setMaximumWidth(400);
-	motionContentLayout->addWidget(m_controlPanel, 2);
+	{
+		PhaseTimer t("  setupUI: MotionControlPanel");
+		m_controlPanel = new MotionControlPanel();
+		m_controlPanel->setMinimumWidth(250);
+		m_controlPanel->setMaximumWidth(400);
+		motionContentLayout->addWidget(m_controlPanel, 2);
+	}
 
 	// Middle Panel - Graphics View (expand to fill remaining space)
-	m_graphicsView = new MotionGraphicsView();
-	motionContentLayout->addWidget(m_graphicsView, 1);
+	{
+		PhaseTimer t("  setupUI: MotionGraphicsView");
+		m_graphicsView = new MotionGraphicsView();
+		motionContentLayout->addWidget(m_graphicsView, 1);
+	}
 
 	// ✅ REMOVED: Right Panel - Scan Control
-	// Create scan panel but don't add to layout (keep for compatibility with existing code)
-	m_scanPanel = new ScanControlPanel();
-	m_scanPanel->hide();
+	// Scan panel is hidden and all of its signals are disconnected, so it is
+	// built on demand by ensureScanPanel() instead of on every page open.
 
 	m_tabWidget->addTab(motionControlTab, "Motion Control");
 
 	// ============================================================================
-	// TAB 2: COORDINATE SYSTEMS
+	// TAB 2: COORDINATE SYSTEMS  (contents built lazily - see buildCoordinateSystemTab)
 	// ============================================================================
-	QWidget* coordinateSystemTab = new QWidget();
-	coordinateSystemTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
-	QVBoxLayout* coordTabLayout = new QVBoxLayout(coordinateSystemTab);
+	m_coordinateSystemTab = new QWidget();
+	m_coordinateSystemTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* coordTabLayout = new QVBoxLayout(m_coordinateSystemTab);
 	coordTabLayout->setContentsMargins(0, 0, 0, 0);
 
-	// Create sub-tabs for Create and Test
-	QTabWidget* coordSubTabs = new QTabWidget();
-	coordSubTabs->setStyleSheet(
-		"QTabWidget::pane {"
-		"  border: 1px solid #3f3f46;"
-		"  background-color: #2d2d30;"
-		"}"
-		"QTabBar {"
-		"  background-color: #2d2d30;"
-		"  border: none;"
-		"}"
-		"QTabBar::tab {"
-		"  background-color: #1e1e1e;"
-		"  color: #888888;"
-		"  padding: 8px 16px;"
-		"  margin-right: 2px;"
-		"  border: none;"
-		"  font-size: 12px;"
-		"  font-weight: bold;"
-		"  border-top-left-radius: 3px;"
-		"  border-top-right-radius: 3px;"
-		"  border-bottom: 3px solid transparent;"
-		"}"
-		"QTabBar::tab:selected {"
-		"  background-color: #0e639c;"
-		"  color: #ffffff;"
-		"  font-weight: bold;"
-		"  border-bottom: 3px solid #0e639c;"
-		"}"
-		"QTabBar::tab:hover {"
-		"  background-color: #2a2d2e;"
-		"  color: #d4d4d4;"
-		"}"
-	);
-
-	// Create System sub-tab
-	CreateSystemWidget* createSystemWidget = new CreateSystemWidget(
-		m_coordinateSystemManager,
-		m_motionManager,
-		m_productManager,
-		coordinateSystemTab
-	);
-	coordSubTabs->addTab(createSystemWidget, "Create System");
-
-	// Test System sub-tab
-	TestSystemWidget* testSystemWidget = new TestSystemWidget(
-		m_coordinateSystemManager,
-		m_motionManager,
-		coordinateSystemTab
-	);
-	coordSubTabs->addTab(testSystemWidget, "Test System");
-
-	// Connect signal to refresh test widget when system is created
-	connect(createSystemWidget, &CreateSystemWidget::systemCreated,
-		[testSystemWidget](const QString&) {
-			// Refresh the system list in test widget when a new system is created
-			testSystemWidget->findChild<QPushButton*>("m_refreshButton", Qt::FindChildrenRecursively);
-		});
-
-	coordTabLayout->addWidget(coordSubTabs);
-
-	m_tabWidget->addTab(coordinateSystemTab, "Coordinate Systems");
+	m_tabWidget->addTab(m_coordinateSystemTab, "Coordinate Systems");
 	m_tabWidget->setTabEnabled(1, false);  // Disable Coordinate Systems tab (index 1)
 
 	// ============================================================================
 	// TAB 3: GRAPH
 	// ============================================================================
-	// Create placeholder - will be populated when device is selected
-	QWidget* graphTab = new QWidget();
-	graphTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
-	QVBoxLayout* graphTabLayout = new QVBoxLayout(graphTab);
+	// Create placeholder - will be populated when the tab is first shown
+	m_graphTab = new QWidget();
+	m_graphTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* graphTabLayout = new QVBoxLayout(m_graphTab);
 	graphTabLayout->setContentsMargins(0, 0, 0, 0);
 
-	// GraphWidget will be created in onDeviceChanged() when device is selected
-	m_tabWidget->addTab(graphTab, "Graph");
+	// GraphWidget is created by ensureGraphWidget() when the Graph tab is opened
+	m_tabWidget->addTab(m_graphTab, "Graph");
 
 	// ============================================================================
-	// TAB 4: INTERLOCK
+	// TAB 4: INTERLOCK  (contents built lazily - see buildInterlockTab)
 	// ============================================================================
-	QWidget* interlockTab = new QWidget();
-	interlockTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
-	QVBoxLayout* interlockTabLayout = new QVBoxLayout(interlockTab);
+	m_interlockTab = new QWidget();
+	m_interlockTab->setStyleSheet("QWidget { background-color: #2d2d30; }");
+	QVBoxLayout* interlockTabLayout = new QVBoxLayout(m_interlockTab);
 	interlockTabLayout->setContentsMargins(0, 0, 0, 0);
-	InterlockWidget* interlockWidget = new InterlockWidget(m_motionManager, m_interlockManager, interlockTab);
-	interlockTabLayout->addWidget(interlockWidget);
-	m_tabWidget->addTab(interlockTab, "Interlock");
+	m_tabWidget->addTab(m_interlockTab, "Interlock");
+
+	// Only the visible tab is built up front; the other three pay their cost on
+	// the click that first reveals them.
+	connect(m_tabWidget, &QTabWidget::currentChanged, this, &MotionPage::onTabChanged);
 
 	// ----- Pneumatic Interlock Tab -----
 	QWidget* pneumaticTab = new QWidget();
@@ -581,6 +576,166 @@ void MotionPage::setupUI()
 	// m_scanPreset = m_scanPanel->getCurrentPreset();
 
 
+}
+
+// ============================================================================
+// LAZY TAB CONTENTS
+// ============================================================================
+// Only the Motion Control tab is built with the page. The other three used to
+// be built eagerly too - including the Coordinate Systems tab, which is
+// permanently disabled and therefore could never be reached at all.
+
+void MotionPage::onTabChanged(int index)
+{
+	switch (index) {
+	case 1: buildCoordinateSystemTab(); break;
+	case 2: ensureGraphWidget();        break;
+	case 3: buildInterlockTab();        break;
+	default: break;
+	}
+}
+
+void MotionPage::buildCoordinateSystemTab()
+{
+	if (m_coordinateSystemBuilt || !m_coordinateSystemTab) {
+		return;
+	}
+	m_coordinateSystemBuilt = true;
+
+	PhaseTimer t("buildCoordinateSystemTab");
+
+	QVBoxLayout* coordTabLayout = qobject_cast<QVBoxLayout*>(m_coordinateSystemTab->layout());
+	if (!coordTabLayout) {
+		return;
+	}
+
+	// Create sub-tabs for Create and Test
+	QTabWidget* coordSubTabs = new QTabWidget();
+	coordSubTabs->setStyleSheet(
+		"QTabWidget::pane {"
+		"  border: 1px solid #3f3f46;"
+		"  background-color: #2d2d30;"
+		"}"
+		"QTabBar {"
+		"  background-color: #2d2d30;"
+		"  border: none;"
+		"}"
+		"QTabBar::tab {"
+		"  background-color: #1e1e1e;"
+		"  color: #888888;"
+		"  padding: 8px 16px;"
+		"  margin-right: 2px;"
+		"  border: none;"
+		"  font-size: 12px;"
+		"  font-weight: bold;"
+		"  border-top-left-radius: 3px;"
+		"  border-top-right-radius: 3px;"
+		"  border-bottom: 3px solid transparent;"
+		"}"
+		"QTabBar::tab:selected {"
+		"  background-color: #0e639c;"
+		"  color: #ffffff;"
+		"  font-weight: bold;"
+		"  border-bottom: 3px solid #0e639c;"
+		"}"
+		"QTabBar::tab:hover {"
+		"  background-color: #2a2d2e;"
+		"  color: #d4d4d4;"
+		"}"
+	);
+
+	// Create System sub-tab
+	CreateSystemWidget* createSystemWidget = new CreateSystemWidget(
+		m_coordinateSystemManager,
+		m_motionManager,
+		m_productManager,
+		m_coordinateSystemTab
+	);
+	coordSubTabs->addTab(createSystemWidget, "Create System");
+
+	// Test System sub-tab
+	TestSystemWidget* testSystemWidget = new TestSystemWidget(
+		m_coordinateSystemManager,
+		m_motionManager,
+		m_coordinateSystemTab
+	);
+	coordSubTabs->addTab(testSystemWidget, "Test System");
+
+	// Connect signal to refresh test widget when system is created
+	connect(createSystemWidget, &CreateSystemWidget::systemCreated,
+		[testSystemWidget](const QString&) {
+			// Refresh the system list in test widget when a new system is created
+			testSystemWidget->findChild<QPushButton*>("m_refreshButton", Qt::FindChildrenRecursively);
+		});
+
+	coordTabLayout->addWidget(coordSubTabs);
+}
+
+void MotionPage::buildInterlockTab()
+{
+	if (m_interlockBuilt || !m_interlockTab) {
+		return;
+	}
+	m_interlockBuilt = true;
+
+	PhaseTimer t("buildInterlockTab");
+
+	QVBoxLayout* interlockTabLayout = qobject_cast<QVBoxLayout*>(m_interlockTab->layout());
+	if (!interlockTabLayout) {
+		return;
+	}
+
+	InterlockWidget* interlockWidget =
+		new InterlockWidget(m_motionManager, m_interlockManager, m_interlockTab);
+	interlockTabLayout->addWidget(interlockWidget);
+}
+
+// GraphWidget is per-device and used to be rebuilt inside onDeviceChanged(),
+// even though the Graph tab is almost never the visible one. Device changes now
+// only mark it stale; the rebuild happens here, when the tab is actually shown.
+void MotionPage::ensureGraphWidget()
+{
+	if (!m_graphTab) {
+		return;
+	}
+
+	QVBoxLayout* graphLayout = qobject_cast<QVBoxLayout*>(m_graphTab->layout());
+	if (!graphLayout) {
+		return;
+	}
+
+	const bool wantWidget = !m_currentDevice.isEmpty() && m_productManager != nullptr;
+	if (!m_graphWidgetStale && (m_graphWidget != nullptr) == wantWidget) {
+		return;  // already showing the right thing
+	}
+	m_graphWidgetStale = false;
+
+	PhaseTimer t("ensureGraphWidget");
+
+	if (m_graphWidget) {
+		graphLayout->removeWidget(m_graphWidget);
+		m_graphWidget->cleanup();  // CRITICAL: Stop timer and save before deletion
+		m_graphWidget->deleteLater();  // Schedule deletion
+		m_graphWidget = nullptr;
+	}
+
+	if (wantWidget) {
+		m_graphWidget = new GraphWidget(m_currentDevice, m_productManager, m_graphTab);
+		m_graphWidget->setMotionManager(m_motionManager);  // ✅ Connect motion manager for path execution
+		m_graphWidget->setSequenceEngine(m_sequenceEngine);  // ✅ Connect sequence engine for multi-step paths
+		graphLayout->addWidget(m_graphWidget);
+	}
+}
+
+// The scan panel is hidden and every one of its signal connections is commented
+// out, but the scan slots below still poke it. Build it on the first such poke
+// rather than on every page open.
+void MotionPage::ensureScanPanel()
+{
+	if (!m_scanPanel) {
+		m_scanPanel = new ScanControlPanel();
+		m_scanPanel->hide();
+	}
 }
 
 // ============================================================================
@@ -1027,28 +1182,13 @@ void MotionPage::onDeviceChanged(const QString& deviceName)
 		m_graphicsView->restoreViewState();
 	}
 
-	// Update GraphWidget for new device
-	// Find the Graph tab (index 2) and its layout
-	QWidget* graphTab = m_tabWidget->widget(2);  // Graph tab is the 3rd tab (index 2)
-	if (graphTab) {
-		QVBoxLayout* graphLayout = qobject_cast<QVBoxLayout*>(graphTab->layout());
-		if (graphLayout) {
-			// Delete existing GraphWidget if any
-			if (m_graphWidget) {
-				graphLayout->removeWidget(m_graphWidget);
-				m_graphWidget->cleanup();  // CRITICAL: Stop timer and save before deletion
-				m_graphWidget->deleteLater();  // Schedule deletion
-				m_graphWidget = nullptr;
-			}
-
-			// Create new GraphWidget for current device
-			if (!m_currentDevice.isEmpty() && m_productManager) {
-				m_graphWidget = new GraphWidget(m_currentDevice, m_productManager, graphTab);
-				m_graphWidget->setMotionManager(m_motionManager);  // ✅ Connect motion manager for path execution
-				m_graphWidget->setSequenceEngine(m_sequenceEngine);  // ✅ Connect sequence engine for multi-step paths
-				graphLayout->addWidget(m_graphWidget);
-			}
-		}
+	// The GraphWidget belongs to the new device now. Rebuilding it here builds
+	// a whole graphics scene for a tab that is usually not even visible, so
+	// just mark it stale - ensureGraphWidget() rebuilds it when the Graph tab
+	// is shown, and immediately if it already is.
+	m_graphWidgetStale = true;
+	if (m_tabWidget && m_tabWidget->currentIndex() == 2) {
+		ensureGraphWidget();
 	}
 }
 
@@ -1818,6 +1958,7 @@ void MotionPage::onScanPresetChanged(const QString& preset)
 // ============================================================================
 void MotionPage::onStartScanClicked()
 {
+	ensureScanPanel();
 	if (m_scanDevice.isEmpty()) {
 		QMessageBox::warning(this, "No Device", "Please select a device for scanning.");
 		return;
@@ -1879,6 +2020,7 @@ void MotionPage::onStartScanClicked()
 // ============================================================================
 void MotionPage::onStopScanClicked()
 {
+	ensureScanPanel();
 	qDebug() << "Stopping scan...";
 
 	if (m_scanController) {
@@ -1898,6 +2040,7 @@ void MotionPage::onStopScanClicked()
 
 void MotionPage::onScanProgress(const ScanProgressEvent& event)
 {
+	ensureScanPanel();
 	m_scanPanel->setProgress(event.progress);
 	m_scanPanel->setStatus(QString::fromStdString(event.message));
 
@@ -1915,6 +2058,7 @@ void MotionPage::onScanDataPoint(const ScanDataPoint& dataPoint)
 
 void MotionPage::onScanPeakFound(const PeakInfo& peak)
 {
+	ensureScanPanel();
 	qDebug() << "New peak found! Value:" << peak.value
 		<< "at (" << peak.position.x << ","
 		<< peak.position.y << "," << peak.position.z << ")";
@@ -1924,6 +2068,7 @@ void MotionPage::onScanPeakFound(const PeakInfo& peak)
 
 void MotionPage::onScanCompleted(const ScanResults& results)
 {
+	ensureScanPanel();
 	qDebug() << "Scan completed!";
 	qDebug() << "  Total measurements:" << results.totalMeasurements;
 	qDebug() << "  Peak value:" << results.globalPeak.value;
@@ -2006,6 +2151,7 @@ void MotionPage::onScanCompleted(const ScanResults& results)
 
 void MotionPage::onScanError(const ScanError& error)
 {
+	ensureScanPanel();
 	qDebug() << "Scan error:" << QString::fromStdString(error.message);
 
 	m_scanPanel->setScanActive(false);
