@@ -86,6 +86,51 @@
 // timer's lambda (in setup, ~line 740) calls it before its definition.
 namespace { QString formatWithSIPrefix(double value); }
 #include <QPointer>  // For safe widget reference
+#include <chrono>
+
+namespace {
+
+// Scoped stopwatch for constructor phases, the same pattern RecipePage and
+// MotionPage use. F1 is the page an operator opens most, so its first-open
+// cost is reported per phase instead of guessed at.
+//
+// NOTE: measure in a RELEASE build. Qt widget construction under MSVC debug is
+// several times slower and ranks these phases wrong.
+class PhaseTimer
+{
+public:
+  explicit PhaseTimer(const char* label)
+    : m_label(label)
+    , m_start(std::chrono::steady_clock::now())
+  {
+  }
+
+  ~PhaseTimer()
+  {
+    Stop();
+  }
+
+  // Report now rather than at end of scope. Lets a phase be bounded without
+  // wrapping half of a long function in braces. Idempotent.
+  void Stop()
+  {
+    if (m_stopped) return;
+    m_stopped = true;
+    const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now() - m_start).count();
+    std::cout << "[RunProgramPage][timing] " << m_label << ": " << ms << " ms" << std::endl;
+  }
+
+  PhaseTimer(const PhaseTimer&) = delete;
+  PhaseTimer& operator=(const PhaseTimer&) = delete;
+
+private:
+  const char* m_label;
+  std::chrono::steady_clock::time_point m_start;
+  bool m_stopped = false;
+};
+
+}  // namespace
 
 #ifdef HAS_OPENCV
 #include "SequenceContext.h"
@@ -190,7 +235,12 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   m_baseStatusBgColor = QLatin1String(Theme::Color::bgSurface);
   m_baseStatusFgColor = QLatin1String(Theme::Color::textDisabled);
 
-  setupUI();
+  PhaseTimer ctorTimer("ctor body TOTAL");
+
+  { PhaseTimer t("setupUI"); setupUI(); }
+
+  {
+  PhaseTimer wiringTimer("controllers + signal wiring");
 
   // Now that setupUI() has built m_scanWidget, hand it to a ScanController
   // along with the page-level dependencies it needs. The controller owns
@@ -284,6 +334,7 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
     m_isScanActive = m_context->scanActivityTracker->IsActive();
     applyProgramStatusLabel();
   }
+  }
 
   // Update product display
   if (m_context->productPositionManager && m_context->productPositionManager->HasLoadedProduct()) {
@@ -292,7 +343,10 @@ RunProgramPage::RunProgramPage(ApplicationContext* context, TransformationMatrix
   }
 
   // ✅ Auto-load last program from settings
-  loadLastProgramFromSettings();
+  // Reads a path out of QSettings and loads that program JSON. If the stored
+  // path is ever on a network share this is where the page will stall, so it
+  // is timed separately.
+  { PhaseTimer t("loadLastProgramFromSettings"); loadLastProgramFromSettings(); }
 
   // ✅ Clear any stale vision results from previous session
   clearVisionResult();
@@ -359,7 +413,10 @@ void RunProgramPage::setupUI()
   RunPageLeftPanel::Deps leftDeps;
   leftDeps.manager      = m_programManager;
   leftDeps.dialogParent = this;
-  m_leftPanel = new RunPageLeftPanel(std::move(leftDeps));
+  {
+    PhaseTimer t("  RunPageLeftPanel");
+    m_leftPanel = new RunPageLeftPanel(std::move(leftDeps));
+  }
   m_runSlotWidget = m_leftPanel->slotWidget();
 
   // Wire the inner widgets to page slots.
@@ -382,11 +439,14 @@ void RunProgramPage::setupUI()
   // Center panel - Execution view (scanning is now a tab inside)
   createRightPanel();
 
-  mainLayout->addWidget(m_leftPanel, 1);     // Left: 25%
-  mainLayout->addWidget(m_rightStack, 3);    // Center: 75%
+  {
+    PhaseTimer t("  addWidget layout pass");
+    mainLayout->addWidget(m_leftPanel, 1);     // Left: 25%
+    mainLayout->addWidget(m_rightStack, 3);    // Center: 75%
+  }
 
   // Start with edit widget visible
-  showEditWidget();
+  { PhaseTimer t("  showEditWidget"); showEditWidget(); }
 }
 
 
@@ -394,8 +454,8 @@ void RunProgramPage::createRightPanel()
 {
   m_rightStack = new QStackedWidget();
 
-  createEditWidget();
-  createExecutionWidget();
+  { PhaseTimer t("  createEditWidget"); createEditWidget(); }
+  { PhaseTimer t("  createExecutionWidget"); createExecutionWidget(); }
 
   m_rightStack->addWidget(m_editWidget);
   m_rightStack->addWidget(m_executionWidget);
@@ -566,8 +626,10 @@ void RunProgramPage::createExecutionWidget()
   // Status header strip (status badge + program info + command tracker
   // + action detail + progress bar). Its inner widgets are accessed
   // via typed getters where the page reacts to execution events.
+  PhaseTimer statusTimer("    ExecutionStatusWidget");
   m_executionStatus = new ExecutionStatusWidget();
   layout->addWidget(m_executionStatus);
+  statusTimer.Stop();
 
   // Wire the DUT button stack (left of the status badge) to the local
   // slots that dispatch dut/LoadOrCreate and dut/Close. The widget exposes
@@ -638,59 +700,42 @@ void RunProgramPage::createExecutionWidget()
 
   m_executionTabWidget->addTab(logTab, "Execution Log");
 
-  // === LIVE VIEW TAB ===
-  QWidget* liveViewTab = new QWidget();
-  QVBoxLayout* liveViewTabLayout = new QVBoxLayout(liveViewTab);
+  // === LIVE VIEW TAB (Index 1) ===
+  // Shell only. The CameraClickToMoveWidget inside it is built by
+  // ensureLiveViewWidget() the first time the tab is selected - see the
+  // currentChanged handler below. It is not just construction cost: the widget
+  // starts a 100 ms frame timer and a 5 s camera-list refresh timer, and the
+  // camera selection that used to be scheduled 1.5 s after the page was built
+  // subscribed this page to a live frame stream that nobody was looking at.
+  m_liveViewTab = new QWidget();
+  QVBoxLayout* liveViewTabLayout = new QVBoxLayout(m_liveViewTab);
   liveViewTabLayout->setContentsMargins(5, 5, 5, 5);
+  m_liveViewWidget = nullptr;
 
-  if (m_context->cameraManager && m_context->motionManager) {
-    // Use unique subscriber ID for RunProgramPage's live view widget
-    m_liveViewWidget = new CameraClickToMoveWidget(
-      m_context->cameraManager,
-      m_context->motionManager,
-      nullptr,  // parent
-      "RunProgramPage_LiveView"  // unique subscriber ID
-    );
-    m_liveViewWidget->setClickToMoveEnabled(false);  // Disable click-to-move by default
-    m_liveViewWidget->setCrosshairEnabled(false);    // Disable crosshair by default
-    if (m_context->cameraConfigManager) {
-      m_liveViewWidget->setCameraConfigManager(m_context->cameraConfigManager);
-    }
-    liveViewTabLayout->addWidget(m_liveViewWidget, 1);
-
-    // ✅ FIX: Schedule camera initialization after widget is added to layout
-    QTimer::singleShot(1500, this, [this]() {
-      if (m_liveViewWidget) {
-        std::cout << "[RunProgramPage] Delayed init: calling selectFirstCameraDelayed()" << std::endl;
-        m_liveViewWidget->selectFirstCameraDelayed();
-      }
-    });
-  } else {
-    QLabel* noCamera = new QLabel("Camera not available");
-    noCamera->setAlignment(Qt::AlignCenter);
-    noCamera->setStyleSheet("color: #888888; font-size: 14px;");
-    liveViewTabLayout->addWidget(noCamera, 1);
-    m_liveViewWidget = nullptr;
-  }
-
-  m_executionTabWidget->addTab(liveViewTab, "Live View");
+  m_executionTabWidget->addTab(m_liveViewTab, "Live View");
 
   // === CONTEXT TAB (Index 2) ===
-  m_contextViewer = new SequenceContextViewer();
-  m_contextViewer->SetCvPopulator(
-    [this](SequenceContext& target, QString& err) {
-      return populateCvContext(target, err);
-    });
-  m_executionTabWidget->addTab(m_contextViewer, "Context");
+  {
+    PhaseTimer t("    tab: Context (SequenceContextViewer)");
+    m_contextViewer = new SequenceContextViewer();
+    m_contextViewer->SetCvPopulator(
+      [this](SequenceContext& target, QString& err) {
+        return populateCvContext(target, err);
+      });
+    m_executionTabWidget->addTab(m_contextViewer, "Context");
+  }
 
-  // ✅ Connect tab change to initialize camera when Live View tab is selected
+  // ✅ Connect tab change to build + initialize the camera view on first show
   connect(m_executionTabWidget, &QTabWidget::currentChanged, this, [this](int index) {
     std::cout << "[RunProgramPage] Tab changed to index: " << index << std::endl;
     // Live View is at index 1
-    if (index == 1 && m_liveViewWidget) {
-      std::cout << "[RunProgramPage] Live View tab selected, triggering camera selection..." << std::endl;
-      // Trigger delayed camera selection when Live View tab is shown
-      m_liveViewWidget->selectFirstCameraDelayed();
+    if (index == 1) {
+      ensureLiveViewWidget();
+      if (m_liveViewWidget) {
+        std::cout << "[RunProgramPage] Live View tab selected, triggering camera selection..." << std::endl;
+        // Trigger delayed camera selection when Live View tab is shown
+        m_liveViewWidget->selectFirstCameraDelayed();
+      }
     }
   });
 
@@ -698,6 +743,8 @@ void RunProgramPage::createExecutionWidget()
   // 5 built-in interaction widgets (UserPrompt, ManualAdjust,
   // ManualAlignPoint, UserInput, RetraceEdit) and the page-owned
   // embedded retraces (Placement, EdgeTransfer) added via AddExtraPage.
+  {
+  PhaseTimer overlayTimer("    overlay + embedded retraces");
   UserInteractionOverlay::Deps overlayDeps;
   overlayDeps.context      = m_context;
   overlayDeps.matrixLoader = m_matrixLoader;
@@ -746,8 +793,10 @@ void RunProgramPage::createExecutionWidget()
     this, &RunProgramPage::onShowEdgeTransferRetrace);
 
   layout->addWidget(m_overlay, 1);
+  }
 
   // === SCANNING TAB (Index 3) ===
+  PhaseTimer scanTabTimer("    tab: Scanning");
   QWidget* scanningTab = new QWidget();
   QVBoxLayout* scanTabLayout = new QVBoxLayout(scanningTab);
   scanTabLayout->setContentsMargins(10, 10, 10, 10);
@@ -804,8 +853,10 @@ void RunProgramPage::createExecutionWidget()
   scanTabLayout->addStretch();  // Push controls to top
 
   m_executionTabWidget->addTab(scanningTab, "Scanning");
+  scanTabTimer.Stop();
 
   // === VISION TAB (Index 4) ===
+  PhaseTimer visionTabTimer("    tab: Vision");
   QWidget* visionTab = new QWidget();
   QVBoxLayout* visionTabLayout = new QVBoxLayout(visionTab);
   visionTabLayout->setContentsMargins(10, 10, 10, 10);
@@ -816,8 +867,10 @@ void RunProgramPage::createExecutionWidget()
   visionTabLayout->addWidget(m_visionHistoryWidget, 1);
 
   m_executionTabWidget->addTab(visionTab, "Vision");
+  visionTabTimer.Stop();
 
   // === ROLL CORRECTION TAB (Index 5) ===
+  PhaseTimer rollTabTimer("    tab: Roll Correction");
   QWidget* rollCorrectionTab = new QWidget();
   QVBoxLayout* rollTabLayout = new QVBoxLayout(rollCorrectionTab);
   rollTabLayout->setContentsMargins(10, 10, 10, 10);
@@ -839,13 +892,16 @@ void RunProgramPage::createExecutionWidget()
   }
 
   m_executionTabWidget->addTab(rollCorrectionTab, "Roll Correction");
+  rollTabTimer.Stop();
 
   // === MOTION INSPECTOR TAB ===
   // Populated on-demand when the user right-clicks a recipe and picks
   // "Inspect Motion". Starts empty.
+  PhaseTimer inspectorTabTimer("    tab: Motion Inspector");
   m_motionInspectorWidget = new MotionInspectorWidget();
   m_motionInspectorTabIndex = m_executionTabWidget->addTab(
     m_motionInspectorWidget, "Motion Inspector");
+  inspectorTabTimer.Stop();
 
   // Roll-correction business logic lives in RollCorrectionController. The page
   // keeps the widget (it's the tab body, and the page feeds it the DataStore
@@ -870,6 +926,49 @@ void RunProgramPage::createExecutionWidget()
   // Trigger subscription for initial channel
   if (!m_scanWidget->currentChannel().isEmpty()) {
     onChannelChanged(m_scanWidget->currentChannel());
+  }
+}
+
+// Builds the Live View tab's camera widget on first use. Deferred out of
+// createExecutionWidget() because the page opens on the Edit view and, even
+// once the operator switches to execution, the default tab is the log - so
+// this widget's frame timer, camera-list refresh timer and frame subscription
+// used to run for the whole session whether or not anyone looked at it.
+void RunProgramPage::ensureLiveViewWidget()
+{
+  if (m_liveViewBuilt || !m_liveViewTab) {
+    return;  // already built, or the tab shell is missing
+  }
+
+  QVBoxLayout* liveViewTabLayout = qobject_cast<QVBoxLayout*>(m_liveViewTab->layout());
+  if (!liveViewTabLayout) {
+    return;
+  }
+  m_liveViewBuilt = true;
+
+  PhaseTimer t("ensureLiveViewWidget");
+
+  if (m_context->cameraManager && m_context->motionManager) {
+    // Use unique subscriber ID for RunProgramPage's live view widget
+    m_liveViewWidget = new CameraClickToMoveWidget(
+      m_context->cameraManager,
+      m_context->motionManager,
+      nullptr,  // parent
+      "RunProgramPage_LiveView"  // unique subscriber ID
+    );
+    m_liveViewWidget->setClickToMoveEnabled(false);  // Disable click-to-move by default
+    m_liveViewWidget->setCrosshairEnabled(false);    // Disable crosshair by default
+    if (m_context->cameraConfigManager) {
+      m_liveViewWidget->setCameraConfigManager(m_context->cameraConfigManager);
+    }
+    liveViewTabLayout->addWidget(m_liveViewWidget, 1);
+  } else {
+    QLabel* noCamera = new QLabel("Camera not available");
+    noCamera->setAlignment(Qt::AlignCenter);
+    noCamera->setStyleSheet("color: #888888; font-size: 14px;");
+    liveViewTabLayout->addWidget(noCamera, 1);
+    // m_liveViewWidget stays null; m_liveViewBuilt keeps the placeholder from
+    // being added again on every subsequent tab selection.
   }
 }
 

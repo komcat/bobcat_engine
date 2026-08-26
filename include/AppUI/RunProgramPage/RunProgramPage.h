@@ -228,7 +228,9 @@ private:
   QLabel* m_executionLogLabel;
   QPlainTextEdit* m_logTextEdit;  // Using QPlainTextEdit for better performance with large logs
   QTabWidget* m_executionTabWidget;  // Tab widget for Log and Live View
-  CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget
+  QWidget* m_liveViewTab = nullptr;           // Live View tab shell (always built)
+  CameraClickToMoveWidget* m_liveViewWidget;  // Live camera view widget (built on first show)
+  bool m_liveViewBuilt = false;               // guards ensureLiveViewWidget()
 
   std::vector<std::string> m_recipeStepNames;  // Store step names for current recipe
 
@@ -294,6 +296,11 @@ private:
 
   void createEditWidget();
   void createExecutionWidget();
+
+  // Builds the Live View tab's camera widget the first time that tab is
+  // selected. Its timers and frame subscription are not worth paying for on
+  // a page that opens on the Edit view.
+  void ensureLiveViewWidget();
 
   // Slot system bridges. Slot ops happen inside SlotManagerWidget;
   // these helpers are called from its activeSlotChanged / slotsModified
