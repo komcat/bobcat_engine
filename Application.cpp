@@ -2421,15 +2421,14 @@ void Application::initializeSMUSystem()
   m_context.smuPollingManager = m_smuPollingManager.get();
 
   // ✅ CONNECT POLLING MANAGER TO DATASTORE
-  // This is the primary path for polling data (thread-safe architecture)
-  connect(m_smuPollingManager.get(), &SMUPollingManager::measurementReady,
-          this, [this](QString deviceName, int channel, double value, QString /*timestamp*/) {
-      // Guard against pending signals during shutdown
-      if (!m_context.dataStore) return;
-
-      QString channelName = QString("SMU_%1_Ch%2").arg(deviceName).arg(channel);
-      m_context.dataStore->SetValue(channelName.toStdString(), static_cast<float>(value));
-  });
+  // The poll threads publish into the DataStore directly (see
+  // SMUPollingManager::SetDataStore). This deliberately replaces the old
+  // queued-signal lambda: routing every sample through the main event loop put
+  // ScanContext's fresh-sample gate behind an event-loop turn, so a busy UI
+  // thread showed up as scan cycle time. Do NOT re-add a measurementReady ->
+  // SetValue connection here - it would double-count the publish counter the
+  // gate relies on.
+  m_smuPollingManager->SetDataStore(m_dataStore.get());
 
   m_logManager->Debug("SMU Polling Manager initialized", "Application");
 

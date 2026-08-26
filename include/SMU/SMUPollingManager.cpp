@@ -1,5 +1,6 @@
 // SMUPollingManager.cpp
 #include "SMUPollingManager.h"
+#include "DataStore.h"
 #include <iostream>
 #include <chrono>
 #include <sstream>
@@ -21,6 +22,18 @@ SMUPollingManager::~SMUPollingManager()
 std::string SMUPollingManager::MakeSessionKey(const std::string& deviceName, int channel)
 {
   return deviceName + "_Ch" + std::to_string(channel);
+}
+
+std::string SMUPollingManager::MakeDataStoreKey(const std::string& deviceName, int channel)
+{
+  // Must stay byte-identical to what every consumer subscribes to (LiveChartWidget,
+  // ScanContext data channels, recipe "channel" params).
+  return "SMU_" + deviceName + "_Ch" + std::to_string(channel);
+}
+
+void SMUPollingManager::SetDataStore(DataStore* dataStore)
+{
+  m_dataStore.store(dataStore, std::memory_order_release);
 }
 
 bool SMUPollingManager::StartPolling(const std::string& deviceName,
@@ -62,9 +75,13 @@ bool SMUPollingManager::StartPolling(const std::string& deviceName,
     worker->channels[channel].channel = channel;
     worker->channels[channel].measurementType = measurementType;
     worker->channels[channel].sampleCount = 0;
+    worker->channels[channel].dataStoreKey = MakeDataStoreKey(deviceName, channel);
 
     std::cout << "[SMUPollingManager] Starting polling for device: " << deviceName
-              << " (Ch" << channel << ", interval=" << intervalMs << "ms, type=" << typeStr << ")" << std::endl;
+              << " (Ch" << channel << ", "
+              << (intervalMs > 0 ? std::to_string(intervalMs) + "ms rate cap"
+                                 : std::string("continuous"))
+              << ", type=" << typeStr << ")" << std::endl;
 
     // Start worker thread
     worker->workerThread = std::make_unique<std::thread>(
@@ -88,6 +105,7 @@ bool SMUPollingManager::StartPolling(const std::string& deviceName,
     it->second->channels[channel].channel = channel;
     it->second->channels[channel].measurementType = measurementType;
     it->second->channels[channel].sampleCount = 0;
+    it->second->channels[channel].dataStoreKey = MakeDataStoreKey(deviceName, channel);
 
     std::cout << "[SMUPollingManager] Added Ch" << channel << " to existing polling worker for " << deviceName
               << " (type=" << typeStr << ", now polling " << it->second->channels.size() << " channels)" << std::endl;
@@ -317,19 +335,46 @@ void SMUPollingManager::PollingThreadFunction(PollingWorker* worker)
               << " (" << worker->channels.size() << " channels)" << std::endl;
   }
 
-  auto nextPollTime = std::chrono::steady_clock::now();
+  // Rate cap vs continuous - the semantics FireDog's Keithley6482 poll loop uses:
+  //   intervalMs >  0 : never publish faster than this period. The wait is
+  //                     measured from the START of each read, so a slow read
+  //                     cannot bank credit and fire a catch-up burst afterwards
+  //                     (the old accumulating sleep_until(nextPollTime) did).
+  //   intervalMs <= 0 : continuous. NPLC + GPIB transaction latency pace the
+  //                     loop; yield only 1 ms so a UI or recipe command waiting
+  //                     on the device mutex gets in between reads instead of
+  //                     starving behind a back-to-back :READ? stream.
+  const int intervalMs = worker->intervalMs;
+  const auto period = std::chrono::milliseconds(intervalMs > 0 ? intervalMs : 0);
+
+  // The DataStore publish below is the data path and is never throttled -
+  // ScanContext's fresh-sample gate counts exactly those publishes. The Qt
+  // signal only feeds labels/chart, which repaint on a slow tick anyway, so
+  // emitting per sample merely loaded the main event loop - and the scan with it.
+  DataStore* const dataStore = m_dataStore.load(std::memory_order_acquire);
+  const auto uiEmitPeriod = std::chrono::milliseconds(kUiEmitIntervalMs);
+  auto lastUiEmit = std::chrono::steady_clock::now() - uiEmitPeriod;
 
   while (!worker->stopRequested) {
+    const auto cycleStart = std::chrono::steady_clock::now();
+
     // Read all channels from device in one efficient call
     std::vector<double> allChannelValues = worker->device->ReadAllChannels();
 
-    // Generate timestamp for this measurement cycle
-    std::time_t now = std::time(nullptr);
-    std::tm tm_buf{};
-    localtime_s(&tm_buf, &now);
-    std::stringstream ss;
-    ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
-    std::string timestamp = ss.str();
+    const bool emitToUi = ((cycleStart - lastUiEmit) >= uiEmitPeriod);
+
+    // Timestamp formatting is not free (localtime_s + put_time + stringstream),
+    // so build it only on the cycles that actually reach the UI.
+    QString timestamp;
+    if (emitToUi) {
+      lastUiEmit = cycleStart;
+      std::time_t now = std::time(nullptr);
+      std::tm tm_buf{};
+      localtime_s(&tm_buf, &now);
+      std::stringstream ss;
+      ss << std::put_time(&tm_buf, "%Y-%m-%d %H:%M:%S");
+      timestamp = QString::fromStdString(ss.str());
+    }
 
     // Distribute results to each active channel
     {
@@ -353,29 +398,46 @@ void SMUPollingManager::PollingThreadFunction(PollingWorker* worker)
           // Success - increment this channel's sample count
           channelConfig.sampleCount.fetch_add(1);
 
-          // Emit measurement signal for this channel
-          emit measurementReady(
-            QString::fromStdString(worker->deviceName),
-            channelNum,
-            value,
-            QString::fromStdString(timestamp)
-          );
+          // Publish straight from the poll thread. DataStore::SetValue is
+          // mutex-guarded and drops writes after BeginShutdown, so this is safe,
+          // and it keeps the publish counter ticking at the instrument's cadence
+          // instead of the Qt event loop's.
+          if (dataStore != nullptr) {
+            dataStore->SetValue(channelConfig.dataStoreKey, static_cast<float>(value));
+          }
+
+          if (emitToUi) {
+            emit measurementReady(
+              QString::fromStdString(worker->deviceName),
+              channelNum,
+              value,
+              timestamp
+            );
+          }
         } else {
-          // Error reading this channel
-          std::string error = worker->device->GetLastError();
-          if (!error.empty()) {
-            std::cerr << "[SMUPollingManager] Read error on " << worker->deviceName
-                      << " Ch" << channelNum << ": " << error << std::endl;
-            emit pollingError(QString::fromStdString(worker->deviceName),
-                             QString::fromStdString(error));
+          // Error reading this channel - throttled to the UI cadence so a
+          // persistently failing read cannot flood the log or the event loop.
+          if (emitToUi) {
+            std::string error = worker->device->GetLastError();
+            if (!error.empty()) {
+              std::cerr << "[SMUPollingManager] Read error on " << worker->deviceName
+                        << " Ch" << channelNum << ": " << error << std::endl;
+              emit pollingError(QString::fromStdString(worker->deviceName),
+                               QString::fromStdString(error));
+            }
           }
         }
       }
     }
 
-    // Sleep until next poll time
-    nextPollTime += std::chrono::milliseconds(worker->intervalMs);
-    std::this_thread::sleep_until(nextPollTime);
+    if (intervalMs > 0) {
+      const auto elapsed = std::chrono::steady_clock::now() - cycleStart;
+      if (elapsed < period) {
+        std::this_thread::sleep_for(period - elapsed);
+      }
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
   }
 
   worker->isRunning = false;

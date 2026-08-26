@@ -46,6 +46,8 @@ std::optional<bool> SmuPollingCommands::TryExecute(
     }
 
     std::string mode = modeIt->second;
+    // 0 (or negative) = continuous: the poll thread free-runs and the
+    // instrument's NPLC + GPIB latency set the publish rate. > 0 is a rate cap.
     int intervalMs = 100;  // Default 100ms
     int channel = 1;       // Default channel 1
 
@@ -118,9 +120,12 @@ std::optional<bool> SmuPollingCommands::TryExecute(
 
     if (m_logger) {
       std::string channelStr = pollAllChannels ? "all(" + std::to_string(channelsToPoll.size()) + ")" : std::to_string(channel);
+      std::string rateStr = (intervalMs > 0)
+        ? std::to_string(intervalMs) + "ms rate cap"
+        : std::string("continuous");
       m_logger->Info(
         "Starting polling on " + deviceName + " (mode=" + mode +
-        ", interval=" + std::to_string(intervalMs) + "ms, channels=" + channelStr + ")",
+        ", " + rateStr + ", channels=" + channelStr + ")",
         "SMUHandler"
       );
     }

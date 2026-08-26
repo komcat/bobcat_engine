@@ -138,6 +138,48 @@ Two correctness fixes went in alongside:
 
 `:DISP:ENAB ON` is restored on disconnect.
 
+### 4.1 The publish path (ported from FireDog)
+
+The fresh-sample gate in §3 counts `DataStore` publishes, so *how a sample
+reaches the DataStore* is part of the cycle time, not an implementation detail.
+
+It used to go: poll thread → `SMUPollingManager::measurementReady` (queued
+signal) → a lambda in `Application::initializeSMUSystem` on the **main thread**
+→ `DataStore::SetValue`. Every sample therefore needed one turn of the Qt event
+loop before the gate could see it, and a busy UI thread (camera repaint, page
+build) delayed or batched publishes that the instrument had already produced.
+The scan waited on the UI, not on the measurement.
+
+Sibling project **FireDog** (`src/hardware/instruments/Keithley6482.cpp`,
+`docs/keithley-polling-design.md`) never had this hop — its poll thread writes
+into the DataBus stream directly and the UI reads the stream per frame. That is
+now what bobcat does:
+
+* `SMUPollingManager::SetDataStore()` is called once at startup;
+  `PollingThreadFunction` calls `DataStore::SetValue` **on the poll thread**.
+  `SetValue` is mutex-guarded and drops writes after `BeginShutdown`, and
+  `StopAllPolling()` joins every poll thread before the DataStore is destroyed.
+* The `measurementReady` signal survives, but only for the labels and chart, and
+  is throttled to `SMUPollingManager::kUiEmitIntervalMs` (100 ms) — those
+  widgets already repainted on a slow tick. The timestamp string is formatted
+  only on the cycles that actually emit.
+* The `measurementReady` → `SetValue` lambda in `Application.cpp` is **gone on
+  purpose**. Re-adding it would bump the publish counter twice per sample and
+  the gate would release on half the fresh samples it was asked for.
+
+**Poll pacing** now matches FireDog's semantics as well. `intervalMs` in
+`StartPolling` (recipe parameter `intervalMs`, plugin *SMU Start Polling*):
+
+| Value | Behaviour |
+|---|---|
+| `> 0` | **Rate cap.** The loop sleeps `interval − elapsed`, measured from the start of the read, so a slow read cannot bank credit and fire a catch-up burst. |
+| `0` (or negative) | **Continuous.** NPLC + GPIB latency pace the loop; it yields 1 ms per iteration purely so a waiting UI/recipe command can take the device mutex between reads. |
+
+The old loop used an accumulating `sleep_until(nextPollTime)`, which silently
+degenerated into an uncontrolled free-run once a read outran the interval. Set
+`intervalMs` to `0` for the fastest publish rate the instrument can sustain;
+NPLC, not the interval, is the knob that actually sets the sample rate (§4).
+
 ## 5. Structural trims in the walk
 
 `CoarseToFineStrategy` (`include/motions/scanning/`):
