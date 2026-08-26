@@ -22,9 +22,14 @@ public:
     explicit CameraLightingPage(ApplicationContext* context, QWidget* parent = nullptr);
     ~CameraLightingPage() = default;
 
-    // Access to child widgets for external use
+    // Access to child widgets for external use.
     MultiCameraView* cameraView() const { return m_cameraView; }
+    // Null until the Lighting tab has been selected at least once - the widget
+    // is built lazily. Call ensureLightingWidget() first if you need it.
     LightingControlWidget* lightingWidget() const { return m_lightingWidget; }
+
+    // Builds the Lighting tab's contents if they do not exist yet.
+    void ensureLightingWidget();
 
 private:
     void setupUI();
@@ -33,5 +38,6 @@ private:
 
     QTabWidget* m_tabWidget;
     MultiCameraView* m_cameraView;
-    LightingControlWidget* m_lightingWidget;
+    QWidget* m_lightingTab = nullptr;        // shell, always built
+    LightingControlWidget* m_lightingWidget; // contents, built on first show
 };

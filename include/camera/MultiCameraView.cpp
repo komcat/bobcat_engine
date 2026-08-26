@@ -6,18 +6,34 @@
 #include "CameraConfigManager.h"
 #include <QMessageBox>
 #include <QHBoxLayout>
+#include <chrono>
 #include <iostream>
 
 MultiCameraView::MultiCameraView(ApplicationContext* context, QWidget* parent)
   : QWidget(parent)
   , m_context(context)
 {
+  // Timed because this is the body of F4's default panel. One CameraView is
+  // built per configured camera and each spawns a parameter worker thread, so
+  // the cost scales with camera_config.json. Measure in a RELEASE build.
+  const auto ctorStart = std::chrono::steady_clock::now();
+
   setupUI();
+
+  const auto afterSetupUi = std::chrono::steady_clock::now();
 
   // Create config manager (no longer creating CameraManager!)
   m_configManager = std::make_unique<CameraConfigManager>("config/camera_config.json");
 
   loadCameraConfig();
+
+  const auto now = std::chrono::steady_clock::now();
+  using Ms = std::chrono::milliseconds;
+  std::cout << "[MultiCameraView][timing] setupUI: "
+            << std::chrono::duration_cast<Ms>(afterSetupUi - ctorStart).count()
+            << " ms, loadCameraConfig (" << m_cameraViews.size() << " CameraView): "
+            << std::chrono::duration_cast<Ms>(now - afterSetupUi).count()
+            << " ms" << std::endl;
 
   std::cout << "[MultiCameraView] Created with " << m_cameras.size() << " cameras" << std::endl;
 }
