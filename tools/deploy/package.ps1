@@ -19,8 +19,10 @@
                      taught positions / calibration / recipes / programs.
                      Default: out/build/x64-debug-hardware
 
-    Per-product, 'backups/' and 'instances_data/' are excluded (runtime cruft),
-    matching the chosen "everything except backups/instances_data" seed scope.
+    Per-product, 'backups/', 'instances_data/' and 'images/' are excluded
+    (runtime cruft), matching the chosen "everything except backups /
+    instances_data / images" seed scope. 'images/' holds timestamped trainer
+    frame captures and is typically the largest thing under config/.
 
     Because the release exe links the *release* CRT (not bundled anywhere), the
     target needs the VC++ redistributable. Point -VcRedist at vc_redist.x64.exe
@@ -131,9 +133,9 @@ Invoke-Robocopy $roboArgs
 $cfgSrc = Join-Path $DataSrc "config"
 $cfgDst = Join-Path $Pkg     "config"
 Write-Host "--> copying config (root + product seed)..."
-# Exclude runtime cruft everywhere under config: backups, instances_data, logs.
+# Exclude runtime cruft everywhere under config: backups, instances_data, images.
 Invoke-Robocopy @($cfgSrc, $cfgDst, "/E", "/NFL", "/NDL", "/NP", "/NJH", "/NJS",
-                  "/XD", "backups", "instances_data")
+                  "/XD", "backups", "instances_data", "images")
 
 # --- 3) narrow to requested products (optional) ---------------------------------
 # System/support folders that are NOT products and must always stay.

@@ -382,3 +382,6 @@ enc_temp_folder/
 
 # VC++ redist binary staged for deployment packaging (24MB, do not commit)
 tools/deploy/vc_redist.x64.exe
+
+# Deployment packages assembled by tools/deploy/package.ps1 (hundreds of MB)
+dist/
