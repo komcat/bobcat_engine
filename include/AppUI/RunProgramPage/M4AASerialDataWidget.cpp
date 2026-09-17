@@ -435,8 +435,8 @@ void M4AASerialDataWidget::setupUI() {
   rightLayout->addWidget(m_detailHeader);
 
   auto* grid = new QGridLayout();
-  const QStringList headers = {"", "A1 Poynt.X", "A1 Poynt.Y",
-                               "A2 Poynt.X", "A2 Poynt.Y"};
+  const QStringList headers = {"", "A1 Poynt.X", "A1 Poynt.Y", "A1 Z (um)",
+                               "A2 Poynt.X", "A2 Poynt.Y", "A2 Z (um)"};
   for (int c = 0; c < headers.size(); ++c) {
     auto* hh = new QLabel(headers[c]);
     hh->setStyleSheet("font-weight: bold;");
@@ -451,7 +451,7 @@ void M4AASerialDataWidget::setupUI() {
     rl->setStyleSheet("font-weight: bold;");
     grid->addWidget(rl, section + 1, 0);
     for (int side = 0; side < 2; ++side) {
-      for (int axis = 0; axis < 2; ++axis) {
+      for (int axis = 0; axis < 3; ++axis) {
         auto* lbl = new QLabel();
         lbl->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
         lbl->setMinimumWidth(150);  // fits 7-char values like "-1.1359" at 21pt
@@ -462,7 +462,7 @@ void M4AASerialDataWidget::setupUI() {
           "color: %1; font-family: Consolas; font-size: 21pt; font-weight: bold;")
           .arg(kColorNeutral));
         m_valueLabels[section][side][axis] = lbl;
-        grid->addWidget(lbl, section + 1, side * 2 + axis + 1);
+        grid->addWidget(lbl, section + 1, side * 3 + axis + 1);
       }
     }
   }
@@ -1099,10 +1099,20 @@ void M4AASerialDataWidget::updateRight(int selIdx) {
       if (sides[side]) {
         sec = (section == 0) ? &sides[side]->b0 : &sides[side]->b1;
       }
-      for (int axis = 0; axis < 2; ++axis) {
+      for (int axis = 0; axis < 3; ++axis) {
+        QLabel* lbl = m_valueLabels[section][side][axis];
+        if (axis == 2) {
+          // Beam-waist Z (µm) — informational, no pass/fail coloring / hint.
+          const bool hasZ = sec && sec->hasZ0;
+          const double z = sec ? sec->z0 : 0.0;
+          lbl->setText(hasZ ? QString::number(z, 'f', 1) : QString());
+          lbl->setStyleSheet(QStringLiteral(
+            "color: #e0e0e0; font-family: Consolas; font-size: 21pt; font-weight: bold;"));
+          lbl->setToolTip(QString());
+          continue;
+        }
         const bool has = sec && (axis == 0 ? sec->hasX : sec->hasY);
         const double v = !sec ? 0.0 : (axis == 0 ? sec->x : sec->y);
-        QLabel* lbl = m_valueLabels[section][side][axis];
         lbl->setText(fmtNumber(has, v));
         // Re-apply the full stylesheet (font + color) — setStyleSheet replaces
         // the prior style, so we have to include the font properties here too.

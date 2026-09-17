@@ -36,6 +36,7 @@
 #include <QApplication>
 #include <QThread>
 #include <QDesktopServices>
+#include <QProcess>
 #include <QUrl>
 #include <Qt>
 
@@ -50,7 +51,9 @@ namespace fs = std::filesystem;
 using nlohmann::json;
 
 namespace {
-constexpr const char* kMoeScreenScript = "moe_screen_baseline.lua";
+constexpr const char* kMoeScreenScript    = "moe_screen_baseline.lua";
+constexpr const char* kMoeCaptureAllScript = "moe_screen_capture_all.lua";
+constexpr const char* kReportScript        = "make_moe_screen_report.py";
 constexpr const char* kSwirCamera      = "swir_camera";
 constexpr int         kPollMs          = 1000;
 constexpr int         kDefaultExpUs    = 10000;   // default IR exposure (µs)
@@ -344,18 +347,22 @@ void MoeScreeningWidget::setupUI() {
   auto* pg = new QGridLayout();
   pg->addWidget(makeHead("A1 Poynt.X"), 0, 1);
   pg->addWidget(makeHead("A1 Poynt.Y"), 0, 2);
-  pg->addWidget(makeHead("A2 Poynt.X"), 0, 3);
-  pg->addWidget(makeHead("A2 Poynt.Y"), 0, 4);
+  pg->addWidget(makeHead("A1 Z (um)"),  0, 3);
+  pg->addWidget(makeHead("A2 Poynt.X"), 0, 4);
+  pg->addWidget(makeHead("A2 Poynt.Y"), 0, 5);
+  pg->addWidget(makeHead("A2 Z (um)"),  0, 6);
   const char* beamNames[2] = {"B0 (Rx)", "B1 (Tx)"};
   for (int beam = 0; beam < 2; ++beam) {
     auto* rowHead = new QLabel(beamNames[beam]);
     rowHead->setStyleSheet("color:#ccc;font-weight:bold;font-size:18px;");
     pg->addWidget(rowHead, beam + 1, 0);
-    // column order: A1.X, A1.Y, A2.X, A2.Y  ->  [loc][axis]
+    // column order: A1.X, A1.Y, A1.Z, A2.X, A2.Y, A2.Z  ->  [loc][axis]
     m_valueLabels[0][beam][0] = makeValue(); pg->addWidget(m_valueLabels[0][beam][0], beam + 1, 1);
     m_valueLabels[0][beam][1] = makeValue(); pg->addWidget(m_valueLabels[0][beam][1], beam + 1, 2);
-    m_valueLabels[1][beam][0] = makeValue(); pg->addWidget(m_valueLabels[1][beam][0], beam + 1, 3);
-    m_valueLabels[1][beam][1] = makeValue(); pg->addWidget(m_valueLabels[1][beam][1], beam + 1, 4);
+    m_valueLabels[0][beam][2] = makeValue(); pg->addWidget(m_valueLabels[0][beam][2], beam + 1, 3);
+    m_valueLabels[1][beam][0] = makeValue(); pg->addWidget(m_valueLabels[1][beam][0], beam + 1, 4);
+    m_valueLabels[1][beam][1] = makeValue(); pg->addWidget(m_valueLabels[1][beam][1], beam + 1, 5);
+    m_valueLabels[1][beam][2] = makeValue(); pg->addWidget(m_valueLabels[1][beam][2], beam + 1, 6);
   }
   pv->addLayout(pg);
 
@@ -395,6 +402,47 @@ void MoeScreeningWidget::setupUI() {
           &MoeScreeningWidget::onSaveFinalMeasurement);
   connect(m_openFolderBtn, &QPushButton::clicked, this,
           &MoeScreeningWidget::onOpenDataFolder);
+
+  // --- Bottom action row: capture-all across every station + report ---------
+  auto* bottomRow = new QHBoxLayout();
+  bottomRow->addStretch(1);
+  m_captureAllBtn = new QPushButton("Capture all channels");
+  m_captureAllBtn->setToolTip(
+    "Run moe_screen_capture_all.lua in the background: measure screen-A1-IR, "
+    "ch1..ch12 (interpolated between the taught screen-A1-IR / screen-A2-IR "
+    "endpoints), and screen-A2-IR — one Rx/Tx pair each, saving a SWIR image "
+    "package + Z-scan slices per position. Prompts for a MOE ID. Repeats for the "
+    "count set beside it, generating + opening a report after each run. Stop "
+    "breaks it.");
+  m_captureAllBtn->setStyleSheet(kYellowStyle);
+  m_captureAllBtn->setMinimumWidth(200);
+  bottomRow->addWidget(m_captureAllBtn);
+
+  bottomRow->addWidget(new QLabel("x"));
+  m_captureAllIterSpin = new QSpinBox();
+  m_captureAllIterSpin->setRange(1, 99);
+  m_captureAllIterSpin->setValue(1);
+  m_captureAllIterSpin->setToolTip(
+    "How many times to run 'Capture all channels' in a row. After each run "
+    "completes, its report is generated and opened automatically before the "
+    "next run starts. Default 1.");
+  m_captureAllIterSpin->setMinimumWidth(56);
+  bottomRow->addWidget(m_captureAllIterSpin);
+
+  m_generateReportBtn = new QPushButton("Generate / open report");
+  m_generateReportBtn->setToolTip(
+    "Build (or, if it already exists, just open) the HTML report for the latest "
+    "capture-all run of the current MOE ID via make_moe_screen_report.py.");
+  m_generateReportBtn->setStyleSheet(kGreenStyle);
+  m_generateReportBtn->setMinimumWidth(200);
+  bottomRow->addWidget(m_generateReportBtn);
+  bottomRow->addStretch(1);
+  root->addLayout(bottomRow);
+
+  connect(m_captureAllBtn, &QPushButton::clicked, this,
+          &MoeScreeningWidget::onCaptureAllChannels);
+  connect(m_generateReportBtn, &QPushButton::clicked, this,
+          &MoeScreeningWidget::onGenerateReport);
 }
 
 void MoeScreeningWidget::setBusy(bool busy, const QString& whatRunning) {
@@ -403,6 +451,7 @@ void MoeScreeningWidget::setBusy(bool busy, const QString& whatRunning) {
     m_gantrySafeBtn, m_measureBtn, m_measureStatsBtn, m_applyA1Btn, m_applyA2Btn,
     m_moveScreenerA1Btn, m_moveIrA1Btn, m_saveScreenerA1Btn, m_saveIrA1Btn,
     m_moveScreenerA2Btn, m_moveIrA2Btn, m_saveScreenerA2Btn, m_saveIrA2Btn,
+    m_captureAllBtn,
   };
   for (QPushButton* b : gated) if (b) b->setEnabled(!busy);
 
@@ -502,6 +551,185 @@ void MoeScreeningWidget::launchMoeMeasurement(int repeats) {
   launchScript(QString::fromUtf8(kMoeScreenScript), label);
 }
 
+// ---------------------------------------------------------------------------
+// Capture all channels (all stations) + report
+// ---------------------------------------------------------------------------
+void MoeScreeningWidget::onCaptureAllChannels() {
+  if (m_busy) {
+    appendLog("[busy] another job is already running", "#ef5350");
+    return;
+  }
+  auto* ppm = m_context ? m_context->productPositionManager : nullptr;
+  if (!ppm || !ppm->HasLoadedProduct()) {
+    QMessageBox::warning(this, "Capture all channels",
+        "No product loaded — cannot determine the data/<product>/moe-screen "
+        "output folder. Load a product first.");
+    return;
+  }
+  if (!m_context->scriptEngine) {
+    appendLog("[error] script engine unavailable", "#ef5350");
+    return;
+  }
+  const QString product = QString::fromStdString(ppm->GetCurrentProductName());
+
+  // Prompt for the MOE ID (not a DUT id), same as Measure MOE.
+  bool ok = false;
+  const QString moeIdRaw = QInputDialog::getText(
+      this, "MOE ID", "Enter MOE ID for the capture-all run:",
+      QLineEdit::Normal, QString(), &ok).trimmed();
+  if (!ok) return;
+  if (moeIdRaw.isEmpty()) {
+    QMessageBox::warning(this, "Capture all channels", "MOE ID must not be empty.");
+    return;
+  }
+  const QString moeId = sanitizeSegment(moeIdRaw);
+
+  // Confirm prerequisites (SWIR window streaming; the script measures each
+  // station in turn) and the iteration count.
+  const int iterations = m_captureAllIterSpin ? m_captureAllIterSpin->value() : 1;
+  const auto answer = QMessageBox::question(
+    this, QStringLiteral("Capture all channels"),
+    QStringLiteral("Make sure screen-A1-IR and screen-A2-IR are taught, the SWIR "
+                   "window is open + streaming, and the MOE is powered externally "
+                   "before continuing.\n\nMeasure screen-A1-IR, ch1..ch12 "
+                   "(interpolated between the two endpoints), and screen-A2-IR, "
+                   "%1 time(s), generating + opening a report after each run?"
+                   "\n\nProceed?")
+        .arg(iterations),
+    QMessageBox::Ok | QMessageBox::Cancel, QMessageBox::Cancel);
+  if (answer != QMessageBox::Ok) return;
+
+  // Script globals (no DUT — identified by MOE ID; no power control).
+  const QString outDir = QStringLiteral("data/") + product + "/moe-screen";
+  auto* se = m_context->scriptEngine;
+  se->SetScriptGlobalString("MOE_SCREEN_ID", moeId.toStdString());
+  se->SetScriptGlobalString("MOE_SCREEN_DIR", outDir.toStdString());
+  se->SetScriptGlobalString("MOE_SCREEN_EXP_A1_US", std::to_string(m_expA1Spin->value()));
+  se->SetScriptGlobalString("MOE_SCREEN_EXP_A2_US", std::to_string(m_expA2Spin->value()));
+  se->SetScriptGlobalString("MOE_SCREEN_SLICES", std::to_string(m_scanSlices));
+  se->SetScriptGlobalString("MOE_SCREEN_STEP_UM", std::to_string(m_scanStepUm));
+
+  // Arm the multi-run loop; onScriptCompleted drives report + next iteration.
+  m_captureAllMoeId     = moeId;
+  m_captureAllActive    = true;
+  m_captureAllTotal     = iterations;
+  m_captureAllRemaining = iterations;
+  launchCaptureAllIteration();
+}
+
+void MoeScreeningWidget::launchCaptureAllIteration() {
+  const int index = m_captureAllTotal - m_captureAllRemaining + 1;
+  appendLog(QStringLiteral("[capture-all] iteration %1 of %2")
+                .arg(index).arg(m_captureAllTotal), "#60a5fa");
+  const QString label = m_captureAllTotal > 1
+      ? QStringLiteral("Capture all channels (%1/%2)").arg(index).arg(m_captureAllTotal)
+      : QStringLiteral("Capture all channels");
+  if (!launchScript(QString::fromUtf8(kMoeCaptureAllScript), label)) {
+    // Launch failed (engine unavailable / script missing) — abandon the loop.
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+  }
+}
+
+void MoeScreeningWidget::onGenerateReport() {
+  if (m_reportProcess) {
+    appendLog("[report] a report is already being generated", "#fb8c00");
+    return;
+  }
+  auto* ppm = m_context ? m_context->productPositionManager : nullptr;
+  if (!ppm || !ppm->HasLoadedProduct()) {
+    QMessageBox::warning(this, "Generate report",
+                         "No product loaded - cannot locate the data folder.");
+    return;
+  }
+  const QString product = QString::fromStdString(ppm->GetCurrentProductName());
+
+  // Prefer the MOE ID of the running/last capture-all; fall back to the panel's
+  // currently-loaded MOE ID. Sanitize so the path matches the on-disk folder.
+  QString moeId = m_captureAllMoeId.isEmpty() ? m_currentMoeId : m_captureAllMoeId;
+  if (moeId.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+        "No MOE ID known yet - run 'Capture all channels' first.");
+    return;
+  }
+  moeId = sanitizeSegment(moeId);
+
+  const QString appDir  = QCoreApplication::applicationDirPath();
+  const QString dataDir = appDir + "/data/" + product + "/moe-screen";  // report CWD
+  const QString moeDir  = dataDir + "/" + moeId;
+
+  QDir md(moeDir);
+  if (!md.exists()) {
+    QMessageBox::warning(this, "Generate report",
+        QStringLiteral("No capture folder for MOE '%1':\n%2").arg(moeId, moeDir));
+    return;
+  }
+  // Latest run folder = most recently modified timestamp subdirectory.
+  const QFileInfoList subs = md.entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
+  if (subs.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+        QStringLiteral("No run folders found under:\n%1").arg(moeDir));
+    return;
+  }
+  const QString runTag     = subs.first().fileName();
+  const QString runDir     = moeDir + "/" + runTag;
+  const QString reportPath = runDir + "/report_slices.html";
+
+  // If the report already exists, just open it.
+  if (QFileInfo::exists(reportPath)) {
+    appendLog(QStringLiteral("[report] opening existing %1").arg(reportPath), "#60a5fa");
+    QDesktopServices::openUrl(QUrl::fromLocalFile(reportPath));
+    return;
+  }
+
+  // Otherwise locate make_moe_screen_report.py and build the report (script opens it).
+  QString script;
+  for (const QString& cand : {dataDir + "/" + QString::fromUtf8(kReportScript),
+                              appDir + "/" + QString::fromUtf8(kReportScript),
+                              appDir + "/tools/" + QString::fromUtf8(kReportScript)}) {
+    if (QFileInfo::exists(cand)) { script = cand; break; }
+  }
+  if (script.isEmpty()) {
+    QMessageBox::warning(this, "Generate report",
+        QStringLiteral("%1 not found in the data folder or application folder.")
+            .arg(QString::fromUtf8(kReportScript)));
+    return;
+  }
+
+  m_reportProcess = new QProcess(this);
+  m_reportProcess->setWorkingDirectory(dataDir);
+  m_reportProcess->setProcessChannelMode(QProcess::MergedChannels);
+  connect(m_reportProcess, &QProcess::readyReadStandardOutput, this, [this]() {
+    const QString out = QString::fromLocal8Bit(m_reportProcess->readAllStandardOutput());
+    for (const QString& line : out.split('\n', Qt::SkipEmptyParts))
+      appendLog(QStringLiteral("[report] %1").arg(line.trimmed()), "#c9d1d9");
+  });
+  connect(m_reportProcess,
+          QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this,
+          [this](int code, QProcess::ExitStatus) {
+            if (code == 0)
+              appendLog("[report] done", "#22c55e");
+            else
+              appendLog(QStringLiteral("[report] %1 exited with code %2")
+                            .arg(QString::fromUtf8(kReportScript)).arg(code), "#ef5350");
+            if (m_generateReportBtn) m_generateReportBtn->setEnabled(true);
+            m_reportProcess->deleteLater();
+            m_reportProcess = nullptr;
+          });
+  connect(m_reportProcess, &QProcess::errorOccurred, this,
+          [this](QProcess::ProcessError) {
+            appendLog("[report] failed to start python (is it on PATH?)", "#ef5350");
+          });
+
+  // Absolute run-folder path so the script resolves regardless of CWD; --open
+  // pops the report when finished.
+  const QStringList args{script, QDir::toNativeSeparators(runDir), QStringLiteral("--open")};
+  appendLog(QStringLiteral("[report] python %1 \"%2\\%3\" --open")
+                .arg(QString::fromUtf8(kReportScript), moeId, runTag), "#60a5fa");
+  if (m_generateReportBtn) m_generateReportBtn->setEnabled(false);
+  m_reportProcess->start(QStringLiteral("python"), args);
+}
+
 bool MoeScreeningWidget::launchScript(const QString& scriptFile, const QString& busyLabel) {
   if (!m_context || !m_context->scriptEngine) {
     appendLog(QStringLiteral("[error] script engine unavailable"), "#ef5350");
@@ -571,6 +799,13 @@ bool MoeScreeningWidget::launchScript(const QString& scriptFile, const QString& 
 }
 
 void MoeScreeningWidget::onStopScript() {
+  // Break the capture-all loop so no further iterations launch after the in-flight
+  // script unwinds, regardless of how it reports completion.
+  if (m_captureAllActive) {
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+    appendLog("[capture-all] stop requested — no further iterations", "#fb8c00");
+  }
   if (!m_scriptWorker) return;
   appendLog("[stop] stop requested — aborting at the next script step...", "#fb8c00");
   m_scriptWorker->requestStop();   // sets the engine stop flag; DebugHook aborts the Lua VM
@@ -602,6 +837,28 @@ void MoeScreeningWidget::onScriptCompleted(bool success, QString errorMessage) {
     m_context->sequenceEngine->SetUserPromptCallback(nullptr);
     m_context->sequenceEngine->SetUserInputCallback(nullptr);
   }
+
+  // Capture-all multi-run loop: on a successful run, generate + open its report,
+  // then launch the next iteration if any remain. A failed / stopped run ends the
+  // loop. onStopScript() also clears m_captureAllActive so Stop breaks the chain.
+  if (m_captureAllActive) {
+    if (success) {
+      onGenerateReport();          // targets the newest run folder just written
+      --m_captureAllRemaining;
+      if (m_captureAllRemaining > 0) {
+        m_busy = false;            // launchScript() guards on m_busy; worker cleared
+        launchCaptureAllIteration();
+        return;                    // stay busy for the next iteration
+      }
+      appendLog(QStringLiteral("[capture-all] all %1 iteration(s) complete")
+                    .arg(m_captureAllTotal), "#4caf50");
+    } else {
+      appendLog("[capture-all] run did not complete — loop stopped", "#fb8c00");
+    }
+    m_captureAllActive    = false;
+    m_captureAllRemaining = 0;
+  }
+
   setBusy(false);
   onTick();  // refresh the panel from the freshly written CSV
 }
@@ -950,14 +1207,16 @@ void MoeScreeningWidget::reloadFromCsv(const QString& path) {
   const int iLoc  = colIdx("location");
   const int iB0x  = colIdx("b0_poynt_x_deg");
   const int iB0y  = colIdx("b0_poynt_y_deg");
+  const int iB0z  = colIdx("b0_z0_um");
   const int iB1x  = colIdx("b1_poynt_x_deg");
   const int iB1y  = colIdx("b1_poynt_y_deg");
+  const int iB1z  = colIdx("b1_z0_um");
   const int iDx   = colIdx("tx_rx_dx_um");
   const int iDy   = colIdx("tx_rx_dy_um");
 
   struct LocData {
     bool has = false;
-    double b0x = 0, b0y = 0, b1x = 0, b1y = 0, dx = 0, dy = 0;
+    double b0x = 0, b0y = 0, b0z = 0, b1x = 0, b1y = 0, b1z = 0, dx = 0, dy = 0;
   } loc[2];
   QString moeId;
 
@@ -980,8 +1239,8 @@ void MoeScreeningWidget::reloadFromCsv(const QString& path) {
     else if (locName.contains("A2")) li = 1;
     if (li < 0) continue;
     loc[li].has = true;
-    loc[li].b0x = num(f, iB0x); loc[li].b0y = num(f, iB0y);
-    loc[li].b1x = num(f, iB1x); loc[li].b1y = num(f, iB1y);
+    loc[li].b0x = num(f, iB0x); loc[li].b0y = num(f, iB0y); loc[li].b0z = num(f, iB0z);
+    loc[li].b1x = num(f, iB1x); loc[li].b1y = num(f, iB1y); loc[li].b1z = num(f, iB1z);
     loc[li].dx  = num(f, iDx);  loc[li].dy  = num(f, iDy);
     if (iMoe >= 0 && iMoe < f.size()) moeId = f.at(iMoe);
   }
@@ -1010,8 +1269,10 @@ void MoeScreeningWidget::reloadFromCsv(const QString& path) {
     const LocData& d = loc[li];
     setVal(m_valueLabels[li][0][0], d.has, d.b0x, 4, colorFor(d.b0x));
     setVal(m_valueLabels[li][0][1], d.has, d.b0y, 4, colorFor(d.b0y));
+    setVal(m_valueLabels[li][0][2], d.has, d.b0z, 1, "#e0e0e0");   // Z (um), not pass/fail
     setVal(m_valueLabels[li][1][0], d.has, d.b1x, 4, colorFor(d.b1x));
     setVal(m_valueLabels[li][1][1], d.has, d.b1y, 4, colorFor(d.b1y));
+    setVal(m_valueLabels[li][1][2], d.has, d.b1z, 1, "#e0e0e0");   // Z (um), not pass/fail
     setVal(m_txRxLabels[li][0], d.has, d.dx, 3, "#e0e0e0");
     setVal(m_txRxLabels[li][1], d.has, d.dy, 3, "#e0e0e0");
   }
@@ -1023,7 +1284,7 @@ void MoeScreeningWidget::reloadFromCsv(const QString& path) {
 void MoeScreeningWidget::clearPanel() {
   for (int li = 0; li < 2; ++li)
     for (int b = 0; b < 2; ++b)
-      for (int a = 0; a < 2; ++a)
+      for (int a = 0; a < 3; ++a)
         if (m_valueLabels[li][b][a]) {
           m_valueLabels[li][b][a]->setText("-");
           m_valueLabels[li][b][a]->setStyleSheet(
@@ -1063,9 +1324,11 @@ void MoeScreeningWidget::onSaveFinalMeasurement() {
   auto locJson = [this](int li) {
     json j;
     j["b0"] = { {"poynt_x_deg", m_valueLabels[li][0][0]->text().toDouble()},
-                {"poynt_y_deg", m_valueLabels[li][0][1]->text().toDouble()} };
+                {"poynt_y_deg", m_valueLabels[li][0][1]->text().toDouble()},
+                {"z0_um",       m_valueLabels[li][0][2]->text().toDouble()} };
     j["b1"] = { {"poynt_x_deg", m_valueLabels[li][1][0]->text().toDouble()},
-                {"poynt_y_deg", m_valueLabels[li][1][1]->text().toDouble()} };
+                {"poynt_y_deg", m_valueLabels[li][1][1]->text().toDouble()},
+                {"z0_um",       m_valueLabels[li][1][2]->text().toDouble()} };
     j["tx_rx"] = { {"dx_um", m_txRxLabels[li][0]->text().toDouble()},
                    {"dy_um", m_txRxLabels[li][1]->text().toDouble()} };
     return j;

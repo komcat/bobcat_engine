@@ -103,8 +103,8 @@ private:
   QLabel*      m_detailHeader = nullptr;
   QTimer*      m_timer        = nullptr;
 
-  // 8 poynt value labels, indexed [section 0=b0/1=b1][side 0=a1/1=a2][axis 0=x/1=y].
-  QLabel* m_valueLabels[2][2][2] = {};
+  // 12 poynt value labels, indexed [section 0=b0/1=b1][side 0=a1/1=a2][axis 0=x/1=y/2=z].
+  QLabel* m_valueLabels[2][2][3] = {};
 
   // TX-RX delta value labels, indexed [loc 0=a1/1=a2][axis 0=dx/1=dy] (µm).
   QLabel* m_txRxLabels[2][2] = {};

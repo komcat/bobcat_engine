@@ -31,6 +31,7 @@ class QPushButton;
 class QPlainTextEdit;
 class QSpinBox;
 class QTimer;
+class QProcess;
 class ScriptWorker;
 struct ApplicationContext;
 
@@ -43,6 +44,8 @@ public:
 private slots:
   void onMeasureMoe();
   void onMeasureStats();   // run the A1/A2 measurement N times (statistics)
+  void onCaptureAllChannels();  // capture every station (scr-ch1..6 + IR A1/A2) N times
+  void onGenerateReport();      // build / open the MOE-screen HTML report for the latest run
   void onStopScript();     // request the running script abort at its next Lua line
 
   // ScriptWorker signal handlers.
@@ -64,6 +67,9 @@ private:
   // Shared entry for both Measure MOE (repeats==1) and the statistics run
   // (repeats>1): prompt for a MOE ID, set the script globals and launch.
   void launchMoeMeasurement(int repeats);
+
+  // Launch one iteration of the capture-all script (driven by onScriptCompleted).
+  void launchCaptureAllIteration();
 
   // gantry-main named-position helpers (ported from PoyntOptimizeWidget).
   void moveToNamedGantryPosition(const char* name);
@@ -107,6 +113,18 @@ private:
   QPushButton* m_stopBtn    = nullptr;       // abort the running script mid-run
   QLabel*      m_busyLabel  = nullptr;
 
+  // Capture-all (all stations) + report.
+  QPushButton* m_captureAllBtn      = nullptr;
+  QSpinBox*    m_captureAllIterSpin = nullptr;  // iterations in a row
+  QPushButton* m_generateReportBtn  = nullptr;
+  QProcess*    m_reportProcess       = nullptr; // async make_moe_screen_report.py run
+  // Multi-run loop state (mirrors PoyntOptimizeWidget): onScriptCompleted drives
+  // report + next iteration while active.
+  bool     m_captureAllActive    = false;
+  int      m_captureAllTotal      = 0;
+  int      m_captureAllRemaining  = 0;
+  QString  m_captureAllMoeId;                   // MOE ID for the current capture-all
+
   // Per-position IR camera exposure (µs) applied at the start of each run.
   QSpinBox*    m_expA1Spin = nullptr;   // at screen-A1-IR
   QSpinBox*    m_expA2Spin = nullptr;   // at screen-A2-IR
@@ -123,8 +141,8 @@ private:
   // Read-back panel.
   QLabel*  m_panelHeader = nullptr;
   QLabel*  m_panelStatus = nullptr;
-  // Poynt value labels, indexed [loc 0=a1/1=a2][beam 0=b0/1=b1][axis 0=x/1=y].
-  QLabel*  m_valueLabels[2][2][2] = {};
+  // Poynt value labels, indexed [loc 0=a1/1=a2][beam 0=b0/1=b1][axis 0=x/1=y/2=z].
+  QLabel*  m_valueLabels[2][2][3] = {};
   // TX-RX delta labels, indexed [loc 0=a1/1=a2][axis 0=dx/1=dy] (µm).
   QLabel*  m_txRxLabels[2][2] = {};
   QPushButton* m_saveFinalBtn  = nullptr;
