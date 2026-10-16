@@ -31,8 +31,9 @@ DEFAULT_CONFIG = {
     "interval_minutes": 15,
     "autostart": False,
     "tab_name": "test",
-    "data_folder": "",  # empty string = fall back to script directory
-    "data_folder_2": "",  # optional second location (e.g. FireDog products dir)
+    # Every folder a run scans, in order; the first is what 'Open Data Folder'
+    # opens. An empty list falls back to the script directory.
+    "data_folders": [],
     # Backup database on kumgit.com. On by default: the sheet is the primary
     # store, and a mirror is only useful if nobody has to remember to turn it
     # on. machine_id says which UAA station this PC is - it must be unique
@@ -77,11 +78,35 @@ def _single_instance_key() -> str:
 SINGLE_INSTANCE_KEY = _single_instance_key()
 
 
+# Pre-list config kept the folders in two fixed fields.
+LEGACY_FOLDER_KEYS = ("data_folder", "data_folder_2")
+
+
+def _migrate_data_folders(data: dict) -> bool:
+    """Fold the legacy data_folder/data_folder_2 fields into data_folders.
+
+    Returns True when the dict was changed, so the caller can rewrite the
+    file and the folder list shows up in it straight away.
+    """
+    if not any(k in data for k in LEGACY_FOLDER_KEYS):
+        return False
+    if not data.get("data_folders"):
+        data["data_folders"] = [
+            v.strip() for k in LEGACY_FOLDER_KEYS
+            if (v := data.get(k) or "").strip()]
+    for k in LEGACY_FOLDER_KEYS:
+        data.pop(k, None)
+    return True
+
+
 def load_config() -> dict:
     if CONFIG_FILE.exists():
         try:
             data = json.loads(CONFIG_FILE.read_text())
-            return {**DEFAULT_CONFIG, **data}
+            cfg = {**DEFAULT_CONFIG, **data}
+            if _migrate_data_folders(cfg):
+                save_config(cfg)
+            return cfg
         except (OSError, json.JSONDecodeError):
             pass
     return dict(DEFAULT_CONFIG)
@@ -91,19 +116,26 @@ def save_config(cfg: dict) -> None:
     CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
 
 
-def resolve_data_folder(cfg: dict) -> Path:
-    """Primary folder - what 'Open Data Folder' opens."""
-    df = (cfg.get("data_folder") or "").strip()
-    return Path(df) if df else core.DATA_DIR
+def configured_data_folders(cfg: dict) -> list[str]:
+    """The data_folders list as written in the config, blanks dropped."""
+    raw = cfg.get("data_folders") or []
+    if isinstance(raw, str):  # hand-edited as a single path
+        raw = [raw]
+    return [str(f).strip() for f in raw if str(f).strip()]
 
 
 def resolve_data_folders(cfg: dict) -> list[Path]:
-    """Every folder a run scans: the primary plus the optional second one."""
-    folders = [resolve_data_folder(cfg)]
-    second = (cfg.get("data_folder_2") or "").strip()
-    if second and Path(second) not in folders:
-        folders.append(Path(second))
-    return folders
+    """Every folder a run scans, in config order, duplicates removed."""
+    folders: list[Path] = []
+    for f in configured_data_folders(cfg):
+        if Path(f) not in folders:
+            folders.append(Path(f))
+    return folders or [core.DATA_DIR]
+
+
+def resolve_data_folder(cfg: dict) -> Path:
+    """Primary folder - what 'Open Data Folder' opens."""
+    return resolve_data_folders(cfg)[0]
 
 
 def set_autostart(enabled: bool) -> None:
@@ -175,12 +207,13 @@ class UploadWorker(QtCore.QThread):
 
     def __init__(self, apply_mode: bool, tab_name: str,
                  data_folders: list[Path], scope: dict | None = None,
-                 parent=None):
+                 machine_name: str = "", parent=None):
         super().__init__(parent)
         self.apply_mode = apply_mode
         self.tab_name = tab_name
         self.data_folders = data_folders
         self.scope = scope
+        self.machine_name = machine_name
 
     def run(self):
         try:
@@ -193,7 +226,8 @@ class UploadWorker(QtCore.QThread):
             ws = gc.open_by_key(core.SHEET_ID).worksheet(self.tab_name)
             all_values, col_idx = core.fetch_sheet(ws)
             counts, rows, cells, warnings = core.compute_plan(
-                all_values, col_idx, present, scope=self.scope)
+                all_values, col_idx, present, scope=self.scope,
+                machine_name=self.machine_name)
             # A configured-but-absent folder is a silent data loss otherwise:
             # the run still "succeeds", just with fewer benches.
             for d in self.data_folders:
@@ -401,6 +435,184 @@ class ScopePanel(QtWidgets.QFrame):
             self._sync_enabled()
 
 
+class DataFolderPanel(QtWidgets.QFrame):
+    """The folders a run scans: list with add / remove / reorder controls.
+
+    Emits `changed` with the new list whenever the user edits it; the caller
+    owns persisting it.
+    """
+    changed = QtCore.pyqtSignal(list)
+    open_requested = QtCore.pyqtSignal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setFrameShape(QtWidgets.QFrame.Shape.StyledPanel)
+        self.setStyleSheet(
+            f"DataFolderPanel {{ background: {theme.BG_ELEVATED}; "
+            f"border: 1px solid {theme.BORDER}; border-radius: 4px; }}")
+        self._icon_ok = make_tray_icon(theme.SUCCESS)
+        self._icon_missing = make_tray_icon(theme.ERROR)
+
+        row = QtWidgets.QHBoxLayout(self)
+        row.setContentsMargins(8, 6, 8, 6)
+        row.setSpacing(12)
+
+        title = QtWidgets.QLabel("Data folders:")
+        title.setStyleSheet(f"color:{theme.FG_MUTED}; font-weight:600;")
+        title.setAlignment(QtCore.Qt.AlignmentFlag.AlignTop)
+        row.addWidget(title)
+
+        self.list = QtWidgets.QListWidget()
+        self.list.setFont(theme.mono_font(10))
+        self.list.setFixedHeight(84)
+        self.list.setToolTip(
+            "Every folder here is scanned in one pass; double-click a path "
+            "to edit it. The first one is what Open Data Folder opens.")
+        self.list.setEditTriggers(
+            QtWidgets.QAbstractItemView.EditTrigger.DoubleClicked
+            | QtWidgets.QAbstractItemView.EditTrigger.EditKeyPressed)
+        row.addWidget(self.list, 1)
+
+        grid = QtWidgets.QGridLayout()
+        grid.setSpacing(4)
+        self.add_btn = QtWidgets.QPushButton("Add\u2026")
+        self.add_btn.setToolTip("Add a data folder")
+        self.remove_btn = QtWidgets.QPushButton("Remove")
+        self.remove_btn.setToolTip("Remove the selected folder from the list "
+                                   "(nothing is deleted on disk)")
+        self.up_btn = QtWidgets.QPushButton("Up")
+        self.down_btn = QtWidgets.QPushButton("Down")
+        self.open_btn = QtWidgets.QPushButton("Open")
+        self.open_btn.setToolTip("Open the selected folder in Explorer")
+        grid.addWidget(self.add_btn, 0, 0)
+        grid.addWidget(self.remove_btn, 0, 1)
+        grid.addWidget(self.up_btn, 1, 0)
+        grid.addWidget(self.down_btn, 1, 1)
+        grid.addWidget(self.open_btn, 2, 0, 1, 2)
+        grid.setRowStretch(3, 1)
+        row.addLayout(grid)
+
+        self.add_btn.clicked.connect(self._add)
+        self.remove_btn.clicked.connect(self._remove)
+        self.up_btn.clicked.connect(lambda: self._move(-1))
+        self.down_btn.clicked.connect(lambda: self._move(1))
+        self.open_btn.clicked.connect(self._open)
+        self.list.currentRowChanged.connect(self._sync_buttons)
+        self.list.itemChanged.connect(self._on_item_edited)
+
+        self._enabled = True
+        self._sync_buttons()
+
+    def set_folders(self, folders: list[str]) -> None:
+        b = self.list.blockSignals(True)
+        try:
+            self.list.clear()
+            for f in dict.fromkeys(folders):
+                item = QtWidgets.QListWidgetItem(f)
+                item.setFlags(item.flags() | QtCore.Qt.ItemFlag.ItemIsEditable)
+                self.list.addItem(item)
+                self._mark(item)
+        finally:
+            self.list.blockSignals(b)
+        self._sync_buttons()
+
+    def folders(self) -> list[str]:
+        out: list[str] = []
+        for i in range(self.list.count()):
+            text = self.list.item(i).text().strip()
+            if text and text not in out:
+                out.append(text)
+        return out
+
+    def refresh_status(self) -> None:
+        """Re-check which folders exist (they can appear after startup)."""
+        b = self.list.blockSignals(True)
+        try:
+            for i in range(self.list.count()):
+                self._mark(self.list.item(i))
+        finally:
+            self.list.blockSignals(b)
+
+    def enable_controls(self, enabled: bool) -> None:
+        self._enabled = enabled
+        self.list.setEnabled(enabled)
+        self._sync_buttons()
+
+    def _mark(self, item: QtWidgets.QListWidgetItem) -> None:
+        path = item.text().strip()
+        ok = bool(path) and Path(path).is_dir()
+        item.setIcon(self._icon_ok if ok else self._icon_missing)
+        item.setToolTip(path if ok else f"{path}\nNot found - skipped by runs")
+
+    def _commit(self) -> None:
+        # Normalise the visible list (blank / duplicate rows dropped) so what
+        # the user sees is exactly what gets saved.
+        folders = self.folders()
+        row = self.list.currentRow()
+        self.set_folders(folders)
+        if folders:
+            self.list.setCurrentRow(min(max(row, 0), len(folders) - 1))
+        self.changed.emit(folders)
+
+    def _add(self) -> None:
+        current = self.list.currentItem()
+        start = (current.text().strip() if current else "") or str(core.DATA_DIR)
+        chosen = QtWidgets.QFileDialog.getExistingDirectory(
+            self, "Add SIPHOG data folder", start)
+        if not chosen:
+            return
+        chosen = str(Path(chosen))
+        folders = self.folders()
+        if chosen in folders:
+            self.list.setCurrentRow(folders.index(chosen))
+            return
+        self.set_folders(folders + [chosen])
+        self.list.setCurrentRow(len(folders))
+        self.changed.emit(self.folders())
+
+    def _remove(self) -> None:
+        row = self.list.currentRow()
+        if row < 0:
+            return
+        path = self.list.item(row).text()
+        answer = QtWidgets.QMessageBox.question(
+            self, "Remove data folder",
+            f"Stop scanning this folder?\n\n{path}\n\n"
+            "The folder and its files are not touched.")
+        if answer != QtWidgets.QMessageBox.StandardButton.Yes:
+            return
+        self.list.takeItem(row)
+        self._commit()
+
+    def _move(self, delta: int) -> None:
+        row = self.list.currentRow()
+        target = row + delta
+        if row < 0 or not 0 <= target < self.list.count():
+            return
+        item = self.list.takeItem(row)
+        self.list.insertItem(target, item)
+        self.list.setCurrentRow(target)
+        self.changed.emit(self.folders())
+
+    def _open(self) -> None:
+        item = self.list.currentItem()
+        if item is not None:
+            self.open_requested.emit(item.text().strip())
+
+    def _on_item_edited(self, _item: QtWidgets.QListWidgetItem) -> None:
+        self._commit()
+
+    def _sync_buttons(self, *_) -> None:
+        row = self.list.currentRow()
+        count = self.list.count()
+        on = self._enabled
+        self.add_btn.setEnabled(on)
+        self.remove_btn.setEnabled(on and row >= 0)
+        self.up_btn.setEnabled(on and row > 0)
+        self.down_btn.setEnabled(on and 0 <= row < count - 1)
+        self.open_btn.setEnabled(row >= 0)
+
+
 class SettingsDialog(QtWidgets.QDialog):
     def __init__(self, cfg: dict, parent=None):
         super().__init__(parent)
@@ -419,38 +631,6 @@ class SettingsDialog(QtWidgets.QDialog):
         self.autostart_cb = QtWidgets.QCheckBox("Start with Windows")
         self.autostart_cb.setChecked(cfg["autostart"])
         form.addRow("", self.autostart_cb)
-
-        folder_row = QtWidgets.QHBoxLayout()
-        self.data_folder_edit = QtWidgets.QLineEdit()
-        self.data_folder_edit.setText(cfg.get("data_folder") or "")
-        self.data_folder_edit.setPlaceholderText(
-            f"(empty = use script directory: {core.DATA_DIR})")
-        browse_btn = QtWidgets.QPushButton("Browse\u2026")
-        browse_btn.clicked.connect(lambda: self._browse_folder(
-            self.data_folder_edit))
-        folder_row.addWidget(self.data_folder_edit, 1)
-        folder_row.addWidget(browse_btn)
-        form.addRow("Data folder:", folder_row)
-
-        folder2_row = QtWidgets.QHBoxLayout()
-        self.data_folder2_edit = QtWidgets.QLineEdit()
-        self.data_folder2_edit.setText(cfg.get("data_folder_2") or "")
-        self.data_folder2_edit.setPlaceholderText("(optional - leave empty to skip)")
-        browse2_btn = QtWidgets.QPushButton("Browse\u2026")
-        browse2_btn.clicked.connect(lambda: self._browse_folder(
-            self.data_folder2_edit))
-        folder2_row.addWidget(self.data_folder2_edit, 1)
-        folder2_row.addWidget(browse2_btn)
-        form.addRow("Second folder:", folder2_row)
-
-        hint = QtWidgets.QLabel(
-            "Folders holding the per-bench data. Both layouts are read: "
-            "<i>1234.json</i> (bobcat_engine) and <i>1234/dut.json</i> "
-            "(FireDog). If the same bench appears in both folders the newest "
-            "reading wins.")
-        hint.setStyleSheet(f"color:{theme.FG_MUTED};")
-        hint.setWordWrap(True)
-        form.addRow("", hint)
 
         section = QtWidgets.QLabel("Backup database (kumgit.com)")
         section.setStyleSheet("font-weight:700;")
@@ -508,21 +688,10 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addLayout(form)
         layout.addWidget(buttons)
 
-    def _browse_folder(self, edit: QtWidgets.QLineEdit):
-        start = (edit.text().strip()
-                 or self.data_folder_edit.text().strip()
-                 or str(core.DATA_DIR))
-        chosen = QtWidgets.QFileDialog.getExistingDirectory(
-            self, "Select SIPHOG data folder", start)
-        if chosen:
-            edit.setText(chosen)
-
     def result_config(self) -> dict:
         return {
             "interval_minutes": self.interval_spin.value(),
             "autostart": self.autostart_cb.isChecked(),
-            "data_folder": self.data_folder_edit.text().strip(),
-            "data_folder_2": self.data_folder2_edit.text().strip(),
             "kumgit_enabled": self.kumgit_cb.isChecked(),
             "kumgit_machine_id": (self.machine_edit.text().strip()
                                   or kumgit_api.DEFAULT_MACHINE_ID),
@@ -629,6 +798,9 @@ class MainWindow(QtWidgets.QMainWindow):
         self.scope_panel = ScopePanel()
         vbox.addWidget(self.scope_panel)
 
+        self.folder_panel = DataFolderPanel()
+        vbox.addWidget(self.folder_panel)
+
         self.summary_label = QtWidgets.QLabel("<span style='color:%s'>No run yet.</span>"
                                               % theme.FG_MUTED)
         self.summary_label.setFont(theme.mono_font(10))
@@ -720,6 +892,7 @@ class MainWindow(QtWidgets.QMainWindow):
         self.apply_btn.setEnabled(not busy)
         self.tab_combo.setEnabled(not busy)
         self.scope_panel.enable_controls(not busy)
+        self.folder_panel.enable_controls(not busy)
         self.next_run_label.setText(next_run_text)
 
     def show_results(self, counts: dict, rows: list,
@@ -741,6 +914,8 @@ class MainWindow(QtWidgets.QMainWindow):
             f'<span style="color:{theme.FG}">{counts["skipped_not_newer"]}</span>'
             f'  <span style="color:{theme.ACCENT};font-weight:700">'
             f'to_update={counts["updated"]}</span>'
+            f'  <span style="color:{theme.ACCENT};font-weight:700">'
+            f'to_fill={counts["filled"]}</span>'
             f'  <span style="color:{theme.FG_MUTED}">cells=</span>'
             f'<span style="color:{theme.FG}">{len(cells)}</span>'
         )
@@ -755,10 +930,14 @@ class MainWindow(QtWidgets.QMainWindow):
         color_dim = QtGui.QColor(theme.FG_DIM)
 
         for change in rows:
-            if change["status"] != "UPDATE":
+            if change["status"] == "UPDATE":
+                # compute_plan only puts columns the tab actually has in "new".
+                fields = list(change["new"])
+            elif change["status"] == "FILL":
+                fields = list(change["fill"])
+            else:
                 continue
-            for field in ["uaa_date", "uaa_dry", "uaa_uv", "uaa_bake",
-                          "uaa_completed"]:
+            for field in fields:
                 old = str(change["old"].get(field, ""))
                 new = str(change["new"].get(field, ""))
                 changed = old != new
@@ -808,6 +987,9 @@ class AppState(QtCore.QObject):
         self.window.set_available_tabs([self.cfg["tab_name"]], self.cfg["tab_name"])
         self.window.scope_panel.set_from_config(self.cfg.get("scope") or {})
         self.window.scope_panel.changed.connect(self.on_scope_changed)
+        self.window.folder_panel.set_folders(configured_data_folders(self.cfg))
+        self.window.folder_panel.changed.connect(self.on_folders_changed)
+        self.window.folder_panel.open_requested.connect(self.open_path)
         self.window.toggle_watchdog_requested.connect(self.toggle_watchdog)
         self.window.dry_run_requested.connect(lambda: self.start_run(False))
         self.window.upload_requested.connect(lambda: self.start_run(True))
@@ -864,7 +1046,7 @@ class AppState(QtCore.QObject):
                                  "OK" if f.is_dir() else "WARN")
         if not any(f.is_dir() for f in folders):
             self.window.log_line(
-                "Data folder not found; set it in File \u2192 Settings\u2026",
+                "No data folder found; add one in the Data folders list",
                 "WARN")
         self.window.log_line("Ready.", "OK")
         self.refresh_tabs()
@@ -1002,9 +1184,28 @@ class AppState(QtCore.QObject):
         self.window.log_line(
             f"Could not load worksheet list: {err.splitlines()[0]}", "ERROR")
 
+    def on_folders_changed(self, folders: list) -> None:
+        self.cfg["data_folders"] = folders
+        save_config(self.cfg)
+        if not folders:
+            self.window.log_line(
+                f"Data folder list empty; runs will scan {core.DATA_DIR}",
+                "WARN")
+            return
+        self.window.log_line(f"Data folders ({len(folders)}) saved", "OK")
+        for f in resolve_data_folders(self.cfg):
+            if not f.is_dir():
+                self.window.log_line(f"Data folder not found: {f}", "WARN")
+
     def open_folder(self) -> None:
-        QtGui.QDesktopServices.openUrl(
-            QtCore.QUrl.fromLocalFile(str(resolve_data_folder(self.cfg))))
+        self.open_path(str(resolve_data_folder(self.cfg)))
+
+    def open_path(self, path: str) -> None:
+        if not Path(path).is_dir():
+            self.window.log_line(f"Cannot open, folder not found: {path}",
+                                 "WARN")
+            return
+        QtGui.QDesktopServices.openUrl(QtCore.QUrl.fromLocalFile(path))
 
     def open_settings(self) -> None:
         dlg = SettingsDialog(self.cfg, self.window)
@@ -1012,8 +1213,6 @@ class AppState(QtCore.QObject):
             return
         new = dlg.result_config()
         old_autostart = self.cfg["autostart"]
-        old_folders = [(self.cfg.get("data_folder") or "").strip(),
-                       (self.cfg.get("data_folder_2") or "").strip()]
         old_machine = self.machine_id()
         old_key = (self.cfg.get("kumgit_api_key") or "").strip()
         old_url = (self.cfg.get("kumgit_url") or "").strip()
@@ -1028,13 +1227,6 @@ class AppState(QtCore.QObject):
             except Exception as e:
                 QtWidgets.QMessageBox.warning(
                     self.window, "Autostart failed", str(e))
-        if [new["data_folder"], new["data_folder_2"]] != old_folders:
-            for resolved in resolve_data_folders(self.cfg):
-                lvl = "OK" if resolved.is_dir() else "WARN"
-                self.window.log_line(f"Data folder set to: {resolved}", lvl)
-                if not resolved.is_dir():
-                    self.window.log_line(
-                        f"Warning: {resolved} does not exist", "WARN")
         if new["kumgit_machine_id"] != old_machine:
             self.window.log_line(
                 f"Backup machine ID set to {new['kumgit_machine_id']}", "OK")
@@ -1201,9 +1393,10 @@ class AppState(QtCore.QObject):
             f"Starting {self.last_mode} on '{tab}' {tag}{scope_desc}".strip(),
             "INFO")
         self.refresh_ui()
+        self.window.folder_panel.refresh_status()
         self.worker = UploadWorker(
             apply_mode, tab, resolve_data_folders(self.cfg),
-            scope=scope or None)
+            scope=scope or None, machine_name=core.pc_name())
         self.worker.finished_ok.connect(self.on_ok)
         self.worker.failed.connect(self.on_fail)
         self.worker.start()
@@ -1224,9 +1417,12 @@ class AppState(QtCore.QObject):
     def on_ok(self, counts, rows, cells, warnings) -> None:
         self.status = ("idle_on" if self.cfg["watchdog_enabled"]
                        else "idle_off")
-        suffix = (f"{counts['updated']} rows, {len(cells)} cells"
+        rows_desc = (f"{counts['updated']} rows"
+                     + (f" + {counts['filled']} filled" if counts["filled"]
+                        else ""))
+        suffix = (f"{rows_desc}, {len(cells)} cells"
                   if self.last_mode == "upload"
-                  else f"{counts['updated']} rows pending")
+                  else f"{rows_desc} pending")
         self.window.log_line(f"{self.last_mode} complete: {suffix}", "OK")
         self.window.show_results(counts, rows, cells, warnings, self.last_mode)
         self.backup_to_kumgit(rows)

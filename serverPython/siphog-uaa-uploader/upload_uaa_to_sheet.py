@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import socket
 import sys
 from pathlib import Path
 
@@ -72,6 +73,14 @@ REQUIRED_COLS = [
     "uaa_uv",
     "uaa_bake",
     "uaa_completed",
+]
+
+# Filled when the tab has them; a tab without them (e.g. 'test') still uploads
+# the required columns, with a warning naming what was skipped.
+OPTIONAL_COLS = [
+    "uaa_uv_machine",
+    "uaa_bake_date",
+    "uaa_measure_machine",
 ]
 
 
@@ -310,6 +319,11 @@ def _as_int(v):
     return "" if v is None else round(v)
 
 
+def _sheet_date(d) -> str:
+    """date -> US-style M/D/YYYY, the format parse_sheet_date reads back."""
+    return f"{d.month}/{d.day}/{d.year}"
+
+
 def collect_lot_ids(all_values, col_idx):
     """Return sorted list of unique non-empty Lot ID values from the sheet."""
     i = col_idx.get("Lot ID")
@@ -336,14 +350,24 @@ def as_dir_list(data_dir) -> list[Path]:
     return out
 
 
-def compute_plan(all_values, col_idx, data_dir, scope=None):
+def compute_plan(all_values, col_idx, data_dir, scope=None, machine_name=""):
     """Scan the data folder(s) and return (counts, row_changes, cell_updates, warnings).
 
     data_dir is one folder or an iterable of folders; each is scanned for both
     the legacy <bench>.json and the FireDog <bench>/dut.json layouts.
 
+    machine_name is this station's name (pc_name()) - the data files carry no
+    machine name of their own. It goes into uaa_uv_machine when the file has a
+    pre_uv_value, and into uaa_measure_machine when it has a post_uv_value;
+    each is left blank otherwise, like the reading it describes.
+
+    uaa_bake_date is the date of the post_uv_value timestamp ("t").
+
     row_changes is a list of dicts: {bench, row, old, new, status} where
-    status is UPDATE or SKIP_NOT_NEWER. Only UPDATE entries appear in
+    status is UPDATE, FILL or SKIP_NOT_NEWER. UPDATE rows are written whole;
+    FILL rows are not newer but have empty OPTIONAL_COLS cells this file can
+    vouch for (see _fill_cells), and carry {fill, fill_mismatch} naming the
+    cells written and the ones left blank. Only those cells appear in
     cell_updates.
 
     scope (optional dict) filters which benches are considered:
@@ -368,6 +392,11 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
                         "ignoring lot filter")
         lot_id = None
 
+    missing_optional = [c for c in OPTIONAL_COLS if c not in col_idx]
+    if missing_optional:
+        warnings.append(f"sheet has no {', '.join(missing_optional)} column(s); "
+                        "not writing them")
+
     bench_to_row: dict[str, int] = {}
     for r, row in enumerate(all_values[1:], start=2):
         if bench_col >= len(row):
@@ -391,6 +420,8 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
         "skipped_no_data": 0,
         "skipped_not_newer": 0,
         "updated": 0,
+        "filled": 0,
+        "fill_mismatch": 0,
     }
     row_changes = []
     cell_updates = []
@@ -446,21 +477,39 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
             warnings.append(f"bench {stem} (row {row_num}): unparseable uaa_date "
                             f"{existing_date_str!r}; treating as no date")
 
+        bake_date = parse_date(uaa["uv_ts"]) if uaa["uv_ts"] else None
+        # Same left-to-right order as the sheet, so the GUI's change table
+        # reads like the row it describes.
         new_vals = {
-            "uaa_date": f"{new_date.month}/{new_date.day}/{new_date.year}",
+            "uaa_date": _sheet_date(new_date),
             "uaa_dry": _as_int(uaa["dry"]),
             "uaa_uv": _as_int(uaa["uv"]),
+            "uaa_uv_machine": machine_name if uaa["dry"] is not None else "",
+            "uaa_bake_date": _sheet_date(bake_date) if bake_date else "",
             "uaa_bake": _as_int(uaa["bake"]),
+            "uaa_measure_machine": machine_name if uaa["uv"] is not None else "",
             "uaa_completed": "Completed" if uaa["uv"] is not None else "Not completed",
         }
+        for col_name in missing_optional:
+            del new_vals[col_name]
         old_vals = {k: _get(k) for k in new_vals}
 
         if existing_date is not None and new_date <= existing_date:
-            counts["skipped_not_newer"] += 1
+            # Not newer, so the readings stay. Rows uploaded before the
+            # OPTIONAL_COLS existed would otherwise keep those cells blank
+            # forever, since they never count as newer again.
+            to_set, mismatch = _fill_cells(old_vals, new_vals)
+            for col_name, value in to_set.items():
+                a1 = f"{col_to_a1(col_idx[col_name])}{row_num}"
+                cell_updates.append({"range": a1, "values": [[value]]})
+            counts["filled" if to_set else "skipped_not_newer"] += 1
+            if mismatch:
+                counts["fill_mismatch"] += 1
             row_changes.append({
                 "bench": stem, "row": row_num,
                 "old": old_vals, "new": new_vals,
-                "status": "SKIP_NOT_NEWER",
+                "status": "FILL" if to_set else "SKIP_NOT_NEWER",
+                "fill": to_set, "fill_mismatch": mismatch,
             })
             continue
 
@@ -486,6 +535,54 @@ def compute_plan(all_values, col_idx, data_dir, scope=None):
     return counts, row_changes, cell_updates, warnings
 
 
+def _same_reading(sheet_value: str, file_value) -> bool:
+    """True when a sheet cell shows the integer the uploader would write.
+
+    Off-by-one counts as the same reading: older uploads truncated where this
+    one rounds, so 1615 in the sheet and 1616 from the file are one value.
+    """
+    if file_value == "":
+        return False
+    try:
+        return abs(round(float(sheet_value.replace(",", ""))) - file_value) <= 1
+    except ValueError:
+        return False
+
+
+def _fill_cells(old, new):
+    """Empty OPTIONAL_COLS cells of a not-newer row that this file can fill.
+
+    A cell is filled only when the sheet still shows the reading this PC's
+    file holds - otherwise the row was written from somewhere else (another
+    station, a hand edit) and naming this machine, or this file's date, would
+    be a guess:
+
+        uaa_uv_machine       sheet uaa_dry (pre_uv_value) matches the file
+        uaa_measure_machine  sheet uaa_uv (post_uv_value) matches the file
+        uaa_bake_date        sheet uaa_uv matches the file (date comes from
+                             post_uv_value's timestamp)
+
+    Non-empty cells are never touched. Returns (to_set, mismatch): the cells
+    to write, and the empty ones left blank because the reading differs.
+    """
+    has_uv = new["uaa_uv"] != ""
+    evidence = {
+        "uaa_uv_machine": ["uaa_dry"] if new["uaa_dry"] != "" else [],
+        "uaa_measure_machine": ["uaa_uv"] if has_uv else [],
+        "uaa_bake_date": ["uaa_uv"] if has_uv else [],
+    }
+    to_set = {}
+    mismatch = []
+    for col_name, keys in evidence.items():
+        if col_name not in new or old[col_name].strip() or new[col_name] == "":
+            continue
+        if keys and all(_same_reading(old[k], new[k]) for k in keys):
+            to_set[col_name] = new[col_name]
+        else:
+            mismatch.append(col_name)
+    return to_set, mismatch
+
+
 def apply_updates(ws, cell_updates):
     if not cell_updates:
         return
@@ -508,6 +605,15 @@ def backup_settings() -> dict:
     except (OSError, json.JSONDecodeError):
         return {}
     return cfg if isinstance(cfg, dict) else {}
+
+
+def pc_name() -> str:
+    """This PC's Windows name (Settings -> System -> About), e.g. DESKTOP-6U3ITU5.
+
+    Used for the sheet's machine columns: unlike the Machine ID setting it is
+    already unique per PC and needs no configuring on a new station.
+    """
+    return socket.gethostname()
 
 
 def mirror_to_kumgit(row_changes) -> None:
@@ -570,7 +676,7 @@ def main() -> int:
         sys.exit(f"ERROR: {e}")
 
     counts, row_changes, cell_updates, warnings = compute_plan(
-        all_values, col_idx, data_dirs)
+        all_values, col_idx, data_dirs, machine_name=pc_name())
 
     for w in warnings:
         print(f"  WARN: {w}")
@@ -587,18 +693,27 @@ def main() -> int:
         for c in previews:
             print(f"  bench {c['bench']} (row {c['row']}): {c['new']}")
 
+    fills = [c for c in row_changes if c["status"] == "FILL"][:5]
+    if fills:
+        print("\nFirst empty-cell fills:")
+        for c in fills:
+            print(f"  bench {c['bench']} (row {c['row']}): {c['fill']}")
+    if counts["fill_mismatch"]:
+        print(f"\n{counts['fill_mismatch']} row(s) keep some empty cells: the "
+              "sheet reading differs from this PC's file")
+
     if not cell_updates:
         print("\nNo updates to apply.")
         return 0
 
+    rows = (f"{counts['updated']} updated + {counts['filled']} filled rows")
     if args.dry_run:
         print(f"\n[dry-run] Would send {len(cell_updates)} cell updates "
-              f"covering {counts['updated']} rows.")
+              f"covering {rows}.")
         return 0
 
     apply_updates(ws, cell_updates)
-    print(f"\nApplied {len(cell_updates)} cell updates "
-          f"covering {counts['updated']} rows.")
+    print(f"\nApplied {len(cell_updates)} cell updates covering {rows}.")
     if args.kumgit:
         mirror_to_kumgit(row_changes)
     return 0

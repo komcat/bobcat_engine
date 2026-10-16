@@ -4,3 +4,4 @@ token.json
 watchdog_config.json
 kumgit_pending.json
 __pycache__/
+.claude/settings.local.json

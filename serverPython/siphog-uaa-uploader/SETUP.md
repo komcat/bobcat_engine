@@ -148,6 +148,30 @@ The sheet tab must have a header row containing at least: `Bench Number`,
 optional and enables lot-scoped filtering. A missing column aborts the run
 with `sheet missing required columns`.
 
+Three more columns are filled when the tab has them, and skipped with a
+warning when it does not:
+
+| Column | Value |
+|--------|-------|
+| `uaa_uv_machine` | this PC's Windows name (e.g. `DESKTOP-6U3ITU5`) when a `pre_uv_value` exists, else blank |
+| `uaa_bake_date` | date of the `post_uv_value` entry's own timestamp (`t`), `M/D/YYYY`; blank when there is no post-UV reading |
+| `uaa_measure_machine` | this PC's Windows name when a `post_uv_value` exists, else blank |
+
+The data files carry no machine name, so both machine columns use the PC name
+from **Settings → System → About** (rename it there to change what the sheet
+shows). It needs no configuring, unlike the backup database's **Machine ID**
+(`UAA1`, below), which is a separate, hand-set value.
+
+Rows uploaded before these columns existed are never "newer" again, so every
+run (CLI and tray app) also fills their empty cells, counted as `filled`. It
+only writes cells that are empty, and only when the sheet still shows the
+reading this PC's file holds (`uaa_dry` for the UV machine, `uaa_uv` for the
+measure machine and the bake date; off by one counts as the same, since older
+uploads truncated instead of rounding). A row whose sheet values came from
+elsewhere keeps its blanks and is counted as `fill_mismatch`, instead of being
+labelled with this machine. Rows whose bench has no data file on this PC can
+only be filled by the station that holds it.
+
 Write rules:
 - A row is updated only when the JSON's latest timestamp is **newer** than the
   existing `uaa_date`; otherwise it counts as `skipped_not_newer`.
@@ -168,8 +192,7 @@ Write rules:
 | `watchdog_enabled` / `autostart` | run on a timer / start the timer at launch |
 | `interval_minutes` | period between runs |
 | `tab_name` | worksheet tab to write |
-| `data_folder` | primary folder of per-bench data |
-| `data_folder_2` | optional second folder, scanned in the same pass (empty = unused) |
+| `data_folders` | list of per-bench data folders, all scanned in one pass; the first is what *Open Data Folder* opens (empty list = script directory). Edited from the **Data folders** panel on the main window (Add / Remove / Up / Down, double-click to edit a path). Old `data_folder` / `data_folder_2` entries are folded into it on load |
 | `scope` | bench-number range, date range, and lot filters |
 | `run_detail_on_schedule` + `detail_scope` | second scoped pass per cycle |
 | `kumgit_enabled` | mirror uploads to the kumgit.com backup database (default `true`) |
