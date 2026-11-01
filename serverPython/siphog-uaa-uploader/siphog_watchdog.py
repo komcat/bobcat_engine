@@ -43,6 +43,10 @@ DEFAULT_CONFIG = {
     "kumgit_machine_id": kumgit_api.DEFAULT_MACHINE_ID,
     "kumgit_operator_id": "",
     "kumgit_url": kumgit_api.DEFAULT_URL,
+    # Second sheet ("uaasaa data 2026"), written after the primary one with
+    # the same readings; benches it has no row for are appended.
+    "uaasaa_enabled": True,
+    "uaasaa_tab": core.UAASAA_TAB,
     "scope": {
         "bench_enabled": False,
         "bench_min": 1000,
@@ -202,18 +206,21 @@ class LotIDWorker(QtCore.QThread):
 
 
 class UploadWorker(QtCore.QThread):
-    finished_ok = QtCore.pyqtSignal(dict, list, list, list)
+    # counts, rows, cells, warnings, uaasaa summary ({} when disabled)
+    finished_ok = QtCore.pyqtSignal(dict, list, list, list, dict)
     failed = QtCore.pyqtSignal(str)
 
     def __init__(self, apply_mode: bool, tab_name: str,
                  data_folders: list[Path], scope: dict | None = None,
-                 machine_name: str = "", parent=None):
+                 machine_name: str = "", uaasaa_tab: str | None = None,
+                 parent=None):
         super().__init__(parent)
         self.apply_mode = apply_mode
         self.tab_name = tab_name
         self.data_folders = data_folders
         self.scope = scope
         self.machine_name = machine_name
+        self.uaasaa_tab = uaasaa_tab  # None = second sheet disabled
 
     def run(self):
         try:
@@ -235,9 +242,25 @@ class UploadWorker(QtCore.QThread):
                     warnings.append(f"data folder not found, skipped: {d}")
             if self.apply_mode and cells:
                 core.apply_updates(ws, cells)
-            self.finished_ok.emit(counts, rows, cells, warnings)
+            uaasaa = (self._run_uaasaa(gc, present, all_values, col_idx)
+                      if self.uaasaa_tab else {})
+            self.finished_ok.emit(counts, rows, cells, warnings, uaasaa)
         except Exception as e:
             self.failed.emit(f"{e}\n\n{traceback.format_exc()}")
+
+    def _run_uaasaa(self, gc, present, all_values, col_idx) -> dict:
+        """Second sheet. Its failure is reported, never raised: the primary
+        sheet is already written by now."""
+        try:
+            lot_id = (self.scope or {}).get("lot_id")
+            lot_benches = (core.benches_with_lot(all_values, col_idx, lot_id)
+                           if lot_id else None)
+            return core.run_uaasaa(
+                gc, present, scope=self.scope, machine_name=self.machine_name,
+                apply=self.apply_mode, lot_benches=lot_benches,
+                tab=self.uaasaa_tab)
+        except Exception as e:
+            return {"error": f"{e}\n\n{traceback.format_exc()}"}
 
 
 class KumgitWorker(QtCore.QThread):
@@ -678,6 +701,22 @@ class SettingsDialog(QtWidgets.QDialog):
         kumgit_hint.setWordWrap(True)
         form.addRow("", kumgit_hint)
 
+        uaasaa_section = QtWidgets.QLabel("Second sheet (uaasaa data 2026)")
+        uaasaa_section.setStyleSheet("font-weight:700;")
+        form.addRow(uaasaa_section)
+
+        self.uaasaa_cb = QtWidgets.QCheckBox(
+            "Also upload UAA columns to uaasaa data 2026")
+        self.uaasaa_cb.setChecked(bool(cfg.get("uaasaa_enabled", True)))
+        form.addRow("", self.uaasaa_cb)
+
+        uaasaa_hint = QtWidgets.QLabel(
+            f"Written after the main sheet, tab <i>{cfg.get('uaasaa_tab') or core.UAASAA_TAB}</i>. "
+            "Benches with no row there are appended. Uses the same scope.")
+        uaasaa_hint.setStyleSheet(f"color:{theme.FG_MUTED};")
+        uaasaa_hint.setWordWrap(True)
+        form.addRow("", uaasaa_hint)
+
         buttons = QtWidgets.QDialogButtonBox(
             QtWidgets.QDialogButtonBox.StandardButton.Ok |
             QtWidgets.QDialogButtonBox.StandardButton.Cancel)
@@ -698,6 +737,7 @@ class SettingsDialog(QtWidgets.QDialog):
             "kumgit_operator_id": self.operator_edit.text().strip(),
             "kumgit_api_key": self.apikey_edit.text().strip(),
             "kumgit_url": self.kumgit_url_edit.text().strip(),
+            "uaasaa_enabled": self.uaasaa_cb.isChecked(),
         }
 
 
@@ -1396,7 +1436,9 @@ class AppState(QtCore.QObject):
         self.window.folder_panel.refresh_status()
         self.worker = UploadWorker(
             apply_mode, tab, resolve_data_folders(self.cfg),
-            scope=scope or None, machine_name=core.pc_name())
+            scope=scope or None, machine_name=core.pc_name(),
+            uaasaa_tab=((self.cfg.get("uaasaa_tab") or core.UAASAA_TAB)
+                        if self.cfg.get("uaasaa_enabled", True) else None))
         self.worker.finished_ok.connect(self.on_ok)
         self.worker.failed.connect(self.on_fail)
         self.worker.start()
@@ -1414,7 +1456,7 @@ class AppState(QtCore.QObject):
             parts.append(f"lot={scope['lot_id']}")
         return f"  scope[{', '.join(parts)}]" if parts else ""
 
-    def on_ok(self, counts, rows, cells, warnings) -> None:
+    def on_ok(self, counts, rows, cells, warnings, uaasaa) -> None:
         self.status = ("idle_on" if self.cfg["watchdog_enabled"]
                        else "idle_off")
         rows_desc = (f"{counts['updated']} rows"
@@ -1425,12 +1467,30 @@ class AppState(QtCore.QObject):
                   else f"{rows_desc} pending")
         self.window.log_line(f"{self.last_mode} complete: {suffix}", "OK")
         self.window.show_results(counts, rows, cells, warnings, self.last_mode)
+        self.report_uaasaa(uaasaa)
         self.backup_to_kumgit(rows)
         self.tray.setToolTip(
             f"{APP_NAME}\nTab: {self.cfg['tab_name']}\n"
             f"Last {self.last_mode}: {suffix}\n"
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         self.refresh_ui()
+
+    def report_uaasaa(self, summary: dict) -> None:
+        """Log the second sheet's result; {} means it was turned off."""
+        if not summary:
+            return
+        if "error" in summary:
+            lines = summary["error"].splitlines()
+            self.window.log_line(
+                f"uaasaa sheet failed: {lines[0] if lines else 'unknown error'}",
+                "WARN")
+            for line in lines[1:]:
+                if line.strip():
+                    self.window.log_line(line, "DEBUG")
+            return
+        for w in summary["warnings"]:
+            self.window.log_line(f"uaasaa sheet: {w}", "WARN")
+        self.window.log_line(core.describe_uaasaa(summary), "OK")
 
     def on_fail(self, err: str) -> None:
         self.status = "error"

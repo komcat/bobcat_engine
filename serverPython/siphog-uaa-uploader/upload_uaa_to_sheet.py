@@ -24,6 +24,12 @@ Two on-disk layouts are supported, and a run may scan several folders at once:
     firedog                  <data dir>/<bench>/dut.json
                              entries: {"key", "value", "t", "type", "seq"}
 
+A second target, the "uaasaa data 2026" sheet (UAASAA_SHEET_ID, tab 'data'),
+gets the same readings in its own narrow layout (Bench, uaa_date, uaa_machine,
+uaa_dry_uA, uaa_uv_uA, uaa_bake_date, uaa_bake_uA). Benches with no row there
+are appended. It runs after the primary sheet and a failure on it never fails
+the run. Pass --no-uaasaa to skip it.
+
 Usage:
     python upload_uaa_to_sheet.py              # apply updates
     python upload_uaa_to_sheet.py --dry-run    # print intended updates, no writes
@@ -36,6 +42,7 @@ import argparse
 import json
 import socket
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from dateutil import parser as date_parser
@@ -81,6 +88,20 @@ OPTIONAL_COLS = [
     "uaa_uv_machine",
     "uaa_bake_date",
     "uaa_measure_machine",
+]
+
+# Second target: "uaasaa data 2026", one row per bench shared with the SAA
+# uploader. UAA owns only these columns there.
+UAASAA_SHEET_ID = "136wNsymuzDvab1NZWqVyRY6ZgQGr1e_zLWDJPmzIh-4"
+UAASAA_TAB = "data"
+UAASAA_BENCH_COL = "Bench"
+UAASAA_COLS = [
+    "uaa_date",
+    "uaa_machine",
+    "uaa_dry_uA",
+    "uaa_uv_uA",
+    "uaa_bake_date",
+    "uaa_bake_uA",
 ]
 
 
@@ -350,6 +371,21 @@ def as_dir_list(data_dir) -> list[Path]:
     return out
 
 
+def _bench_in_scope(bench_int: int, scope: dict) -> bool:
+    """Inclusive bench_min/bench_max check; a missing bound is no bound."""
+    lo = scope.get("bench_min")
+    hi = scope.get("bench_max")
+    return not ((lo is not None and bench_int < lo)
+                or (hi is not None and bench_int > hi))
+
+
+def _date_in_scope(d, scope: dict) -> bool:
+    """Inclusive date_from/date_to check on a reading's (UTC) date."""
+    lo = scope.get("date_from")
+    hi = scope.get("date_to")
+    return not ((lo is not None and d < lo) or (hi is not None and d > hi))
+
+
 def compute_plan(all_values, col_idx, data_dir, scope=None, machine_name=""):
     """Scan the data folder(s) and return (counts, row_changes, cell_updates, warnings).
 
@@ -377,10 +413,6 @@ def compute_plan(all_values, col_idx, data_dir, scope=None, machine_name=""):
     Any missing/None key is ignored.
     """
     scope = scope or {}
-    bench_min = scope.get("bench_min")
-    bench_max = scope.get("bench_max")
-    date_from = scope.get("date_from")
-    date_to = scope.get("date_to")
     lot_id = scope.get("lot_id")
 
     bench_col = col_idx["Bench Number"]
@@ -431,11 +463,7 @@ def compute_plan(all_values, col_idx, data_dir, scope=None, machine_name=""):
             counts["skipped_not_in_sheet"] += 1
             continue
 
-        bench_int = int(stem)
-        if bench_min is not None and bench_int < bench_min:
-            counts["skipped_out_of_scope"] += 1
-            continue
-        if bench_max is not None and bench_int > bench_max:
+        if not _bench_in_scope(int(stem), scope):
             counts["skipped_out_of_scope"] += 1
             continue
 
@@ -459,10 +487,7 @@ def compute_plan(all_values, col_idx, data_dir, scope=None, machine_name=""):
             counts["skipped_no_data"] += 1
             continue
 
-        if date_from is not None and new_date < date_from:
-            counts["skipped_out_of_scope"] += 1
-            continue
-        if date_to is not None and new_date > date_to:
+        if not _date_in_scope(new_date, scope):
             counts["skipped_out_of_scope"] += 1
             continue
 
@@ -589,6 +614,272 @@ def apply_updates(ws, cell_updates):
     ws.batch_update(cell_updates, value_input_option="USER_ENTERED")
 
 
+# --- Second target: "uaasaa data 2026" -------------------------------------
+#
+# One row per bench, shared with the SAA uploader, keyed on 'Bench'. Dates are
+# written as local "M/D/YYYY H:MM" to match the SAA columns beside them; the
+# files carry UTC ("...Z") timestamps, so they are converted first.
+
+
+def _local_dt(ts: str | None) -> datetime | None:
+    """File timestamp -> naive local datetime, truncated to the minute."""
+    if not ts:
+        return None
+    try:
+        dt = date_parser.isoparse(ts)
+    except (ValueError, TypeError):
+        return None
+    if dt.tzinfo is not None:
+        dt = dt.astimezone().replace(tzinfo=None)
+    return dt.replace(second=0, microsecond=0)
+
+
+def _sheet_datetime(dt: datetime) -> str:
+    """datetime -> "M/D/YYYY H:MM", the format the SAA columns use."""
+    return f"{dt.month}/{dt.day}/{dt.year} {dt.hour}:{dt.minute:02d}"
+
+
+def parse_sheet_datetime(s: str) -> datetime | None:
+    """Read a sheet date or date+time back (US order), minute resolution."""
+    try:
+        dt = date_parser.parse(s, dayfirst=False)
+    except (ValueError, TypeError, OverflowError):
+        return None
+    return dt.replace(tzinfo=None, second=0, microsecond=0)
+
+
+def _is_newer(new_dt: datetime, sheet_str: str, sheet_dt: datetime) -> bool:
+    """True when the file reading is newer than what the sheet shows.
+
+    A cell formatted to show the date only reads back as midnight; comparing
+    a timed reading against that would re-upload the bench on every run, so
+    such a cell is compared by date.
+    """
+    if ":" not in sheet_str:
+        return new_dt.date() > sheet_dt.date()
+    return new_dt > sheet_dt
+
+
+def _is_same_reading(new_dt: datetime, sheet_str: str, sheet_dt: datetime) -> bool:
+    """True when the sheet's uaa_date is this file's reading (same minute, or
+    same day for a date-only cell) - the condition for filling blank cells."""
+    if ":" not in sheet_str:
+        return new_dt.date() == sheet_dt.date()
+    return new_dt == sheet_dt
+
+
+def _cell(row, i: int) -> str:
+    """Stripped cell text; get_all_values drops trailing blanks per row."""
+    return row[i].strip() if i < len(row) else ""
+
+
+def _bench_key(s: str) -> str:
+    """Normalise a bench number for matching: '2941', '2941.0', '2,941' and
+    '02941' are one bench. Non-numeric text is kept as-is (stripped)."""
+    s = s.strip().replace(",", "")
+    try:
+        f = float(s)
+    except ValueError:
+        return s
+    return str(int(f)) if f.is_integer() else s
+
+
+def fetch_uaasaa(ws):
+    """Return (all_values, col_idx) for the uaasaa tab, checking its header."""
+    all_values = ws.get_all_values()
+    if not all_values:
+        raise RuntimeError(f"uaasaa tab '{ws.title}' is empty")
+    col_idx: dict[str, int] = {}
+    for i, name in enumerate(all_values[0]):
+        col_idx.setdefault(name.strip(), i)
+    missing = [c for c in [UAASAA_BENCH_COL, *UAASAA_COLS] if c not in col_idx]
+    if missing:
+        raise RuntimeError(f"uaasaa tab '{ws.title}' missing columns: {missing}")
+    return all_values, col_idx
+
+
+def benches_with_lot(all_values, col_idx, lot_id: str) -> set[str] | None:
+    """Benches whose primary-sheet 'Lot ID' is lot_id.
+
+    The uaasaa sheet has no Lot ID column, so a lot filter is resolved against
+    the primary sheet. None means "no lot column there", i.e. no filter -
+    the same thing compute_plan does in that case.
+    """
+    lot_col = col_idx.get("Lot ID")
+    bench_col = col_idx.get("Bench Number")
+    if lot_col is None or bench_col is None:
+        return None
+    out = set()
+    for row in all_values[1:]:
+        if max(lot_col, bench_col) < len(row) and row[lot_col].strip() == lot_id:
+            bench = _bench_key(row[bench_col])
+            if bench:
+                out.add(bench)
+    return out
+
+
+def compute_uaasaa_plan(all_values, col_idx, data_dir, scope=None,
+                        machine_name="", lot_benches=None):
+    """Plan the uaasaa upload.
+
+    Returns (counts, changes, cell_updates, new_rows, warnings).
+
+    Rows are matched on Bench (see _bench_key), so a row the SAA uploader
+    created first is reused and its SAA columns are never touched:
+      UPDATE  file reading newer than the row's uaa_date (or none yet) -
+              all of UAASAA_COLS are written
+      FILL    same reading as uaa_date - only the UAA cells still blank
+      APPEND  no row for the bench - new row with only Bench + UAA filled
+
+    scope takes the same bench/date keys as compute_plan; lot_benches (from
+    benches_with_lot) stands in for its lot filter.
+    """
+    scope = scope or {}
+    bench_col = col_idx[UAASAA_BENCH_COL]
+    date_col = col_idx["uaa_date"]
+    width = len(all_values[0])
+    warnings: list[str] = []
+
+    bench_to_row: dict[str, int] = {}
+    for r, row in enumerate(all_values[1:], start=2):
+        key = _bench_key(_cell(row, bench_col))
+        if not key:
+            continue
+        if key in bench_to_row:
+            warnings.append(f"duplicate Bench {key} (rows {bench_to_row[key]} "
+                            f"and {r}); keeping first")
+            continue
+        bench_to_row[key] = r
+
+    bench_to_paths, scanned, _ = discover_dut_files(as_dir_list(data_dir))
+
+    counts = {
+        "scanned": scanned,
+        "skipped_out_of_scope": 0,
+        "skipped_no_data": 0,
+        "skipped_not_newer": 0,
+        "updated": 0,
+        "filled": 0,
+        "appended": 0,
+    }
+    changes = []
+    cell_updates = []
+    new_rows = []
+
+    for stem in sorted(bench_to_paths, key=int):
+        if (not _bench_in_scope(int(stem), scope)
+                or (lot_benches is not None
+                    and _bench_key(stem) not in lot_benches)):
+            counts["skipped_out_of_scope"] += 1
+            continue
+
+        # The primary plan already reported multi-file benches; don't repeat.
+        uaa = _best_reading(stem, bench_to_paths[stem], [])
+        new_date = parse_date(uaa["latest_ts"]) if uaa else None
+        latest = _local_dt(uaa["latest_ts"]) if uaa else None
+        if new_date is None or latest is None:
+            counts["skipped_no_data"] += 1
+            continue
+        if not _date_in_scope(new_date, scope):
+            counts["skipped_out_of_scope"] += 1
+            continue
+
+        bake_dt = _local_dt(uaa["bake_ts"])
+        new_vals = {
+            "uaa_date": _sheet_datetime(latest),
+            "uaa_machine": machine_name,
+            "uaa_dry_uA": _as_int(uaa["dry"]),
+            "uaa_uv_uA": _as_int(uaa["uv"]),
+            "uaa_bake_date": _sheet_datetime(bake_dt) if bake_dt else "",
+            "uaa_bake_uA": _as_int(uaa["bake"]),
+        }
+
+        # A row the SAA uploader already made is matched by bench number and
+        # kept: only its UAA columns are written, never a second row.
+        row_num = bench_to_row.get(_bench_key(stem))
+        if row_num is None:
+            row = [""] * width
+            row[bench_col] = stem
+            for col_name, value in new_vals.items():
+                row[col_idx[col_name]] = value
+            while row and row[-1] == "":
+                row.pop()
+            new_rows.append(row)
+            counts["appended"] += 1
+            changes.append({"bench": stem, "row": None, "new": new_vals,
+                            "status": "APPEND"})
+            continue
+
+        existing_row = all_values[row_num - 1]
+        old_str = _cell(existing_row, date_col)
+        old_dt = parse_sheet_datetime(old_str) if old_str else None
+        if old_str and old_dt is None:
+            warnings.append(f"bench {stem} (row {row_num}): unparseable "
+                            f"uaa_date {old_str!r}; treating as no date")
+        if old_dt is not None and not _is_newer(latest, old_str, old_dt):
+            # Same reading already in the row: fill only the UAA cells still
+            # blank there. A sheet date *newer* than the file means another
+            # station wrote this row - mixing this file's values in would be
+            # a guess, so that row is left alone.
+            fill = {}
+            if _is_same_reading(latest, old_str, old_dt):
+                fill = {k: v for k, v in new_vals.items()
+                        if v != "" and not _cell(existing_row, col_idx[k])}
+            if not fill:
+                counts["skipped_not_newer"] += 1
+                continue
+            for col_name, value in fill.items():
+                a1 = f"{col_to_a1(col_idx[col_name])}{row_num}"
+                cell_updates.append({"range": a1, "values": [[value]]})
+            counts["filled"] += 1
+            changes.append({"bench": stem, "row": row_num, "new": fill,
+                            "status": "FILL"})
+            continue
+
+        for col_name, value in new_vals.items():
+            a1 = f"{col_to_a1(col_idx[col_name])}{row_num}"
+            cell_updates.append({"range": a1, "values": [[value]]})
+        counts["updated"] += 1
+        changes.append({"bench": stem, "row": row_num, "new": new_vals,
+                        "status": "UPDATE"})
+
+    return counts, changes, cell_updates, new_rows, warnings
+
+
+def apply_uaasaa(ws, cell_updates, new_rows) -> None:
+    apply_updates(ws, cell_updates)
+    if new_rows:
+        # INSERT_ROWS grows the grid as needed and never overwrites a row
+        # the SAA uploader may have written meanwhile.
+        ws.append_rows(new_rows, value_input_option="USER_ENTERED",
+                       insert_data_option="INSERT_ROWS", table_range="A1")
+
+
+def run_uaasaa(gc, data_dirs, scope=None, machine_name="", apply=False,
+               lot_benches=None, tab=UAASAA_TAB) -> dict:
+    """Plan (and with apply=True, write) the uaasaa sheet; return a summary."""
+    ws = gc.open_by_key(UAASAA_SHEET_ID).worksheet(tab)
+    all_values, col_idx = fetch_uaasaa(ws)
+    counts, changes, cells, new_rows, warnings = compute_uaasaa_plan(
+        all_values, col_idx, data_dirs, scope=scope,
+        machine_name=machine_name, lot_benches=lot_benches)
+    if apply:
+        apply_uaasaa(ws, cells, new_rows)
+    return {"tab": tab, "counts": counts, "changes": changes,
+            "cells": len(cells), "applied": apply, "warnings": warnings}
+
+
+def describe_uaasaa(summary: dict) -> str:
+    """One-line result for logs, shared by the CLI and the tray app."""
+    c = summary["counts"]
+    head = f"uaasaa sheet '{summary['tab']}'"
+    if summary["applied"]:
+        return (f"{head}: {c['updated']} updated, {c['filled']} filled, "
+                f"{c['appended']} appended, {c['skipped_not_newer']} not newer")
+    return (f"{head}: would update {c['updated']}, fill {c['filled']}, "
+            f"append {c['appended']} ({c['skipped_not_newer']} not newer)")
+
+
 WATCHDOG_CONFIG = DATA_DIR / "watchdog_config.json"
 
 
@@ -659,7 +950,10 @@ def main() -> int:
                     help="skip the kumgit.com backup database (it is mirrored "
                          "by default on a real run, using the credentials in "
                          "watchdog_config.json)")
-    ap.set_defaults(kumgit=True)
+    ap.add_argument("--no-uaasaa", dest="uaasaa", action="store_false",
+                    help="skip the 'uaasaa data 2026' sheet (updated by "
+                         "default, after the primary sheet)")
+    ap.set_defaults(kumgit=True, uaasaa=True)
     args = ap.parse_args()
     data_dirs = args.data_dirs or [DATA_DIR]
 
@@ -702,21 +996,39 @@ def main() -> int:
         print(f"\n{counts['fill_mismatch']} row(s) keep some empty cells: the "
               "sheet reading differs from this PC's file")
 
+    rows = (f"{counts['updated']} updated + {counts['filled']} filled rows")
     if not cell_updates:
         print("\nNo updates to apply.")
-        return 0
-
-    rows = (f"{counts['updated']} updated + {counts['filled']} filled rows")
-    if args.dry_run:
+    elif args.dry_run:
         print(f"\n[dry-run] Would send {len(cell_updates)} cell updates "
               f"covering {rows}.")
-        return 0
+    else:
+        apply_updates(ws, cell_updates)
+        print(f"\nApplied {len(cell_updates)} cell updates covering {rows}.")
+        if args.kumgit:
+            mirror_to_kumgit(row_changes)
 
-    apply_updates(ws, cell_updates)
-    print(f"\nApplied {len(cell_updates)} cell updates covering {rows}.")
-    if args.kumgit:
-        mirror_to_kumgit(row_changes)
+    if args.uaasaa:
+        _uaasaa_cli(gc, data_dirs, apply=not args.dry_run)
     return 0
+
+
+def _uaasaa_cli(gc, data_dirs, apply: bool) -> None:
+    """Second-sheet pass for the CLI; a failure here is a warning only."""
+    print(f"\n--- {UAASAA_TAB} tab of uaasaa data 2026 ---")
+    try:
+        summary = run_uaasaa(gc, data_dirs, machine_name=pc_name(), apply=apply)
+    except Exception as e:  # noqa: BLE001 - must not fail the primary run
+        print(f"  WARN: uaasaa sheet failed: {e}")
+        return
+    for w in summary["warnings"]:
+        print(f"  WARN: {w}")
+    for k, v in summary["counts"].items():
+        print(f"  {k:24s} {v}")
+    for c in summary["changes"][:5]:
+        where = f"row {c['row']}" if c["row"] else "new row"
+        print(f"  {c['status']} bench {c['bench']} ({where}): {c['new']}")
+    print(describe_uaasaa(summary))
 
 
 if __name__ == "__main__":

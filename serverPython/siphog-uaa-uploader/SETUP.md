@@ -200,6 +200,42 @@ Write rules:
 | `kumgit_api_key` | `X-API-Key` value, UAA scope |
 | `kumgit_operator_id` | optional, stamped on every record |
 | `kumgit_url` | endpoint override (empty = the documented one) |
+| `uaasaa_enabled` | also write the "uaasaa data 2026" sheet (default `true`; see 5a) |
+| `uaasaa_tab` | its tab (default `data`) |
+
+## 5a. Second sheet: "uaasaa data 2026"
+
+Every run also writes the UAA readings to
+[uaasaa data 2026](https://docs.google.com/spreadsheets/d/136wNsymuzDvab1NZWqVyRY6ZgQGr1e_zLWDJPmzIh-4/edit),
+tab `data`. The SAA uploader writes the SAA columns of the same sheet. The
+service account needs **Editor** access there as well.
+
+| Column | Source |
+|--------|--------|
+| `Bench` | bench number (row key) |
+| `uaa_date` | newest of the three readings, local time, `M/D/YYYY H:MM` |
+| `uaa_machine` | this PC's Windows name (`socket.gethostname()`) |
+| `uaa_dry_uA` / `uaa_uv_uA` / `uaa_bake_uA` | `pre_uv_value` / `post_uv_value` / `After Bake measurement`, whole µA |
+| `uaa_bake_date` | `After Bake measurement` timestamp, local time; blank until it exists |
+
+- **Row already there (e.g. made by the SAA uploader):** it is matched by bench
+  number and kept. `2941`, `2941.0` and `2,941` are the same bench. Only the six
+  UAA cells are ever written, never the SAA columns:
+  - *newer reading* than the row's `uaa_date`, or no `uaa_date` yet: all six
+    UAA cells are written.
+  - *same reading* (same `uaa_date`): only the UAA cells that are still blank
+    are filled.
+  - *sheet `uaa_date` newer than the file*: another station wrote it, so the
+    row is left alone.
+  - If `uaa_date` shows a date only, these comparisons are by date only.
+- **No row for the bench:** a row is appended with `Bench` and the UAA
+  columns. The SAA columns stay blank for the SAA uploader to fill.
+- The bench and date scope apply as usual. The Lot ID filter is resolved
+  against the main sheet, because this sheet has no Lot ID column.
+- It runs after the main sheet. A failure here is logged as a warning and
+  never fails the run. kumgit mirroring is unaffected.
+- To turn it off, use **File → Settings → Also upload UAA columns to uaasaa
+  data 2026**, or pass `--no-uaasaa` on the CLI.
 
 ## 6. Backup database (kumgit.com)
 
@@ -277,6 +313,8 @@ credentials from `watchdog_config.json`. Pass `--no-kumgit` to skip it.
 | `neither service_account.json nor credentials.json found` | no auth file present |
 | `scanned N / skipped_not_digit N` | wrong `--data-dir`, or the bench part is not all digits (`<digits>.json` / `<digits>/dut.json`) |
 | `sheet missing required columns` | wrong `--tab`, or the header row was edited |
+| `uaasaa sheet failed: ... 403` | "uaasaa data 2026" not shared with the service account as Editor |
+| `uaasaa tab 'data' missing columns` | that sheet's header row was renamed |
 | `kumgit backup: API key rejected (401)` | wrong/empty key in Settings |
 | `kumgit backup: API key lacks UAA permission (403)` | key is SAA-scoped; UAA needs a `UAA-…` key |
 | `kumgit backup: N pending` | server unreachable; records are in `kumgit_pending.json` and retry automatically |
